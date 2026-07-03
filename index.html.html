@@ -1,0 +1,2213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pokemon &amp; One Piece TCG Vendor Dashboard</title>
+
+<!-- ===================== FIREBASE (cloud auto-save/auto-load, no login) ===================== -->
+<!-- Firebase SDKs (compat build — plain <script> tags, no bundler needed). -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script>
+  // ---- Firebase project config ----
+  // Get this from: Firebase Console → Project settings → General → Your apps → Web app.
+  // This is NOT a secret — it's a public client identifier. There is no login on this
+  // dashboard, so access is controlled only by (a) keeping this URL unlisted/private and
+  // (b) the Firestore rules in firestore.rules. Anyone who has both this page's URL/config
+  // AND figures out the Firestore document path could read or overwrite your data — don't
+  // share this link publicly.
+ const firebaseConfig = {
+  apiKey: "AIzaSyBkq6e2hMqBvdbWvcyLA1NNSxF0eEVD_Qo",
+  authDomain: "vendor-dashboard-31558.firebaseapp.com",
+  projectId: "vendor-dashboard-31558",
+  storageBucket: "vendor-dashboard-31558.firebasestorage.app",
+  messagingSenderId: "1098788445886",
+  appId: "1:1098788445886:web:1b9d3954bd84514ea388ef",
+  measurementId: "G-DG9XDMW1S1"
+};
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+</script>
+
+<style>
+:root {
+  --bg-primary:#f6f5f2; --bg-card:#ffffff; --bg-header:#1c1330;
+  --text-primary:#20182c; --text-secondary:#6b6478; --text-on-dark:#ffffff;
+  --accent1:#e0472c; --accent2:#2e6f9e;
+  --accent3:#e8a33d; --accent4:#4c8c6b; --accent5:#8a6bbf; --accent6:#c77dbb;
+  --positive:#2e8b57; --negative:#c0392b; --warning:#e8a33d;
+  --gap:16px; --radius:12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg-primary); color:var(--text-primary); line-height:1.5; }
+.dashboard-container { max-width:1440px; margin:0 auto; padding:var(--gap); }
+.dashboard-header { background:linear-gradient(120deg,#1c1330,#3a1f4d); color:var(--text-on-dark); padding:24px 28px; border-radius:var(--radius); margin-bottom:var(--gap); display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; }
+.dashboard-header h1 { font-size:22px; font-weight:700; }
+.dashboard-header p { font-size:13px; color:rgba(255,255,255,0.65); margin-top:4px; }
+.filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.filter-group { display:flex; flex-direction:column; gap:4px; }
+.filter-group label { font-size:11px; color:rgba(255,255,255,0.65); text-transform:uppercase; letter-spacing:.4px; }
+.filter-group select, .filter-group input[type=date] { padding:7px 10px; border:1px solid rgba(255,255,255,0.25); border-radius:6px; background:rgba(255,255,255,0.1); color:#fff; font-size:13px; min-width:150px; }
+.filter-group select option { background:#1c1330; color:#fff; }
+.reset-btn { align-self:flex-end; padding:8px 14px; border-radius:6px; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.08); color:#fff; font-size:12px; cursor:pointer; }
+.reset-btn:hover { background:rgba(255,255,255,0.2); }
+
+.session-bar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; background:var(--bg-card); border-radius:var(--radius); padding:10px 16px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.session-status { font-size:12px; color:var(--text-secondary); }
+.session-status.dirty { color:#8a5a00; }
+.session-status.saved { color:var(--positive); }
+.session-actions { display:flex; gap:8px; }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(0); background:#1c1330; color:#fff; padding:10px 20px; border-radius:8px; font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,0.2); z-index:1000; transition:opacity .25s, transform .25s; opacity:1; }
+.toast.hidden { opacity:0; transform:translateX(-50%) translateY(10px); pointer-events:none; }
+
+.tab-bar { display:flex; gap:4px; background:var(--bg-card); border-radius:var(--radius); padding:6px; margin-bottom:var(--gap); box-shadow:0 1px 3px rgba(0,0,0,0.06); overflow-x:auto; }
+.tab-btn { padding:9px 20px; border:none; background:transparent; border-radius:8px; font-size:13px; font-weight:700; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+.tab-btn.active { background:var(--bg-header); color:#fff; }
+.tab-btn:hover:not(.active) { background:#f0eee9; color:var(--text-primary); }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:var(--gap); margin-bottom:var(--gap); }
+.kpi-card { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); border-left:4px solid var(--accent1); }
+.kpi-card.expenses { border-left-color:var(--negative); }
+.kpi-card.profit { border-left-color:var(--positive); }
+.kpi-card.netprofit { border-left-color:#1f6f5c; }
+.kpi-card.potential { border-left-color:var(--accent3); }
+.kpi-card.cost { border-left-color:var(--accent4); }
+.kpi-card.inv { border-left-color:var(--accent2); }
+.kpi-card.sold { border-left-color:var(--accent5); }
+.kpi-card.traded { border-left-color:var(--accent6); }
+.kpi-card.cash { border-left-color:#333; }
+.kpi-label { font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; font-weight:600; }
+.kpi-value { font-size:24px; font-weight:700; }
+
+.alert-banner { background:#fff4e5; border:1px solid #f3c98b; color:#8a5a00; border-radius:var(--radius); padding:14px 44px 14px 20px; margin-bottom:var(--gap); font-size:13px; display:flex; gap:10px; align-items:center; position:relative; }
+.alert-banner strong { font-weight:700; }
+.alert-banner.hidden { display:none; }
+.alert-dismiss { position:absolute; top:8px; right:10px; border:none; background:transparent; color:#8a5a00; cursor:pointer; font-size:16px; line-height:1; padding:4px 7px; border-radius:5px; }
+.alert-dismiss:hover { background:rgba(138,90,0,0.12); }
+
+.filter-row th { cursor:default; padding:5px 6px; background:#fbfaf7; }
+.filter-row th:hover { background:#fbfaf7; color:inherit; }
+.filter-input { width:100%; min-width:72px; box-sizing:border-box; border:1px solid #e2e0da; background:#fff; padding:4px 6px; border-radius:5px; font-size:11.5px; font-family:inherit; color:var(--text-primary); font-weight:400; text-transform:none; letter-spacing:normal; }
+.filter-input:focus { outline:none; border-color:#2e6f9e; box-shadow:0 0 0 2px rgba(46,111,158,0.15); }
+.filter-clear-btn { font-size:11px; padding:4px 9px; white-space:nowrap; }
+.settings-prefs-card { background:var(--bg-card); border-radius:var(--radius); padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); margin-bottom:var(--gap); }
+.settings-prefs-card h4 { font-size:12px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-secondary); margin-bottom:10px; }
+.settings-checkbox-row { display:flex; align-items:center; gap:8px; font-size:13px; }
+.settings-checkbox-row input { width:15px; height:15px; }
+
+.section-title { font-size:15px; font-weight:700; margin:26px 0 12px 2px; color:var(--text-primary); }
+.section-title:first-child { margin-top:0; }
+.chart-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:var(--gap); margin-bottom:var(--gap); }
+.chart-container { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.chart-container h3 { font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:14px; }
+.chart-svg-wrap { width:100%; }
+.chart-svg-wrap svg { width:100%; height:auto; display:block; overflow:visible; }
+.chart-legend { display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:10px; font-size:11.5px; }
+.chart-legend .legend-item { display:flex; align-items:center; gap:6px; color:var(--text-secondary); }
+.chart-legend .swatch { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+.donut-legend-list { display:flex; flex-direction:column; gap:7px; font-size:12px; }
+.donut-legend-list .row { display:flex; align-items:center; gap:8px; }
+.donut-legend-list .row .name { flex:1; color:var(--text-primary); }
+.donut-legend-list .row .val { font-weight:700; color:var(--text-primary); }
+.donut-legend-list .row .pct { color:var(--text-secondary); font-size:11px; width:44px; text-align:right; }
+.donut-flex { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+.donut-flex .chart-svg-wrap { max-width:180px; flex-shrink:0; }
+.donut-flex .donut-legend-list { flex:1; min-width:160px; }
+.bar-val-label { font-size:9.5px; fill:var(--text-secondary); }
+.axis-label { font-size:9.5px; fill:var(--text-secondary); }
+.grid-line { stroke:#eeece7; stroke-width:1; }
+.zero-line { stroke:#d8d5cd; stroke-width:1.2; }
+
+.table-section { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); overflow-x:auto; margin-bottom:var(--gap); }
+.table-section h3 { font-size:13px; font-weight:700; margin-bottom:12px; }
+.data-table { width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed; }
+.data-table thead th { position:relative; text-align:left; padding:9px 10px; border-bottom:2px solid #ececec; color:var(--text-secondary); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none; }
+.data-table thead th .th-label { cursor:pointer; }
+.data-table thead tr:first-child th:hover { color:var(--text-primary); background:#faf9f7; }
+.col-resizer { position:absolute; top:0; right:0; width:7px; height:100%; cursor:col-resize; z-index:2; }
+.col-resizer:hover, .col-resizer.resizing { background:rgba(46,111,158,0.35); }
+.data-table tbody td { padding:8px 10px; border-bottom:1px solid #f2f1ee; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.data-table tbody td.auto-field { text-overflow:ellipsis; }
+.data-table td input, .data-table td select { max-width:100%; }
+.data-table tbody tr:hover { background:#faf9f7; }
+.badge { display:inline-block; padding:3px 9px; border-radius:99px; font-size:11px; font-weight:700; }
+.badge.ok { background:#e5f4ec; color:var(--positive); }
+.badge.low { background:#fdeaea; color:var(--negative); }
+.badge.pos { background:#e5f4ec; color:var(--positive); }
+.badge.neg { background:#fdeaea; color:var(--negative); }
+.rank { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:#f0ecf7; color:#5c4a80; font-weight:700; font-size:11px; margin-right:8px; }
+
+.table-toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+.table-toolbar .toolbar-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.pager { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--text-secondary); }
+.pager button { border:1px solid #e2e0da; background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px; }
+.pager button:disabled { opacity:.4; cursor:default; }
+.btn-sm { border:1px solid #e2e0da; background:#fff; border-radius:6px; padding:5px 12px; cursor:pointer; font-size:12px; font-weight:600; color:var(--text-primary); }
+.btn-sm:hover { background:#f4f2ed; }
+.btn-sm:disabled { opacity:.4; cursor:not-allowed; }
+.btn-sm:disabled:hover { background:#fff; }
+.btn-add { border-color:#2e6f9e; color:#2e6f9e; }
+.btn-add:hover { background:#eaf2f8; }
+.col-toggle-wrap { position:relative; display:inline-block; }
+.col-toggle-panel { position:absolute; top:calc(100% + 4px); left:0; z-index:20; background:#fff; border:1px solid #e2e0da; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.12); padding:8px 4px; min-width:190px; max-height:280px; overflow-y:auto; }
+.col-toggle-panel.hidden { display:none; }
+.col-toggle-row { display:flex; align-items:center; gap:8px; padding:5px 10px; font-size:12px; color:var(--text-primary); white-space:nowrap; cursor:pointer; border-radius:5px; }
+.col-toggle-row:hover { background:#f4f2ed; }
+.col-toggle-row input { margin:0; cursor:pointer; }
+.btn-sm.autosave-on { border-color:var(--positive); color:var(--positive); background:#e5f4ec; }
+.btn-sm.autosave-on:hover { background:#d7ecdf; }
+.btn-sm.autosave-paused { border-color:var(--warning); color:#8a5a00; background:#fbf1e1; }
+.edit-note { font-size:11px; color:var(--text-secondary); margin-bottom:10px; }
+.edit-note .swatch-input { display:inline-block; width:9px; height:9px; border-radius:2px; background:#2e6f9e; margin-right:4px; }
+.edit-note .swatch-auto { display:inline-block; width:9px; height:9px; border-radius:2px; background:#b9b4ab; margin-right:4px; margin-left:12px; }
+.data-table td.auto-field { color:var(--text-secondary); font-style:italic; }
+.data-table td input, .data-table td select { width:100%; min-width:52px; border:1px solid transparent; background:transparent; padding:5px 6px; border-radius:5px; font-size:12.5px; font-family:inherit; color:var(--text-primary); }
+.data-table td input:hover, .data-table td select:hover { border-color:#dcd8cf; background:#fbfaf7; }
+.data-table td input:focus, .data-table td select:focus { outline:none; border-color:#2e6f9e; background:#fff; box-shadow:0 0 0 2px rgba(46,111,158,0.15); }
+.data-table td input[type=number] { min-width:46px; }
+.data-table td input[type=date] { min-width:100px; }
+.row-del { border:none; background:transparent; color:var(--text-secondary); cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px; line-height:1; }
+.row-del:hover { background:#fdeaea; color:var(--negative); }
+
+.multiselect-cell { min-width:150px; white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
+.chip { display:inline-flex; align-items:center; gap:4px; background:#eef3f8; color:#2e6f9e; border:1px solid #d6e4ee; border-radius:12px; padding:2px 4px 2px 9px; font-size:11.5px; margin:2px 3px 2px 0; white-space:nowrap; }
+.chip button { border:none; background:transparent; color:#2e6f9e; cursor:pointer; font-size:13px; line-height:1; padding:1px 4px; border-radius:50%; }
+.chip button:hover { background:#d6e4ee; color:var(--negative); }
+.multiselect-cell select.add-picker { width:auto; min-width:78px; max-width:110px; display:inline-block; margin-top:2px; font-size:11px; color:var(--text-secondary); border:1px dashed #dcd8cf; }
+
+.two-col { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:var(--gap); }
+.lists-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--gap); }
+.list-card { background:var(--bg-card); border-radius:var(--radius); padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.list-card h4 { font-size:12px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-secondary); margin-bottom:10px; }
+.list-card ul { list-style:none; }
+.list-card li { padding:0; border-bottom:1px solid #f2f1ee; font-size:13px; }
+.list-card li:last-child { border-bottom:none; }
+.list-item-row { display:flex; align-items:center; gap:4px; }
+.list-item-row input.list-item-input { flex:1; border:1px solid transparent; background:transparent; padding:7px 6px; border-radius:5px; font-size:13px; font-family:inherit; color:var(--text-primary); }
+.list-item-row input.list-item-input:hover { border-color:#dcd8cf; background:#fbfaf7; }
+.list-item-row input.list-item-input:focus { outline:none; border-color:#2e6f9e; background:#fff; box-shadow:0 0 0 2px rgba(46,111,158,0.15); }
+.list-add-row { display:flex; align-items:center; gap:6px; margin-top:8px; }
+.list-add-row input.list-item-input { flex:1; border:1px dashed #dcd8cf; background:transparent; padding:7px 8px; border-radius:5px; font-size:13px; font-family:inherit; }
+.list-add-row input.list-item-input:focus { outline:none; border-color:#2e6f9e; background:#fff; }
+
+.dashboard-footer { text-align:center; font-size:12px; color:var(--text-secondary); padding:18px 0 6px; }
+
+@media (max-width:768px) {
+  .dashboard-header { flex-direction:column; align-items:flex-start; }
+  .kpi-row { grid-template-columns:repeat(2,1fr); }
+  .chart-row { grid-template-columns:1fr; }
+}
+@media print {
+  body { background:#fff; }
+  .filters, .reset-btn, .pager, .tab-bar { display:none; }
+  .tab-panel { display:block !important; margin-bottom:30px; }
+  .chart-container, .kpi-card, .table-section, .list-card { break-inside:avoid; box-shadow:none; border:1px solid #e2e0da; }
+}
+
+/* ---- Add-item popup (used by every "+ Add ___" button) ---- */
+.modal-overlay { position:fixed; inset:0; background:rgba(28,19,48,0.55); display:flex; align-items:center; justify-content:center; z-index:1500; padding:20px; }
+.modal-overlay.hidden { display:none; }
+.modal-box { background:#fff; border-radius:var(--radius); width:100%; max-width:480px; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 16px 40px rgba(0,0,0,0.3); }
+.modal-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #ececec; flex-shrink:0; }
+.modal-header h3 { font-size:15px; font-weight:700; color:var(--text-primary); }
+.modal-close { border:none; background:transparent; font-size:18px; line-height:1; color:var(--text-secondary); cursor:pointer; padding:4px 8px; border-radius:5px; }
+.modal-close:hover { background:#f4f2ed; color:var(--negative); }
+.modal-body { padding:16px 20px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+.modal-field label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--text-secondary); margin-bottom:5px; }
+.modal-field input, .modal-field select { width:100%; padding:8px 10px; border:1px solid #dcd8cf; border-radius:6px; font-size:13px; font-family:inherit; color:var(--text-primary); box-sizing:border-box; }
+.modal-field input:focus, .modal-field select:focus { outline:none; border-color:#2e6f9e; box-shadow:0 0 0 2px rgba(46,111,158,0.15); }
+.modal-field .modal-readonly { padding:8px 10px; border:1px solid transparent; background:#faf9f7; border-radius:6px; font-size:13px; color:var(--text-secondary); font-style:italic; }
+.modal-multiselect { display:flex; flex-wrap:wrap; gap:4px; align-items:center; min-width:0; }
+.modal-footer { display:flex; justify-content:flex-end; gap:8px; padding:14px 20px; border-top:1px solid #ececec; flex-shrink:0; }
+
+</style>
+</head>
+<body>
+<div class="dashboard-container" id="dashboard-root">
+
+  <div class="session-bar">
+    <div class="session-status" id="session-status">Working from the original snapshot &mdash; click &#9889; Enable Auto-Save to save every change automatically, or use Load/Save Progress manually.</div>
+    <div class="session-actions">
+      <input type="file" id="load-file-input" accept="application/json" style="display:none">
+      <button class="btn-sm" id="undo-btn" title="Undo (Ctrl+Z)" disabled>&#8617; Undo</button>
+      <button class="btn-sm" id="redo-btn" title="Redo (Ctrl+Shift+Z)" disabled>&#8618; Redo</button>
+      <button class="btn-sm" id="autosave-btn" title="Pick a file once — every change is then saved to it automatically in the background.">&#9889; Enable Auto-Save</button>
+      <button class="btn-sm" id="load-progress-btn">&#128193; Load Progress</button>
+      <button class="btn-sm btn-add" id="save-progress-btn">&#128190; Save a Copy</button>
+    </div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Dashboard</button>
+    <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')">Cashflow</button>
+    <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')">Inventory</button>
+    <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')">Sales</button>
+    <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')">Trades</button>
+    <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')">Expenses</button>
+    <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')">Settings</button>
+  </nav>
+
+  <!-- ===================== DASHBOARD TAB ===================== -->
+  <section class="tab-panel active" id="tab-dashboard">
+    <div id="low-stock-alert" class="alert-banner hidden"></div>
+
+    <section class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Total Sales</div><div class="kpi-value" id="kpi-sales">$0</div></div>
+      <div class="kpi-card expenses"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="kpi-expenses">$0</div></div>
+      <div class="kpi-card profit" title="Profit from Sales (Sale Price − Cost, summed across every sale) + Cash In − Cash Out from Trades that are NOT linked to a sale (a linked trade's cash is already inside that sale's profit instead). Value of Trade is never added directly."><div class="kpi-label">Total Actual Profit</div><div class="kpi-value" id="kpi-profit">$0</div></div>
+      <div class="kpi-card netprofit" title="Total Actual Profit minus Total Expenses."><div class="kpi-label">Net Profit</div><div class="kpi-value" id="kpi-netprofit">$0</div></div>
+      <div class="kpi-card potential" title="Retail Price − Cost, added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Potential Profit (Inventory)</div><div class="kpi-value" id="kpi-potential">$0</div></div>
+      <div class="kpi-card cost" title="The Cost column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Total Cost (Inventory)</div><div class="kpi-value" id="kpi-cost">$0</div></div>
+      <div class="kpi-card inv" title="The Retail Price column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Inventory Value</div><div class="kpi-value" id="kpi-inv">$0</div></div>
+      <div class="kpi-card sold"><div class="kpi-label">Items Sold</div><div class="kpi-value" id="kpi-sold">0</div></div>
+      <div class="kpi-card traded"><div class="kpi-label">Items Traded</div><div class="kpi-value" id="kpi-traded">0</div></div>
+      <div class="kpi-card cash"><div class="kpi-label">Net Cashflow</div><div class="kpi-value" id="kpi-cash">$0</div></div>
+    </section>
+
+    <div class="section-title">Sales Insights</div>
+    <section class="chart-row">
+      <div class="chart-container tall" style="grid-column:1/-1;">
+        <h3>Top Selling Items (by Revenue)</h3>
+        <div class="chart-svg-wrap" id="chart-top-items"></div>
+      </div>
+    </section>
+    <section class="chart-row">
+      <div class="chart-container">
+        <h3>Sales Revenue by Category</h3>
+        <div id="chart-cat-sales"></div>
+      </div>
+      <div class="chart-container">
+        <h3>Payment Method Mix</h3>
+        <div id="chart-payment"></div>
+      </div>
+    </section>
+
+    <div class="section-title">Inventory Insights</div>
+    <section class="chart-row">
+      <div class="chart-container">
+        <h3>Inventory Value by Category</h3>
+        <div id="chart-inv-value-cat"></div>
+      </div>
+      <div class="chart-container">
+        <h3>Stock Status Overview</h3>
+        <div id="chart-stock-status"></div>
+      </div>
+    </section>
+  </section>
+
+  <!-- ===================== CASHFLOW / SHOWS TAB ===================== -->
+  <section class="tab-panel" id="tab-cashflow">
+    <div class="section-title" style="margin-top:0">Show Performance</div>
+    <section class="chart-row">
+      <div class="chart-container tall" style="grid-column:1/-1;">
+        <h3>Sales, Expenses &amp; Actual Profit by Show</h3>
+        <div class="chart-svg-wrap" id="chart-shows"></div>
+      </div>
+    </section>
+
+    <div class="table-section">
+      <h3>&#127942; Top Performing Shows (by Actual Profit)</h3>
+      <table class="data-table">
+        <thead><tr><th>Rank</th><th>Show</th><th>Total Sales</th><th>Total Expenses</th><th>Actual Profit</th></tr></thead>
+        <tbody id="top-shows-body"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">Per-Show Ledger</div>
+    <div class="table-section">
+      <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
+      <div class="table-toolbar">
+        <h3 style="margin:0">Cashflow &mdash; Per-Show Ledger</h3>
+        <div class="toolbar-actions">
+          <span id="cashflow-count" style="font-size:12px;color:var(--text-secondary)"></span>
+          <div class="col-toggle-wrap">
+            <button class="btn-sm" data-columns-toggle data-table="cashflow">&#9776; Columns</button>
+            <div class="col-toggle-panel hidden" id="colpanel-cashflow"></div>
+          </div>
+          <button class="btn-sm" data-export data-table="cashflow">Export CSV</button>
+          <button class="btn-sm btn-add" data-addrow data-table="cashflow">+ Add Show</button>
+        </div>
+      </div>
+      <table class="data-table">
+        <colgroup id="cashflow-colgroup"></colgroup>
+        <thead id="cashflow-head"></thead>
+        <tbody id="cashflow-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== INVENTORY TAB ===================== -->
+  <section class="tab-panel" id="tab-inventory">
+    <div class="table-section">
+      <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
+      <div class="table-toolbar">
+        <h3 style="margin:0">Inventory (click column headers to sort)</h3>
+        <div class="toolbar-actions">
+          <span id="inv-count" style="font-size:12px;color:var(--text-secondary)"></span>
+          <div class="col-toggle-wrap">
+            <button class="btn-sm" data-columns-toggle data-table="inventory">&#9776; Columns</button>
+            <div class="col-toggle-panel hidden" id="colpanel-inventory"></div>
+          </div>
+          <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
+          <button class="btn-sm btn-add" data-addrow data-table="inventory">+ Add Item</button>
+        </div>
+      </div>
+      <table class="data-table">
+        <colgroup id="inv-colgroup"></colgroup>
+        <thead id="inv-head"></thead>
+        <tbody id="inv-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== SALES TAB ===================== -->
+  <section class="tab-panel" id="tab-sales">
+    <div class="table-section">
+      <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
+      <div class="table-toolbar">
+        <h3 style="margin:0">Sales Log</h3>
+        <div class="toolbar-actions">
+          <div class="col-toggle-wrap">
+            <button class="btn-sm" data-columns-toggle data-table="sales">&#9776; Columns</button>
+            <div class="col-toggle-panel hidden" id="colpanel-sales"></div>
+          </div>
+          <button class="btn-sm" data-export data-table="sales">Export CSV</button>
+          <button class="btn-sm btn-add" data-addrow data-table="sales">+ Add Sale</button>
+        </div>
+        <div class="pager">
+          <span id="sales-page-info"></span>
+          <button id="sales-prev" onclick="dash.salesPage(-1)">&lt; Prev</button>
+          <button id="sales-next" onclick="dash.salesPage(1)">Next &gt;</button>
+        </div>
+      </div>
+      <table class="data-table">
+        <colgroup id="sales-colgroup"></colgroup>
+        <thead id="sales-head"></thead>
+        <tbody id="sales-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== TRADES TAB ===================== -->
+  <section class="tab-panel" id="tab-trades">
+    <div class="kpi-row" style="margin-bottom:var(--gap)">
+      <div class="kpi-card" style="border-left-color:#2e8b57">
+        <div class="kpi-label">Total Cash In</div>
+        <div class="kpi-value" id="kpi-trade-cash-in">$0</div>
+      </div>
+      <div class="kpi-card" style="border-left-color:#c0392b">
+        <div class="kpi-label">Total Cash Out</div>
+        <div class="kpi-value" id="kpi-trade-cash-out">$0</div>
+      </div>
+      <div class="kpi-card" style="border-left-color:#2e6f9e">
+        <div class="kpi-label">Net Trade Cash</div>
+        <div class="kpi-value" id="kpi-trade-cash-net">$0</div>
+      </div>
+    </div>
+    <div class="table-section">
+      <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
+      <div class="edit-note" style="margin-top:-6px">Tip: a trade can involve several cards on either side (e.g. a customer trading 3 lower-value cards for 1 high-end card) — use the "+ add…" picker in the Traded Out / Received cells to add every card involved, and use Cash In / Cash Out to record any cash that changed hands to balance the trade.</div>
+      <div class="table-toolbar">
+        <h3 style="margin:0">Trades Log</h3>
+        <div class="toolbar-actions">
+          <span id="trades-count" style="font-size:12px;color:var(--text-secondary)"></span>
+          <div class="col-toggle-wrap">
+            <button class="btn-sm" data-columns-toggle data-table="trades">&#9776; Columns</button>
+            <div class="col-toggle-panel hidden" id="colpanel-trades"></div>
+          </div>
+          <button class="btn-sm" data-export data-table="trades">Export CSV</button>
+          <button class="btn-sm btn-add" data-addrow data-table="trades">+ Add Trade</button>
+        </div>
+      </div>
+      <table class="data-table">
+        <colgroup id="trades-colgroup"></colgroup>
+        <thead id="trades-head"></thead>
+        <tbody id="trades-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== EXPENSES TAB ===================== -->
+  <section class="tab-panel" id="tab-expenses">
+    <section class="chart-row">
+      <div class="chart-container">
+        <h3>Expenses by Show</h3>
+        <div id="chart-exp-show"></div>
+      </div>
+      <div class="chart-container">
+        <h3>Expenses by Category</h3>
+        <div id="chart-exp-cat"></div>
+      </div>
+    </section>
+    <div class="two-col" style="margin-bottom:var(--gap)">
+      <div class="table-section" style="margin-bottom:0">
+        <h3>Expenses by Show</h3>
+        <table class="data-table">
+          <thead><tr><th>Show</th><th>Total Expenses</th></tr></thead>
+          <tbody id="exp-by-show-body"></tbody>
+        </table>
+      </div>
+      <div class="table-section" style="margin-bottom:0">
+        <h3>Expenses by Category</h3>
+        <table class="data-table">
+          <thead><tr><th>Category</th><th>Total</th></tr></thead>
+          <tbody id="exp-by-cat-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="table-section">
+      <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
+      <div class="table-toolbar">
+        <h3 style="margin:0">Expense Log</h3>
+        <div class="toolbar-actions">
+          <span id="expenses-count" style="font-size:12px;color:var(--text-secondary)"></span>
+          <div class="col-toggle-wrap">
+            <button class="btn-sm" data-columns-toggle data-table="expenses">&#9776; Columns</button>
+            <div class="col-toggle-panel hidden" id="colpanel-expenses"></div>
+          </div>
+          <button class="btn-sm" data-export data-table="expenses">Export CSV</button>
+          <button class="btn-sm btn-add" data-addrow data-table="expenses">+ Add Expense</button>
+        </div>
+      </div>
+      <table class="data-table">
+        <colgroup id="expenses-colgroup"></colgroup>
+        <thead id="expenses-head"></thead>
+        <tbody id="expenses-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== SETTINGS TAB ===================== -->
+  <section class="tab-panel" id="tab-settings">
+    <div class="settings-prefs-card">
+      <h4>Dashboard Preferences</h4>
+      <label class="settings-checkbox-row">
+        <input type="checkbox" id="pref-low-stock-alert" data-pref="showLowStockAlert" checked>
+        Show the low-stock alert banner on the Dashboard tab
+      </label>
+    </div>
+    <div class="edit-note">Edit, add, or remove the values below — they power every dropdown across the dashboard (categories, payment methods, conditions). Renaming a value updates every existing record that used it; removing a value just takes it out of future dropdowns, existing records keep their original text.</div>
+    <div class="lists-grid" id="lists-grid"></div>
+  </section>
+
+  <footer class="dashboard-footer">
+    Point-in-time snapshot generated 2026-07-02 from Vendor_Tracking_Workbook_FIXED.xlsx &middot; re-run to refresh with new data
+  </footer>
+</div>
+
+<div class="modal-overlay hidden" id="add-modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="add-modal-title">Add Row</h3>
+      <button type="button" class="modal-close" id="add-modal-close" title="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="add-modal-body"></div>
+    <div class="modal-footer">
+      <button type="button" class="btn-sm" id="add-modal-cancel">Cancel</button>
+      <button type="button" class="btn-sm" id="add-modal-save-another">Save &amp; Add Another</button>
+      <button type="button" class="btn-sm btn-add" id="add-modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const RAW = {"generated": "2026-07-02", "kpis": {"totalSales": 2606, "totalExpenses": 600, "totalActualProfit": 1620, "totalPotentialProfit": 1206, "inventoryValue": 2204.25, "itemsSold": 56, "itemsTraded": 5, "netCashflow": 2420}, "cashflow": [{"Show Name": "Winter TCG Card Show", "Date": "2026-03-14", "Starting Cash": 300, "Starting Inventory Value": 4500, "Ending Cash": 700, "Ending Inventory Value": 4300, "Total Sales (auto)": 207, "Total Expenses (auto)": 85, "Change in Inventory Value (auto)": -200, "Potential Profit (auto)": -78, "Actual Profit (auto)": 200, "Notes": "Strong Charizard/booster pack sales"}, {"Show Name": "Regional Championships - Charlotte", "Date": "2026-04-11", "Starting Cash": 200, "Starting Inventory Value": 4300, "Ending Cash": 750, "Ending Inventory Value": 4150, "Total Sales (auto)": 496, "Total Expenses (auto)": 195, "Change in Inventory Value (auto)": -150, "Potential Profit (auto)": 151, "Actual Profit (auto)": 400, "Notes": "High foot traffic, good singles day"}, {"Show Name": "Local Card Show - Atlanta", "Date": "2026-05-23", "Starting Cash": 250, "Starting Inventory Value": 4150, "Ending Cash": 900, "Ending Inventory Value": 3980, "Total Sales (auto)": 1060, "Total Expenses (auto)": 140, "Change in Inventory Value (auto)": -170, "Potential Profit (auto)": 750, "Actual Profit (auto)": 480, "Notes": "Best show \u2014 moved the PSA 10 and Umbreon alt art"}, {"Show Name": "Southeast Card & Collectibles Expo", "Date": "2026-09-19", "Starting Cash": 300, "Starting Inventory Value": 3980, "Ending Cash": 620, "Ending Inventory Value": 3900, "Total Sales (auto)": 428, "Total Expenses (auto)": 85, "Change in Inventory Value (auto)": -80, "Potential Profit (auto)": 263, "Actual Profit (auto)": 240, "Notes": "Slower day, rained in the afternoon"}, {"Show Name": "Holiday TCG Convention", "Date": "2026-11-28", "Starting Cash": 350, "Starting Inventory Value": 3900, "Ending Cash": 850, "Ending Inventory Value": 3700, "Total Sales (auto)": 415, "Total Expenses (auto)": 95, "Change in Inventory Value (auto)": -200, "Potential Profit (auto)": 120, "Actual Profit (auto)": 300, "Notes": "Sold out of OP-06 booster packs"}, {"Show Name": "Card Show", "Date": "2026-06-28", "Starting Cash": 0, "Starting Inventory Value": 0, "Ending Cash": 0, "Ending Inventory Value": 0, "Notes": "Holds the one sale (2026-06-28, $4,240) that did not line up with a known show date \u2014 reassign it manually if you know which event it belongs to."}, {"Show Name": "Calhoun Cardshow", "Date": "2026-06-21", "Starting Cash": 0, "Starting Inventory Value": 0, "Ending Cash": 0, "Ending Inventory Value": 0, "Notes": "Imported from Gumgumgood tracker \u2014 per-show cash figures were not tracked in the source data."}, {"Show Name": "General Expense", "Date": "2026-06-08", "Starting Cash": 0, "Starting Inventory Value": 0, "Ending Cash": 0, "Ending Inventory Value": 0, "Notes": "Imported from Gumgumgood tracker \u2014 per-show cash figures were not tracked in the source data."}, {"Show Name": "SC Cardshow", "Date": "2026-06-27", "Starting Cash": 3856, "Starting Inventory Value": 24430, "Ending Cash": 2351, "Ending Inventory Value": 25581, "Notes": "Imported from Gumgumgood tracker CashFlow sheet. Sales/expenses dated 2026-06-27 were attributed to this show by date match."}, {"Show Name": "Card Syndicate", "Date": "", "Starting Cash": 4191, "Starting Inventory Value": 25581, "Ending Cash": 0, "Ending Inventory Value": 0, "Notes": "Imported from Gumgumgood tracker CashFlow sheet. This show had no Ending Cash / Ending Inventory recorded in the source \u2014 looks like it was still open. Actual Profit will look sharply negative until real ending figures are filled in."}], "inventory": [{"Item ID": "INV-001", "Item Name": "Monkey.D.Luffy - ST21-014 (3rd Anniversary Treasure Campaign Pack)", "Category": "Graded Cards", "SKU": "ST21-014", "Set / Expansion": "Carrying On His Will: 3rd Anniversary Tournament Cards - 3ANN", "Condition / Grade": "PSA 10", "Cost": 3900, "Retail Price": 5200, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-002", "Item Name": "Monkey.D.Luffy (010) (Dodgers x ONE PIECE)", "Category": "Graded Cards", "SKU": "EB02-010", "Set / Expansion": "Dodger Promo - DODGERS", "Condition / Grade": "PSA 10", "Cost": 1575, "Retail Price": 4200, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-003", "Item Name": "Monkey.D.Luffy (BVB x One Piece Campaign)", "Category": "Graded Cards", "SKU": "ST13-003", "Set / Expansion": "BVB Promo - BVB", "Condition / Grade": "PSA 10", "Cost": 531, "Retail Price": 2000, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-004", "Item Name": "Marshall.D.Teach (SP) (Silver)", "Category": "Graded Cards", "SKU": "OP09-093", "Set / Expansion": "Legacy of the Master - OP12", "Condition / Grade": "PSA 10", "Cost": 1850, "Retail Price": 2200, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-005", "Item Name": "Roronoa Zoro - PRB02-006 (SP) (Alternate Art)", "Category": "Graded Cards", "SKU": "PRB02-006", "Set / Expansion": "The Azure Sea's Seven (OP-14)", "Condition / Grade": "PSA 10", "Cost": 1750, "Retail Price": 1725, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-006", "Item Name": "Dracule Mihawk (Manga)", "Category": "Graded Cards", "SKU": "OP14-119", "Set / Expansion": "The Azure Sea's Seven (OP-14)", "Condition / Grade": "BGS 10", "Cost": 1400, "Retail Price": 1400, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-007", "Item Name": "Buggy (051) (Manga)", "Category": "Graded Cards", "SKU": "OP09-051", "Set / Expansion": "Emperors in the New World - OP09", "Condition / Grade": "PSA 10", "Cost": 1512, "Retail Price": 2400, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-008", "Item Name": "Awakening of the New Era", "Category": "One Piece Sealed Product", "SKU": "AOTNE", "Set / Expansion": "Awakening of the New Era - OP05", "Condition / Grade": "Sealed", "Cost": 975, "Retail Price": 1053, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-009", "Item Name": "Carrying On His Will", "Category": "One Piece Sealed Product", "SKU": "COHW", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "Sealed", "Cost": 900, "Retail Price": 2000, "Qty Purchased": 2, "Reorder Level": 0}, {"Item ID": "INV-010", "Item Name": "Monkey.D.Luffy (Magazine Promo) (JP)", "Category": "Graded Cards", "SKU": "ST21-014", "Set / Expansion": "Magazine Promo - MAG", "Condition / Grade": "PSA 10", "Cost": 0, "Retail Price": 400, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-010-2", "Item Name": "EB03", "Category": "One Piece Sealed Product", "SKU": "Eb03", "Set / Expansion": "Extra Booster: One Piece Heroine's Edition - EB03", "Condition / Grade": "Sealed", "Cost": 1375, "Retail Price": 1375, "Qty Purchased": 5, "Reorder Level": 0}, {"Item ID": "INV-011", "Item Name": "Monkey.D.Luffy (118) (Wanted Poster)", "Category": "One Piece Singles", "SKU": "OP13-118", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "NM", "Cost": 320, "Retail Price": 340, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-012", "Item Name": "Zoro Adventure on Kami's Island (TR)", "Category": "One Piece Singles", "SKU": "OP13-037", "Set / Expansion": "Adventure on Kami's Island - OP15", "Condition / Grade": "NM", "Cost": 5, "Retail Price": 340, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-014", "Item Name": "Monkey.D.Luffy (Treasure Booster Set)", "Category": "Graded Cards", "SKU": "ST10-006", "Set / Expansion": "Treasure Booster Set - TREASURE", "Condition / Grade": "PSA 10", "Cost": 163, "Retail Price": 200, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-015", "Item Name": "Monkey.D.Luffy", "Category": "Graded Cards", "SKU": "OP05-119", "Set / Expansion": "Awakening of the New Era - OP05", "Condition / Grade": "PSA 10", "Cost": 100, "Retail Price": 200, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-016", "Item Name": "Trafalgar Law (SP)", "Category": "One Piece Singles", "SKU": "OP01-047", "Set / Expansion": "Romance Dawn - OP01", "Condition / Grade": "NM", "Cost": 170, "Retail Price": 170, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-017", "Item Name": "Trafalgar Law - OP10-119 (SP)", "Category": "One Piece Singles", "SKU": "OP10-119", "Set / Expansion": "Royal Blood - OP10", "Condition / Grade": "NM", "Cost": 140, "Retail Price": 140, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-018", "Item Name": "Honesty Impact (Alternate Art)", "Category": "Graded Cards", "SKU": "OP11-018", "Set / Expansion": "A Fist of Divine Speed - OP11", "Condition / Grade": "PSA 10", "Cost": 161, "Retail Price": 125, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-019", "Item Name": "Monkey.D.Luffy (119)", "Category": "Graded Cards", "SKU": "OP09-119", "Set / Expansion": "Emperors in the New World - OP09", "Condition / Grade": "PSA 10", "Cost": 62, "Retail Price": 110, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-020", "Item Name": "Monkey.D.Luffy - ST01-012 (3rd Anniversary Tournament 3 Brothers Pack)", "Category": "One Piece Singles", "SKU": "ST01-012", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 170, "Retail Price": 400, "Qty Purchased": 10, "Reorder Level": 0}, {"Item ID": "INV-021", "Item Name": "Boa Hancock (Alternate Art)", "Category": "One Piece Singles", "SKU": "PRB02-017", "Set / Expansion": "The Best Vol. 2 - PRB02", "Condition / Grade": "NM", "Cost": 70, "Retail Price": 64, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-022", "Item Name": "Boa Hancock (Alternate Art)", "Category": "One Piece Singles", "SKU": "EB03-026", "Set / Expansion": "Extra Booster 03 - EB03", "Condition / Grade": "NM", "Cost": 5, "Retail Price": 44, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-023", "Item Name": "Tashigi (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP12-031", "Set / Expansion": "Extra Booster 03 - EB03", "Condition / Grade": "NM", "Cost": 5, "Retail Price": 36.89, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-024", "Item Name": "Ace & Sabo & Luffy (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP13-007", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "NM", "Cost": 10, "Retail Price": 35, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-025", "Item Name": "Imu (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP13-079", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "NM", "Cost": 5, "Retail Price": 30, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-026", "Item Name": "Monkey.D.Luffy (118) (SEC)", "Category": "One Piece Singles", "SKU": "OP13-118", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "NM", "Cost": 5, "Retail Price": 22, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-027", "Item Name": "Charlotte Linlin (Alternate Art)", "Category": "One Piece Singles", "SKU": "EB03-034", "Set / Expansion": "Extra Booster: One Piece Heroine's Edition - EB03", "Condition / Grade": "NM", "Cost": 5, "Retail Price": 20, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-028", "Item Name": "Tony Tony.Chopper (Full Art)", "Category": "One Piece Singles", "SKU": "ST29-007", "Set / Expansion": "Starter Deck - ST", "Condition / Grade": "NM", "Cost": 15, "Retail Price": 20, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-029", "Item Name": "Nami alt art", "Category": "One Piece Singles", "SKU": "EB03-053", "Set / Expansion": "Extra Booster 03 - EB03", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 20, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-030", "Item Name": "Bartholomew Kuma", "Category": "One Piece Singles", "SKU": "OP12-119", "Set / Expansion": "Legacy of the Master - OP12", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 17, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-031", "Item Name": "Boa Hancock (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-032", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 72, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-032", "Item Name": "Buggy (041) (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-041", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 34, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-033", "Item Name": "Donquixote Rosinante (061) (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP12-061", "Set / Expansion": "Legacy of the Master - OP12", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 62, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-034", "Item Name": "Dracule Mihawk (Illustration Box Vol.4)", "Category": "One Piece Singles", "SKU": "ST12-003", "Set / Expansion": "One Piece Promotion Cards - P", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 4, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-035", "Item Name": "Emporio.Ivankov (026) (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-026", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 15, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-036", "Item Name": "Jewelry Bonney (019) (Parallel)", "Category": "One Piece Singles", "SKU": "OP07-019", "Set / Expansion": "500 Years in the Future - OP07", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 61, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-037", "Item Name": "Kuzan (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-063", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 15, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-038", "Item Name": "Monkey.D.Luffy - ST21-001 (Luffy Deck)", "Category": "One Piece Singles", "SKU": "ST21-001", "Set / Expansion": "Starter Deck EX: Gear 5 - ST21", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 24, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-039", "Item Name": "Monkey.D.Luffy (001)", "Category": "One Piece Singles", "SKU": "ST21-001", "Set / Expansion": "Starter Deck 8: Monkey.D.Luffy - ST08", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 13, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-040", "Item Name": "Monkey.D.Luffy (001)", "Category": "One Piece Singles", "SKU": "ST08-001", "Set / Expansion": "Extra Booster: Anime 25th Collection - EB02", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 6, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-041", "Item Name": "Monkey.D.Luffy (061)", "Category": "One Piece Singles", "SKU": "EB02-061", "Set / Expansion": "One Piece Promotion Cards - P", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 10, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-042", "Item Name": "Monkey.D.Luffy (Illustration Box Vol.3)", "Category": "One Piece Singles", "SKU": "OP07-109", "Set / Expansion": "Starter Deck 26: PURPLE/BLACK Monkey.D.Luffy - ST26", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 12, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-043", "Item Name": "Monkey.D.Luffy (OP09-061)", "Category": "One Piece Singles", "SKU": "OP09-061", "Set / Expansion": "One Piece Promotion Cards - P", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 10, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-044", "Item Name": "Monkey.D.Luffy (Tin Pack Set Vol. 2)", "Category": "One Piece Singles", "SKU": "P-075", "Set / Expansion": "One Piece Promotion Cards - P", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 19, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-045", "Item Name": "Monkey.D.Luffy (Treasure Booster Set)", "Category": "One Piece Singles", "SKU": "ST10-006", "Set / Expansion": "Monkey.D.Luffy (Treasure Booster Set)", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 17, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-046", "Item Name": "Ms. All Sunday", "Category": "One Piece Singles", "SKU": "OP14-084", "Set / Expansion": "The Azure Sea's Seven - OP14", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 3, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-047", "Item Name": "Nami (053)", "Category": "One Piece Singles", "SKU": "EB03-053", "Set / Expansion": "Extra Booster: One Piece Heroine's Edition - EB03", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 19, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-048", "Item Name": "Nefeltari Vivi  - 001 (Alternate Art)", "Category": "One Piece Singles", "SKU": "EB03-001", "Set / Expansion": "Extra Booster: One Piece Heroine's Edition - EB03", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 9, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-049", "Item Name": "Nico Robin (055)", "Category": "One Piece Singles", "SKU": "EB03-055", "Set / Expansion": "Extra Booster: One Piece Heroine's Edition - EB03", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 9, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-050", "Item Name": "Nico Robin (Full Art)", "Category": "One Piece Singles", "SKU": "ST29-009", "Set / Expansion": "Starter Deck 29: Egghead - ST29", "Condition / Grade": "NM", "Cost": 40, "Retail Price": 46, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-051", "Item Name": "Portgas.D.Ace - OP07-053 (3rd Anniversary Tournament 3 Brothers Pack)", "Category": "One Piece Singles", "SKU": "OP07-053", "Set / Expansion": "Carrying On His Will: 3rd Anniversary Tournament Cards - 3ANN", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 7, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-052", "Item Name": "Portgas.D.Ace (118)", "Category": "One Piece Singles", "SKU": "OP16-118", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 14, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-053", "Item Name": "Roronoa Zoro", "Category": "One Piece Singles", "SKU": "PRB02-006", "Set / Expansion": "Premium Booster -The Best- Vol. 2 - PRB02", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 10, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-054", "Item Name": "Roronoa Zoro & Sanji", "Category": "One Piece Singles", "SKU": "ST12-001", "Set / Expansion": "Starter Deck 12: Zoro and Sanji - ST12", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 20, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-055", "Item Name": "Roronoa Zoro (EB04-007)", "Category": "One Piece Singles", "SKU": "EB04-007", "Set / Expansion": "Adventure on Kami's Island - OP05", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 15, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-056", "Item Name": "`", "Category": "One Piece Singles", "SKU": "ST29-014", "Set / Expansion": "Starter Deck 29: Egghead - ST29", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 17, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-057", "Item Name": "Roronoa Zoro (Welcome Pack Vol. 2)", "Category": "One Piece Singles", "SKU": "OP09-076", "Set / Expansion": "One Piece Promotion Cards - P", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 8, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-058", "Item Name": "Sabo - OP09-027 (3rd Anniversary Tournament 3 Brothers Pack", "Category": "One Piece Singles", "SKU": "OP09-027", "Set / Expansion": "Carrying On His Will: 3rd Anniversary Tournament Cards - 3ANN", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 3, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-059", "Item Name": "Sabo (004) (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP13-004", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 18, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-060", "Item Name": "Sakazuki", "Category": "One Piece Singles", "SKU": "OP16-065", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 3, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-061", "Item Name": "Sakazuki (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP05-041", "Set / Expansion": "Awakening of the New Era - OP05", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 21, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-062", "Item Name": "Shanks (028) (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP13-028", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 17, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-063", "Item Name": "St. Topman Warcury (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP13-089", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 19, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-064", "Item Name": "Tony Tony.Chopper (Winner Pack 2026 Vol. 2)", "Category": "One Piece Singles", "SKU": "P-101", "Set / Expansion": "One Piece Promotion Cards - P", "Condition / Grade": "NM", "Cost": 75, "Retail Price": 73, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-065", "Item Name": "Trafalgar Law (022) (Parallel)", "Category": "One Piece Singles", "SKU": "OP10-022", "Set / Expansion": "Royal Blood - OP10", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 32, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-066", "Item Name": "Trafalgar Law (047) (Parallel)", "Category": "One Piece Singles", "SKU": "OP07-047", "Set / Expansion": "500 Years in the Future - OP07", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 6, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-067", "Item Name": "Trafalgar Law (073) (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP12-073", "Set / Expansion": "Legacy of the Master - OP12", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 10, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-068", "Item Name": "Trafalgar Law (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP14-001", "Set / Expansion": "The Azure Sea's Seven - OP11", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 20, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-069", "Item Name": "Trafalgar Law (Illustration Box Vol.6)", "Category": "One Piece Singles", "SKU": "P-093", "Set / Expansion": "One Piece Promotion Cards - P", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 8, "Qty Purchased": 2, "Reorder Level": 2}, {"Item ID": "INV-070", "Item Name": "Trafalgar Law (OP01-047) (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP01-047", "Set / Expansion": "Premium Booster - PRB01", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 14, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-071", "Item Name": "Yamato (098) (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-098", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 40, "Retail Price": 77, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-072", "Item Name": "ACE (2nd Anniversary Tournament)", "Category": "One Piece Singles", "SKU": "ST13-002", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 22.59, "Retail Price": 60, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-073", "Item Name": "Sanji leader", "Category": "One Piece Singles", "SKU": "OP12-041", "Set / Expansion": "Legacy of the Master - OP12", "Condition / Grade": "NM", "Cost": 20, "Retail Price": 20, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-074", "Item Name": "One piece day 2024", "Category": "One Piece Sealed Product", "SKU": "one piece day", "Set / Expansion": "Promo - P", "Condition / Grade": "Sealed", "Cost": 56, "Retail Price": 100, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-075", "Item Name": "Nami Alt art", "Category": "Graded Cards", "SKU": "OP06-101", "Set / Expansion": "Wings of the Captain - OP06", "Condition / Grade": "PSA 10", "Cost": 115, "Retail Price": 200, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-076", "Item Name": "Nico Robin Alt art", "Category": "Graded Cards", "SKU": "OP12-087", "Set / Expansion": "Legacy of the Master - OP12", "Condition / Grade": "PSA 10", "Cost": 155, "Retail Price": 200, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-077", "Item Name": "Monkey.D.Luffy (2nd Anniversary Tournament)", "Category": "One Piece Singles", "SKU": "ST13-003", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 175, "Retail Price": 200, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-078", "Item Name": "Monkey.D.Luffy (OP15-119)", "Category": "One Piece Singles", "SKU": "OP15-119", "Set / Expansion": "Adventure on Kami's Island - OP15", "Condition / Grade": "NM", "Cost": 20, "Retail Price": 23.99, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-079", "Item Name": "Sabo 2nd Anniversary Tournament Winner Promo", "Category": "One Piece Singles", "SKU": " ST13-001", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 30, "Retail Price": 60, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-080", "Item Name": "Zeus (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP11-106", "Set / Expansion": "A Fist of Divine Speed - OP11", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 48.27, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-081", "Item Name": "Monkey.D.Luffy (001) (Parallel) - Starter Deck EX: Gear 5 (ST-21)", "Category": "One Piece Singles", "SKU": "ST21-001", "Set / Expansion": " Starter Deck EX: Gear 5", "Condition / Grade": "NM", "Cost": 131, "Retail Price": 150, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-082", "Item Name": "Vinsmoke Sanji (TR)", "Category": "One Piece Singles", "SKU": "OP10-063", "Set / Expansion": "Legacy of the Master - OP12", "Condition / Grade": "NM", "Cost": 80, "Retail Price": 89.27, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-083", "Item Name": "Monkey.D.Luffy (001) (Parallel) - Starter Deck 29: Egghead (ST-29)", "Category": "One Piece Singles", "SKU": "ST29-001", "Set / Expansion": " Starter Deck EX: Egg Head", "Condition / Grade": "NM", "Cost": 43, "Retail Price": 50, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-084", "Item Name": "Dereshi! (Premium Card Collection -Best Selection Vol. 4-)", "Category": "One Piece Singles", "SKU": "OP09-117", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 20, "Retail Price": 20, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-085", "Item Name": "Monkey.D.Luffy (2nd Anniversary Stamped Promo) - One Piece Promotion Cards (OP-PR)", "Category": "One Piece Singles", "SKU": "P-043", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 26, "Retail Price": 30, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-086", "Item Name": "Gum-Gum Lightning (Premium Card Collection -Best Selection Vol. 4-)", "Category": "One Piece Singles", "SKU": "OP09-077", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 22, "Retail Price": 25, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-087", "Item Name": "Gum-Gum Mole Pistol (Premium Card Collection -Best Selection Vol.5)", "Category": "One Piece Singles", "SKU": "ST21-017", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 11, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-088", "Item Name": "Monkey.D.Luffy (Learn Together Deck Set - Set Sail Event)", "Category": "One Piece Singles", "SKU": "OP10-111", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 35, "Retail Price": 42, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-089", "Item Name": "Roronoa Zoro (Learn Together Deck Set - Set Sail Event)", "Category": "One Piece Singles", "SKU": "OP10-113", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 40, "Retail Price": 42, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-090", "Item Name": "Roronoa Zoro (One Piece Day Dallas 2025)", "Category": "One Piece Singles", "SKU": "OP07-113", "Set / Expansion": "Promo - P", "Condition / Grade": "NM", "Cost": 400, "Retail Price": 600, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-091", "Item Name": "Sanji (SP)", "Category": "One Piece Singles", "SKU": "ST14-003", "Set / Expansion": "Royal Blood - OP10", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 122, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-092", "Item Name": "Eustass\"Captain\"Kid - EB04-039 (SP)", "Category": "One Piece Singles", "SKU": "EB04-039", "Set / Expansion": "The Azure Sea's Seven - OP11", "Condition / Grade": "NM", "Cost": 72, "Retail Price": 88, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-093", "Item Name": "Kid & Killer - EB01-003 (SP)", "Category": "One Piece Singles", "SKU": "EB01-003", "Set / Expansion": "The Azure Sea's Seven - OP11", "Condition / Grade": "NM", "Cost": 63, "Retail Price": 79, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-094", "Item Name": "Kin'emon (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-082", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 20, "Retail Price": 26, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-095", "Item Name": "Kouzuki Momonosuke (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-085", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 20, "Retail Price": 22, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-096", "Item Name": "Yamato (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-079", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 80, "Retail Price": 103, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-097", "Item Name": "Boa Hancock (Alternate Art)", "Category": "One Piece Singles", "SKU": "OP16-032", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 52, "Retail Price": 72, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-098", "Item Name": "Saturn", "Category": "One Piece Singles", "SKU": "OP13-083", "Set / Expansion": "Carrying On His Will - OP13", "Condition / Grade": "NM", "Cost": 16, "Retail Price": 20, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-099", "Item Name": "DON", "Category": "One Piece Singles", "SKU": "OP16-032", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 12, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-100", "Item Name": "Marshall.D.Teach (119)", "Category": "One Piece Singles", "SKU": "OP16-032", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 24, "Retail Price": 31, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-101", "Item Name": "ZORO Japanese", "Category": "One Piece Singles", "SKU": "P promo", "Set / Expansion": "The Time of Battle - OP16", "Condition / Grade": "NM", "Cost": 20, "Retail Price": 31, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-102", "Item Name": "BINDER", "Category": "One Piece Singles", "SKU": "BINDER", "Set / Expansion": "Binder cards", "Condition / Grade": "NM", "Cost": 0, "Retail Price": 44, "Qty Purchased": 1, "Reorder Level": 1}, {"Item ID": "INV-103", "Item Name": "Luffy Treasure Rare", "Category": "Graded Cards", "SKU": "OP07-109", "Set / Expansion": "One Piece 500 Years in the Future - OP07", "Condition / Grade": "PSA 10", "Cost": 960, "Retail Price": 1200, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-104", "Item Name": "Nami (SP) - Awakening of the New Era (OP05)", "Category": "Graded Cards", "SKU": "OP01-016", "Set / Expansion": "Awakening of the New Era - OP05", "Condition / Grade": "PSA 10", "Cost": 640, "Retail Price": 800, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-105", "Item Name": "Monkey.D.Luffy (Treasure Booster Set)", "Category": "Graded Cards", "SKU": "ST10-006", "Set / Expansion": "Treasure Booster Set - TREASURE", "Condition / Grade": "PSA 10", "Cost": 85, "Retail Price": 100, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-106", "Item Name": "Luffy 2nd Anniversary Set (Leader)", "Category": "Graded Cards", "SKU": "OP09-061", "Set / Expansion": "Promo - P", "Condition / Grade": "PSA 10", "Cost": 1100, "Retail Price": 1100, "Qty Purchased": 1, "Reorder Level": 0}, {"Item ID": "INV-107", "Item Name": "Luffy 2nd Anniversary vs Kaido", "Category": "Graded Cards", "SKU": "OP05-119", "Set / Expansion": "Promo - P", "Condition / Grade": "PSA 10", "Cost": 400, "Retail Price": 350, "Qty Purchased": 1, "Reorder Level": 0}], "sales": [{"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-032", "Quantity Sold": 1, "Sale Price": 34, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-033", "Quantity Sold": 1, "Sale Price": 62, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-036", "Quantity Sold": 1, "Sale Price": 61, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-037", "Quantity Sold": 1, "Sale Price": 15, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-038", "Quantity Sold": 1, "Sale Price": 24, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-042", "Quantity Sold": 1, "Sale Price": 12, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-043", "Quantity Sold": 1, "Sale Price": 10, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-044", "Quantity Sold": 1, "Sale Price": 19, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-045", "Quantity Sold": 1, "Sale Price": 17, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-054", "Quantity Sold": 1, "Sale Price": 20, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-055", "Quantity Sold": 1, "Sale Price": 15, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-058", "Quantity Sold": 1, "Sale Price": 3, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-059", "Quantity Sold": 1, "Sale Price": 18, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-061", "Quantity Sold": 1, "Sale Price": 21, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-065", "Quantity Sold": 1, "Sale Price": 32, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-067", "Quantity Sold": 1, "Sale Price": 10, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-069", "Quantity Sold": 1, "Sale Price": 8, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-070", "Quantity Sold": 1, "Sale Price": 14, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-026", "Quantity Sold": 1, "Sale Price": 22, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-019", "Quantity Sold": 1, "Sale Price": 100, "Payment Method": "Cash"}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Item ID": "INV-051", "Quantity Sold": 1, "Sale Price": 7, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-024", "Quantity Sold": 1, "Sale Price": 45, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-079", "Quantity Sold": 1, "Sale Price": 60, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-062", "Quantity Sold": 1, "Sale Price": 30, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-010", "Quantity Sold": 1, "Sale Price": 380, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-097", "Quantity Sold": 1, "Sale Price": 90, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-098", "Quantity Sold": 1, "Sale Price": 20, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-099", "Quantity Sold": 1, "Sale Price": 12, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-101", "Quantity Sold": 1, "Sale Price": 30, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-102", "Quantity Sold": 1, "Sale Price": 44, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-029", "Quantity Sold": 1, "Sale Price": 20, "Payment Method": "Cash"}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Item ID": "INV-064", "Quantity Sold": 1, "Sale Price": 60, "Payment Method": "Cash"}, {"Date": "2026-06-28", "Show Name": "Card Show", "Item ID": "INV-001", "Quantity Sold": 1, "Sale Price": 4240, "Payment Method": "Cash"}], "trades": [{"Date": "2026-03-14", "Show Name": "Winter TCG Card Show", "Item ID Traded Out": "ITM002", "Item ID Received (optional)": null, "Value of Trade": 32, "Item Traded (auto)": "Pikachu VMAX 044/185", "Item Received (auto)": null}, {"Date": "2026-04-11", "Show Name": "Regional Championships - Charlotte", "Item ID Traded Out": "ITM008", "Item ID Received (optional)": "ITM010", "Value of Trade": 42, "Item Traded (auto)": "Nami Alt Art Parallel", "Item Received (auto)": "Booster Pack - OP-06 Wings of the Captain"}, {"Date": "2026-05-23", "Show Name": "Local Card Show - Atlanta", "Item ID Traded Out": "ITM006", "Item ID Received (optional)": null, "Value of Trade": 75, "Item Traded (auto)": "Luffy Leader Alt Art", "Item Received (auto)": null}, {"Date": "2026-09-19", "Show Name": "Southeast Card & Collectibles Expo", "Item ID Traded Out": "ITM004", "Item ID Received (optional)": null, "Value of Trade": 130, "Item Traded (auto)": "Booster Box - Scarlet & Violet Base", "Item Received (auto)": null}, {"Date": "2026-11-28", "Show Name": "Holiday TCG Convention", "Item ID Traded Out": "ITM011", "Item ID Received (optional)": "ITM001", "Value of Trade": 275, "Item Traded (auto)": "Charizard VMAX PSA 10", "Item Received (auto)": "Charizard ex 054/197"}], "expenses": [{"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Category": "Booth Fee", "Description": "Table Fee", "Amount": 35}, {"Date": "2026-06-08", "Show Name": "General Expense", "Category": "Display Case", "Description": "Zion Case", "Amount": 204.12}, {"Date": "2026-06-12", "Show Name": "General Expense", "Category": "Display Case", "Description": "Card riser", "Amount": 44.11}, {"Date": "2026-06-12", "Show Name": "General Expense", "Category": "Supplies", "Description": "Penny sleeve", "Amount": 14.47}, {"Date": "2026-06-08", "Show Name": "General Expense", "Category": "Marketing", "Description": "Banner", "Amount": 130}, {"Date": "2026-06-21", "Show Name": "Calhoun Cardshow", "Category": "Travel", "Description": "Food", "Amount": 35}, {"Date": "2026-06-21", "Show Name": "General Expense", "Category": "Storage", "Description": "Case Storage", "Amount": 35.45}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Category": "Booth Fee", "Description": "Table Fee", "Amount": 100}, {"Date": "2026-06-27", "Show Name": "SC Cardshow", "Category": "Travel", "Description": "Gas", "Amount": 37}, {"Date": "2026-06-27", "Show Name": "General Expense", "Category": "Travel", "Description": "Food", "Amount": 35}, {"Date": "2026-06-30", "Show Name": "General Expense", "Category": "Marketing", "Description": "DJI Camera ", "Amount": 400}], "catSales": {"Pokemon Singles": 773, "Pokemon Sealed Product": 310, "Supplies": 27, "One Piece Singles": 873, "One Piece Sealed Product": 348, "Graded Cards": 275}, "expByCat": {"Travel": 120, "Booth Fee": 330, "Supplies": 25, "Grading Fees": 90, "Shipping": 15, "Marketing": 20}, "expByShow": {"Winter TCG Card Show": 85, "Regional Championships - Charlotte": 195, "Local Card Show - Atlanta": 140, "Southeast Card & Collectibles Expo": 85, "Holiday TCG Convention": 95}, "topShows": [{"show": "Local Card Show - Atlanta", "sales": 1060, "expenses": 140, "profit": 480}, {"show": "Regional Championships - Charlotte", "sales": 496, "expenses": 195, "profit": 400}, {"show": "Holiday TCG Convention", "sales": 415, "expenses": 95, "profit": 300}, {"show": "Southeast Card & Collectibles Expo", "sales": 428, "expenses": 85, "profit": 240}, {"show": "Winter TCG Card Show", "sales": 207, "expenses": 85, "profit": 200}], "lowStock": [{"Item ID": "ITM007", "Item Name": "Shanks SEC", "Category": "One Piece Singles", "Set / Expansion": "OP-01 Romance Dawn", "Condition / Grade": "NM", "Cost": 110, "Retail Price": 160, "Qty Purchased": 4, "Qty Sold (auto)": 3, "Qty Traded Out (auto)": 0, "Qty Received via Trade (auto)": 0, "Remaining Inventory (auto)": 1, "Total Inventory Value (auto)": 110, "Reorder Level": 1, "Stock Status (auto)": "LOW STOCK"}, {"Item ID": "ITM011", "Item Name": "Charizard VMAX PSA 10", "Category": "Graded Cards", "Set / Expansion": "Champion's Path", "Condition / Grade": "PSA 10", "Cost": 180, "Retail Price": 275, "Qty Purchased": 2, "Qty Sold (auto)": 1, "Qty Traded Out (auto)": 1, "Qty Received via Trade (auto)": 0, "Remaining Inventory (auto)": 0, "Total Inventory Value (auto)": 0, "Reorder Level": 1, "Stock Status (auto)": "LOW STOCK"}], "lists": {"Expense Categories": ["Travel", "Booth Fee", "Supplies", "Grading Fees", "Shipping", "Marketing", "Show Entry", "Equipment", "Other", "Display Case", "Storage"], "Inventory Categories": ["Pokemon Singles", "Pokemon Sealed Product", "One Piece Singles", "One Piece Sealed Product", "Graded Cards", "Supplies", "Other"], "Payment Methods": ["Cash", "Card", "Venmo", "PayPal", "Zelle", "Other", "Trade"], "Card Condition / Grade": ["NM", "LP", "MP", "HP", "DMG", "Sealed", "New", "PSA 10", "PSA 9", "PSA 8", "CGC 9.5", "BGS 9.5", "BGS 10"]}, "topItems": [{"name": "Shanks SEC", "revenue": 480}, {"name": "Charizard ex 054/197", "revenue": 325}, {"name": "Umbreon VMAX Alt Art 215/203", "revenue": 320}, {"name": "Charizard VMAX PSA 10", "revenue": 275}, {"name": "Booster Box - Scarlet & Violet Base", "revenue": 260}, {"name": "Booster Box - OP-05 Awakening of the New Era", "revenue": 240}, {"name": "Luffy Leader Alt Art", "revenue": 225}, {"name": "Nami Alt Art Parallel", "revenue": 168}], "invValueByCat": {"Pokemon Singles": 830, "Pokemon Sealed Product": 432.5, "One Piece Singles": 415, "One Piece Sealed Product": 378.75, "Graded Cards": 0, "Supplies": 148}, "stockStatusCounts": {"OK": 10, "LOW STOCK": 2}};
+const PALETTE = ['#e0472c','#2e6f9e','#e8a33d','#4c8c6b','#8a6bbf','#c77dbb','#7a7a7a'];
+
+function fmtMoney(v){
+  const n = Number(v)||0;
+  const sign = n<0 ? '-' : '';
+  return sign + '$' + Math.abs(n).toLocaleString(undefined,{maximumFractionDigits:2});
+}
+function fmtNum(v){ return Number(v||0).toLocaleString(); }
+function fmtAxis(v){ const n=Math.round(Number(v)||0); const sign=n<0?'-':''; return sign+'$'+Math.abs(n).toLocaleString(); }
+
+function niceNumber(range, round){
+  if(range<=0) return 1;
+  const exponent = Math.floor(Math.log10(range));
+  const fraction = range / Math.pow(10, exponent);
+  let niceFraction;
+  if(round){
+    if(fraction<1.5) niceFraction=1; else if(fraction<3) niceFraction=2; else if(fraction<7) niceFraction=5; else niceFraction=10;
+  } else {
+    if(fraction<=1) niceFraction=1; else if(fraction<=2) niceFraction=2; else if(fraction<=5) niceFraction=5; else niceFraction=10;
+  }
+  return niceFraction * Math.pow(10, exponent);
+}
+function niceScale(min, max, maxTicks){
+  maxTicks = maxTicks || 5;
+  if(min===max){ min -= 1; max += 1; }
+  const range = niceNumber(max-min, false);
+  const step = niceNumber(range/(maxTicks-1), true);
+  const niceMin = Math.floor(min/step)*step;
+  const niceMax = Math.ceil(max/step)*step;
+  return {min:niceMin, max:niceMax, step};
+}
+
+class Dashboard {
+  constructor(raw){
+    this.raw = raw;
+    // Auto-save state: a live FileSystemFileHandle (File System Access API), never persisted
+    // to disk/storage itself — the browser forgets it on reload, which is why re-linking is a
+    // one-click action rather than automatic. This is real filesystem access, not localStorage/
+    // sessionStorage/IndexedDB, so it stays within the "no browser storage" constraint.
+    this.autoSaveHandle = null;
+    this.autoSaveEnabled = false;
+    this.dirty = false;
+    this._autoSaveTimer = null;
+    this._autoSaveInFlight = false;
+    this._autoSavePending = false;
+    // Undo/redo: a stack of full data snapshots taken right before each mutation. Session-only,
+    // like everything else in this section — not persisted, and cleared by nothing except its
+    // own size cap, so it never survives a reload (consistent with the rest of the app's state).
+    this.undoStack = [];
+    this.redoStack = [];
+    this.undoStackLimit = 50;
+    this.sortStates = {
+      inv: {field:'Item ID', dir:'asc'},
+      sales: {field:'Date', dir:'desc'},
+      cashflow: {field:'Date', dir:'asc'},
+      trades: {field:'Date', dir:'asc'},
+      expenses: {field:'Date', dir:'desc'},
+    };
+    this.salesPageIndex = 0;
+    this.salesPageSize = 10;
+    this.nextId = 1;
+    // Which table/field each editable settings list feeds — used to cascade renames
+    // and to warn (without deleting data) when a value in use gets removed.
+    this.listFieldMap = {
+      'Inventory Categories': [{table:'inventory', field:'Category'}],
+      'Expense Categories': [{table:'expenses', field:'Category'}],
+      'Payment Methods': [{table:'sales', field:'Payment Method'}],
+      'Card Condition / Grade': [{table:'inventory', field:'Condition / Grade'}],
+    };
+    // Per-table column filters (headers row) — view-only, never affects KPIs or charts.
+    this.tableFilters = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
+    // Per-table, per-column widths in px, set by dragging a column's resize handle.
+    this.columnWidths = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
+    // Per-table sets of hidden column field names — view-only, like filters/widths above.
+    // CSV export intentionally ignores this and always exports every column.
+    this.hiddenColumns = { inventory:new Set(), sales:new Set(), trades:new Set(), expenses:new Set(), cashflow:new Set() };
+    this.data = {
+      inventory: raw.inventory.map(r=>({...r, _id:this.nextId++})),
+      sales: raw.sales.map(r=>({...r, _id:this.nextId++})),
+      trades: this.normalizeTrades(raw.trades),
+      expenses: raw.expenses.map(r=>({...r, _id:this.nextId++})),
+      cashflow: raw.cashflow.map(r=>({...r, _id:this.nextId++})),
+      lists: this.normalizeLists(raw.lists),
+      settings: this.normalizeSettings(raw.settings),
+    };
+    this.defineColumns();
+    this.init();
+  }
+
+  normalizeSettings(settings){
+    return { showLowStockAlert: settings ? settings.showLowStockAlert !== false : true };
+  }
+
+  normalizeLists(lists){
+    const out = {};
+    Object.keys(lists||{}).forEach(k=>{ out[k] = Array.isArray(lists[k]) ? [...lists[k]] : []; });
+    return out;
+  }
+
+  // Migrates legacy single-item trade rows ('Item ID Traded Out' / 'Item ID Received (optional)')
+  // into the multi-item array schema ('Items Traded Out' / 'Items Received'), and backfills
+  // cash fields and a stable Trade ID on older records so multi-card trades, cash-in/out, and
+  // Sales-tab linking are always available.
+  normalizeTrades(arr){
+    let maxTradeId = 0;
+    (arr||[]).forEach(r=>{ const m=/^TRD(\d+)$/.exec((r&&r['Trade ID'])||''); if(m) maxTradeId=Math.max(maxTradeId, parseInt(m[1],10)); });
+    return (arr||[]).map(r=>{
+      const row = {...r};
+      if(!Array.isArray(row['Items Traded Out'])){
+        row['Items Traded Out'] = row['Item ID Traded Out'] ? [row['Item ID Traded Out']] : [];
+      }
+      if(!Array.isArray(row['Items Received'])){
+        row['Items Received'] = row['Item ID Received (optional)'] ? [row['Item ID Received (optional)']] : [];
+      }
+      delete row['Item ID Traded Out'];
+      delete row['Item ID Received (optional)'];
+      if(row['Cash Received']==null) row['Cash Received'] = 0;
+      if(row['Cash Paid Out']==null) row['Cash Paid Out'] = 0;
+      if(!row['Trade ID']){ maxTradeId += 1; row['Trade ID'] = 'TRD'+String(maxTradeId).padStart(3,'0'); }
+      row._id = this.nextId++;
+      return row;
+    });
+  }
+
+  init(){
+    document.addEventListener('input', e=>{
+      if(e.target.matches('input.filter-input[data-filter]')){ this.handleFilterChange(e.target); }
+    });
+    document.addEventListener('change', e=>{
+      if(e.target.matches('[data-edit]')){ this.handleEdit(e.target); return; }
+      if(e.target.matches('[data-multi-add]')){ this.handleMultiAdd(e.target); return; }
+      if(e.target.matches('[data-list-rename]')){ this.handleListRename(e.target); return; }
+      if(e.target.matches('select.filter-input[data-filter]')){ this.handleFilterChange(e.target); return; }
+      if(e.target.matches('[data-pref]')){ this.handlePrefChange(e.target); return; }
+      if(e.target.matches('[data-col-visibility]')){ this.handleColumnVisibility(e.target); return; }
+      if(e.target.matches('[data-addfield]')){ this.handleAddModalFieldChange(e.target); return; }
+      if(e.target.matches('[data-addmulti-add]')){ this.handleAddModalMultiAdd(e.target); return; }
+    });
+    document.addEventListener('click', e=>{
+      const del = e.target.closest('[data-delete]');
+      if(del){ this.handleDelete(del); return; }
+      const add = e.target.closest('[data-addrow]');
+      if(add){ this.handleAddRow(add); return; }
+      const exp = e.target.closest('[data-export]');
+      if(exp){ this.handleExport(exp); return; }
+      const rm = e.target.closest('[data-multi-remove]');
+      if(rm){ this.handleMultiRemove(rm); return; }
+      const lrm = e.target.closest('[data-list-remove]');
+      if(lrm){ this.handleListRemove(lrm); return; }
+      const ladd = e.target.closest('[data-list-add]');
+      if(ladd){ this.handleListAdd(ladd); return; }
+      const fc = e.target.closest('[data-filter-clear]');
+      if(fc){ this.handleFilterClear(fc); return; }
+      const dls = e.target.closest('[data-dismiss-low-stock]');
+      if(dls){ this.handleDismissLowStock(); return; }
+      const ct = e.target.closest('[data-columns-toggle]');
+      if(ct){ this.toggleColumnPanel(ct.dataset.table); return; }
+      const amrm = e.target.closest('[data-addmulti-remove]');
+      if(amrm){ this.handleAddModalMultiRemove(amrm); return; }
+      if(e.target.closest('#add-modal-save')){ this.saveAddModal(false); return; }
+      if(e.target.closest('#add-modal-save-another')){ this.saveAddModal(true); return; }
+      if(e.target.closest('#add-modal-cancel') || e.target.closest('#add-modal-close')){ this.closeAddModal(); return; }
+      // Clicking the dimmed backdrop itself (not the dialog box) also cancels.
+      if(e.target.id==='add-modal-overlay'){ this.closeAddModal(); return; }
+      // Click landed outside any open column-toggle panel/button — close whatever's open.
+      if(!e.target.closest('.col-toggle-wrap')){ this._closeColumnPanels(); }
+    });
+    document.getElementById('save-progress-btn').addEventListener('click', ()=>this.saveProgress());
+    document.getElementById('load-progress-btn').addEventListener('click', ()=>this.openProgressFile());
+    document.getElementById('load-file-input').addEventListener('change', (e)=>this.loadProgress(e.target.files[0]));
+    document.getElementById('autosave-btn').addEventListener('click', ()=>this.toggleAutoSave());
+    document.getElementById('undo-btn').addEventListener('click', ()=>this.undo());
+    document.getElementById('redo-btn').addEventListener('click', ()=>this.redo());
+    document.addEventListener('keydown', e=>{
+      if(e.key==='Escape' && !document.getElementById('add-modal-overlay').classList.contains('hidden')){
+        this.closeAddModal();
+        return;
+      }
+      const mod = e.ctrlKey || e.metaKey;
+      if(!mod || e.key.toLowerCase()!=='z') return;
+      // While a table cell / filter box is actively focused, let the browser's own in-field
+      // text undo happen instead of hijacking it for whole-dashboard undo — only take over once
+      // focus has moved elsewhere (e.g. after the edit is committed).
+      if(e.target.matches('input, select, textarea, [contenteditable]')) return;
+      e.preventDefault();
+      if(e.shiftKey) this.redo(); else this.undo();
+    });
+    window.addEventListener('beforeunload', (e)=>{
+      if(this.dirty && !this.autoSaveEnabled){ e.preventDefault(); e.returnValue = ''; }
+    });
+    this._initColumnResize();
+    this.recalcAll();
+    this.renderAll();
+  }
+
+  // ---------------- column resize drag handling ----------------
+  _initColumnResize(){
+    document.addEventListener('mousedown', e=>{
+      const handle = e.target.closest('[data-resize]');
+      if(!handle) return;
+      e.preventDefault();
+      const table = handle.dataset.table, field = handle.dataset.field;
+      const th = handle.closest('th');
+      const startX = e.clientX;
+      const startWidth = th.getBoundingClientRect().width;
+      handle.classList.add('resizing');
+      document.body.style.userSelect = 'none';
+      const onMove = (ev) => {
+        // Live px feedback on just the dragged column while the mouse is down — the whole
+        // row of columns gets rebalanced back to fitting the table's width on mouseup below.
+        const newWidth = Math.max(50, Math.round(startWidth + (ev.clientX - startX)));
+        this.columnWidths[table][field] = newWidth;
+        this._applyColWidth(table, field, newWidth);
+      };
+      const onUp = () => {
+        handle.classList.remove('resizing');
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        // Recompute every column's share of the table's width so the resized column keeps its
+        // new relative size but the row as a whole still fits with no horizontal scrolling.
+        this._renderColgroup(table, this._visibleColumns(table), true);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    document.addEventListener('dblclick', e=>{
+      const handle = e.target.closest('[data-resize]');
+      if(!handle) return;
+      const table = handle.dataset.table, field = handle.dataset.field;
+      delete this.columnWidths[table][field];
+      this._renderColgroup(table, this._visibleColumns(table), true);
+    });
+  }
+
+  handlePrefChange(el){
+    const key = el.dataset.pref;
+    this._pushUndoSnapshot();
+    this.data.settings[key] = el.checked;
+    this.markDirty();
+    if(key==='showLowStockAlert') this.renderLowStock();
+  }
+
+  handleDismissLowStock(){
+    this._pushUndoSnapshot();
+    this.data.settings.showLowStockAlert = false;
+    this.markDirty();
+    this.renderLowStock();
+  }
+
+  // ---------------- table column filters (view-only: never affects KPIs or charts) ----------------
+  _filterCell(table, col){
+    const current = (this.tableFilters[table] && this.tableFilters[table][col.field]) || '';
+    if(col.badge){
+      const labels = ['In Stock','Sold'];
+      return `<th><select class="filter-input" data-filter data-table="${table}" data-field="${this._esc(col.field)}"><option value="">All</option>${labels.map(o=>`<option value="${this._esc(o)}" ${o===current?'selected':''}>${this._esc(o)}</option>`).join('')}</select></th>`;
+    }
+    if(col.type==='select' || col.type==='multiselect'){
+      const opts = typeof col.options==='function' ? col.options() : (col.options||[]);
+      const optHtml = opts.map(o=>{
+        const label = col.optionLabel ? col.optionLabel(o) : o;
+        return `<option value="${this._esc(o)}" ${o===current?'selected':''}>${this._esc(label)}</option>`;
+      }).join('');
+      return `<th><select class="filter-input" data-filter data-table="${table}" data-field="${this._esc(col.field)}"><option value="">All</option>${optHtml}</select></th>`;
+    }
+    return `<th><input type="text" class="filter-input" placeholder="Filter…" data-filter data-table="${table}" data-field="${this._esc(col.field)}" value="${this._esc(current)}"></th>`;
+  }
+
+  _applyTableFilter(table, cols, data){
+    const filters = this.tableFilters[table];
+    if(!filters) return data;
+    const active = Object.entries(filters).filter(([,v]) => v!=='' && v!=null);
+    if(active.length===0) return data;
+    const colByField = {};
+    cols.forEach(c=>{ colByField[c.field] = c; });
+    return data.filter(row => active.every(([field, val]) => {
+      const col = colByField[field];
+      const cellVal = row[field];
+      if(col && col.badge){
+        const label = cellVal==='LOW STOCK' ? 'Sold' : 'In Stock';
+        return label === val;
+      }
+      if(col && col.type==='multiselect'){
+        return Array.isArray(cellVal) && cellVal.includes(val);
+      }
+      if(col && col.type==='select'){
+        return String(cellVal==null?'':cellVal) === val;
+      }
+      if(cellVal==null) return false;
+      return String(cellVal).toLowerCase().includes(String(val).toLowerCase());
+    }));
+  }
+
+  handleFilterChange(el){
+    const table = el.dataset.table, field = el.dataset.field, val = el.value;
+    if(!this.tableFilters[table]) this.tableFilters[table] = {};
+    if(val === '') delete this.tableFilters[table][field];
+    else this.tableFilters[table][field] = val;
+    if(table==='sales') this.salesPageIndex = 0;
+    this._renderTableBody(table);
+  }
+
+  handleFilterClear(el){
+    const table = el.dataset.table;
+    this.tableFilters[table] = {};
+    document.querySelectorAll(`[data-filter][data-table="${table}"]`).forEach(inp=>{ inp.value=''; });
+    if(table==='sales') this.salesPageIndex = 0;
+    this._renderTableBody(table);
+  }
+
+  _renderTableBody(table){
+    switch(table){
+      case 'inventory': this.renderInventory(true); break;
+      case 'sales': this.renderSales(true); break;
+      case 'trades': this.renderTrades(true); break;
+      case 'expenses': this.renderExpenses(true); break;
+      case 'cashflow': this.renderCashflow(true); break;
+    }
+  }
+
+  // ---------------- save / load progress (file-based, no browser storage) ----------------
+  // Two ways to persist: (1) manual "Save a Copy" / "Load Progress" downloads a JSON snapshot,
+  // unchanged since it was first built; (2) "Enable Auto-Save" links a real file on disk via the
+  // File System Access API (showSaveFilePicker/showOpenFilePicker) and silently rewrites it a
+  // moment after every edit — no repeated clicking, and still not localStorage/sessionStorage/
+  // IndexedDB, just a file the browser already asked the user's permission to write to.
+  showToast(msg){
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(()=>el.classList.add('hidden'), 3200);
+  }
+
+  setSessionStatus(text, cls){
+    const el = document.getElementById('session-status');
+    el.textContent = text;
+    el.className = 'session-status' + (cls ? ' '+cls : '');
+  }
+
+  markDirty(){
+    if(this._suppressDirty) return;
+    this.dirty = true;
+    // Cloud auto-save (Firebase) takes priority when available — every edit is debounced
+    // and pushed straight to Firestore, no manual file handling required.
+    if(typeof window.scheduleCloudSave === 'function'){
+      this.setSessionStatus('Saving to the cloud…', 'dirty');
+      window.scheduleCloudSave();
+    } else if(this.autoSaveEnabled){
+      this.setSessionStatus(`Auto-save pending… saving to "${this.autoSaveHandle.name}" shortly.`, 'dirty');
+      this._scheduleAutoSave();
+    } else {
+      this.setSessionStatus('Unsaved changes — click "Save a Copy" to keep them, or turn on Auto-Save.', 'dirty');
+    }
+  }
+
+  // ---------------- undo / redo ----------------
+  // A full deep-cloned snapshot of everything editable. Simple and robust: every handler calls
+  // this once, right before it mutates data, rather than each handler hand-rolling its own
+  // inverse operation (easy to get subtly wrong for cascade renames, multi-item arrays, etc).
+  _snapshotData(){
+    return JSON.parse(JSON.stringify({
+      inventory: this.data.inventory,
+      sales: this.data.sales,
+      trades: this.data.trades,
+      expenses: this.data.expenses,
+      cashflow: this.data.cashflow,
+      lists: this.data.lists,
+      settings: this.data.settings,
+    }));
+  }
+
+  _pushUndoSnapshot(){
+    this.undoStack.push(this._snapshotData());
+    if(this.undoStack.length > this.undoStackLimit) this.undoStack.shift();
+    this.redoStack = [];
+    this._updateUndoRedoButtons();
+  }
+
+  _restoreSnapshot(snap){
+    this._suppressDirty = true;
+    this.data = {
+      inventory: snap.inventory.map(r=>({...r, _id:this.nextId++})),
+      sales: snap.sales.map(r=>({...r, _id:this.nextId++})),
+      trades: snap.trades.map(r=>({...r, _id:this.nextId++})),
+      expenses: snap.expenses.map(r=>({...r, _id:this.nextId++})),
+      cashflow: snap.cashflow.map(r=>({...r, _id:this.nextId++})),
+      lists: snap.lists,
+      settings: snap.settings,
+    };
+    this.recalcAll();
+    this.renderAll();
+    this._suppressDirty = false;
+    this.markDirty();
+  }
+
+  undo(){
+    if(!this.undoStack.length) return;
+    const current = this._snapshotData();
+    const prev = this.undoStack.pop();
+    this.redoStack.push(current);
+    this._restoreSnapshot(prev);
+    this._updateUndoRedoButtons();
+    this.showToast('Undid last change.');
+  }
+
+  redo(){
+    if(!this.redoStack.length) return;
+    const current = this._snapshotData();
+    const next = this.redoStack.pop();
+    this.undoStack.push(current);
+    this._restoreSnapshot(next);
+    this._updateUndoRedoButtons();
+    this.showToast('Redid change.');
+  }
+
+  _updateUndoRedoButtons(){
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+    if(undoBtn) undoBtn.disabled = this.undoStack.length===0;
+    if(redoBtn) redoBtn.disabled = this.redoStack.length===0;
+  }
+
+  _buildSavePayload(){
+    const strip = (arr) => arr.map(({_id, ...rest})=>rest);
+    return {
+      savedAt: new Date().toISOString(),
+      inventory: strip(this.data.inventory),
+      sales: strip(this.data.sales),
+      trades: strip(this.data.trades),
+      expenses: strip(this.data.expenses),
+      cashflow: strip(this.data.cashflow),
+      lists: this.data.lists,
+      settings: this.data.settings,
+    };
+  }
+
+  saveProgress(){
+    const payload = this._buildSavePayload();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = payload.savedAt.slice(0,16).replace(/[:T]/g,'-');
+    a.href = url; a.download = `tcg_dashboard_progress_${stamp}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    const when = new Date(payload.savedAt).toLocaleString();
+    this.showToast('Progress saved — file downloaded.');
+    if(!this.autoSaveEnabled){
+      this.dirty = false;
+      this.setSessionStatus(`Saved ${when} — keep that file to resume later.`, 'saved');
+    }
+  }
+
+  // Shared by both the classic <input type=file> flow and the File System Access "open" flow.
+  _applyLoadedPayload(parsed, sourceLabel){
+    const required = ['inventory','sales','trades','expenses','cashflow'];
+    if(!parsed || !required.every(k=>Array.isArray(parsed[k]))){
+      this.showToast('That file is missing expected data — not loaded.');
+      return false;
+    }
+    // So an accidental "Load Progress" can itself be undone back to whatever was on screen.
+    this._pushUndoSnapshot();
+    this._suppressDirty = true;
+    this.data = {
+      inventory: parsed.inventory.map(r=>({...r, _id:this.nextId++})),
+      sales: parsed.sales.map(r=>({...r, _id:this.nextId++})),
+      trades: this.normalizeTrades(parsed.trades),
+      expenses: parsed.expenses.map(r=>({...r, _id:this.nextId++})),
+      cashflow: parsed.cashflow.map(r=>({...r, _id:this.nextId++})),
+      lists: this.normalizeLists(Array.isArray(parsed.lists) ? {} : (parsed.lists || this.raw.lists)),
+      settings: this.normalizeSettings(parsed.settings),
+    };
+    this.tableFilters = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
+    this.columnWidths = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
+    this.hiddenColumns = { inventory:new Set(), sales:new Set(), trades:new Set(), expenses:new Set(), cashflow:new Set() };
+    this.salesPageIndex = 0;
+    this.recalcAll();
+    this.renderAll();
+    this.dirty = false;
+    this._suppressDirty = false;
+    const when = parsed.savedAt ? new Date(parsed.savedAt).toLocaleString() : 'earlier session';
+    this.setSessionStatus(`Loaded progress saved ${when}${sourceLabel ? ' from "'+sourceLabel+'"' : ''}.`, 'saved');
+    this.showToast('Progress loaded from file.');
+    return true;
+  }
+
+  loadProgress(file){
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed;
+      try { parsed = JSON.parse(reader.result); }
+      catch(err){ this.showToast('That file is not valid saved-progress JSON.'); return; }
+      this._applyLoadedPayload(parsed, file.name);
+    };
+    reader.readAsText(file);
+    document.getElementById('load-file-input').value = '';
+  }
+
+  supportsFileSystemAccess(){
+    return typeof window.showSaveFilePicker === 'function' && typeof window.showOpenFilePicker === 'function';
+  }
+
+  // "Load Progress" button: prefers the File System Access open-file picker (so the same file
+  // can then be kept linked for auto-save); falls back to the plain file input otherwise.
+  async openProgressFile(){
+    if(!this.supportsFileSystemAccess()){
+      document.getElementById('load-file-input').click();
+      return;
+    }
+    let handle;
+    try{
+      [handle] = await window.showOpenFilePicker({
+        types: [{ description:'TCG Dashboard Progress', accept:{'application/json':['.json']} }],
+      });
+    } catch(err){
+      if(err && err.name==='AbortError') return;
+      document.getElementById('load-file-input').click();
+      return;
+    }
+    let parsed;
+    try{
+      const file = await handle.getFile();
+      parsed = JSON.parse(await file.text());
+    } catch(err){
+      this.showToast('That file is not valid saved-progress JSON.');
+      return;
+    }
+    const ok = this._applyLoadedPayload(parsed, handle.name);
+    if(!ok) return;
+    // Try to also keep auto-saving back to the same file the user just opened from.
+    try{
+      const perm = await handle.requestPermission({mode:'readwrite'});
+      if(perm==='granted'){
+        this.autoSaveHandle = handle;
+        this.autoSaveEnabled = true;
+        this._setAutoSaveButtonState();
+        this.showToast(`Loaded — now auto-saving changes back to "${handle.name}".`);
+      }
+    } catch(err){ /* permission not available — user can still Enable Auto-Save separately */ }
+  }
+
+  _setAutoSaveButtonState(){
+    const btn = document.getElementById('autosave-btn');
+    if(!btn) return;
+    btn.classList.remove('autosave-on','autosave-paused');
+    if(this.autoSaveEnabled){
+      btn.classList.add('autosave-on');
+      btn.textContent = `⚡ Auto-Save: On (${this.autoSaveHandle.name})`;
+    } else if(this.autoSaveHandle){
+      btn.classList.add('autosave-paused');
+      btn.textContent = '⚡ Auto-Save: Paused (click to resume)';
+    } else {
+      btn.textContent = '⚡ Enable Auto-Save';
+    }
+  }
+
+  async toggleAutoSave(){
+    if(!this.supportsFileSystemAccess()){
+      this.showToast('Your browser doesn\'t support saving straight to a file — use Save a Copy / Load Progress instead.');
+      return;
+    }
+    if(this.autoSaveEnabled){
+      this.autoSaveEnabled = false;
+      this._setAutoSaveButtonState();
+      this.setSessionStatus(`Auto-save paused — "${this.autoSaveHandle.name}" will stop updating until you resume it.`, 'dirty');
+      return;
+    }
+    if(this.autoSaveHandle){
+      // Already linked earlier this session — just resume without re-prompting.
+      this.autoSaveEnabled = true;
+      this._setAutoSaveButtonState();
+      await this._writeAutoSave();
+      return;
+    }
+    try{
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'tcg_dashboard_progress.json',
+        types: [{ description:'TCG Dashboard Progress', accept:{'application/json':['.json']} }],
+      });
+      this.autoSaveHandle = handle;
+      this.autoSaveEnabled = true;
+      this._setAutoSaveButtonState();
+      await this._writeAutoSave();
+      this.showToast(`Auto-save enabled — every change now saves to "${handle.name}".`);
+    } catch(err){
+      if(err && err.name==='AbortError') return;
+      console.error(err);
+      this.showToast('Could not enable auto-save (permission denied or cancelled).');
+    }
+  }
+
+  _scheduleAutoSave(){
+    if(!this.autoSaveEnabled || !this.autoSaveHandle) return;
+    if(this._autoSaveTimer) clearTimeout(this._autoSaveTimer);
+    this._autoSaveTimer = setTimeout(()=>{ this._writeAutoSave(); }, 900);
+  }
+
+  async _writeAutoSave(){
+    if(!this.autoSaveHandle || !this.autoSaveEnabled) return;
+    if(this._autoSaveInFlight){ this._autoSavePending = true; return; }
+    this._autoSaveInFlight = true;
+    try{
+      const payload = this._buildSavePayload();
+      const writable = await this.autoSaveHandle.createWritable();
+      await writable.write(JSON.stringify(payload, null, 2));
+      await writable.close();
+      this.dirty = false;
+      const when = new Date();
+      this.setSessionStatus(`Auto-saved to "${this.autoSaveHandle.name}" at ${when.toLocaleTimeString()}.`, 'saved');
+    } catch(err){
+      console.error('Auto-save failed', err);
+      this.autoSaveEnabled = false;
+      this._setAutoSaveButtonState();
+      this.setSessionStatus('Auto-save failed (file may have moved or permission was revoked) — click "Save a Copy" to back up now.', 'dirty');
+      this.showToast('Auto-save stopped working — please save a copy manually.');
+    } finally {
+      this._autoSaveInFlight = false;
+      if(this._autoSavePending){ this._autoSavePending = false; this._writeAutoSave(); }
+    }
+  }
+
+  showTab(name){
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById('tab-'+name).classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  }
+
+  // ---------------- live recalculation engine (mirrors the workbook's formulas) ----------------
+  recalcAll(){
+    const nameById = {}, catById = {}, costById = {};
+    this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; catById[i['Item ID']] = i['Category']; costById[i['Item ID']] = Number(i['Cost'])||0; });
+
+    // Trades are recalculated first so their auto-fields (and Value of Trade) are
+    // available to pull into any Sales rows paid for via a linked trade, below.
+    this.data.trades.forEach(t=>{
+      const outIds = Array.isArray(t['Items Traded Out']) ? t['Items Traded Out'] : [];
+      const inIds = Array.isArray(t['Items Received']) ? t['Items Received'] : [];
+      t['Items Traded (auto)'] = outIds.map(id=>nameById[id]||id).join(', ');
+      t['Items Received (auto)'] = inIds.map(id=>nameById[id]||id).join(', ');
+      const cashIn = Number(t['Cash Received'])||0, cashOut = Number(t['Cash Paid Out'])||0;
+      t['Net Cash (auto)'] = cashIn - cashOut;
+    });
+    const tradeById = {};
+    this.data.trades.forEach(t=>{ tradeById[t['Trade ID']] = t; });
+
+    this.data.sales.forEach(s=>{
+      s['Item Name (auto)'] = nameById[s['Item ID']] || '';
+      // If this sale was paid for via a trade, pull its Sale Price live from the linked
+      // trade so the two tabs never drift out of sync. Price = the trade's card-for-card
+      // Value of Trade, adjusted by any cash that changed hands as part of that trade
+      // (cash the customer paid in on top increases the effective price; cash paid back
+      // out to the customer reduces it) — i.e. Value of Trade + Net Cash (auto).
+      const linkedTrade = (s['Payment Method']==='Trade' && s['Linked Trade']) ? tradeById[s['Linked Trade']] : null;
+      if(linkedTrade){ s['Sale Price'] = (Number(linkedTrade['Value of Trade'])||0) + (Number(linkedTrade['Net Cash (auto)'])||0); }
+      const qty = Number(s['Quantity Sold'])||0, price = Number(s['Sale Price'])||0;
+      const unitCost = costById[s['Item ID']] || 0;
+      s['Cost (auto)'] = unitCost;
+      s['Total Cost (auto)'] = unitCost*qty;
+      s['Total Sale Amount (auto)'] = qty*price;
+      s['Profit (auto)'] = (qty*price) - (unitCost*qty);
+    });
+
+    this.data.inventory.forEach(i=>{
+      const id = i['Item ID'];
+      const qtySold = this.data.sales.filter(s=>s['Item ID']===id).reduce((a,s)=>a+(Number(s['Quantity Sold'])||0),0);
+      const qtyTradedOut = this.data.trades.reduce((a,t)=>a+((Array.isArray(t['Items Traded Out'])?t['Items Traded Out']:[]).filter(x=>x===id).length),0);
+      const qtyReceived = this.data.trades.reduce((a,t)=>a+((Array.isArray(t['Items Received'])?t['Items Received']:[]).filter(x=>x===id).length),0);
+      const purchased = Number(i['Qty Purchased'])||0;
+      const remaining = purchased - qtySold - qtyTradedOut + qtyReceived;
+      i['Qty Sold (auto)'] = qtySold;
+      i['Qty Traded Out (auto)'] = qtyTradedOut;
+      i['Qty Received via Trade (auto)'] = qtyReceived;
+      i['Remaining Inventory (auto)'] = remaining;
+      // Total Cost = the Cost column added up across everything still in stock (quantity is not
+      // factored in). Total Inventory Value = the Retail Price column added up the same way.
+      // Fully sold-out items contribute $0 to both.
+      const inStock = remaining > 0;
+      i['Total Cost (auto)'] = inStock ? (Number(i['Cost'])||0) : 0;
+      i['Total Inventory Value (auto)'] = inStock ? (Number(i['Retail Price'])||0) : 0;
+      i['Stock Status (auto)'] = remaining <= (Number(i['Reorder Level'])||0) ? 'LOW STOCK' : 'OK';
+    });
+
+    this.data.cashflow.forEach(c=>{
+      const show = c['Show Name'];
+      const totalSales = this.data.sales.filter(s=>s['Show Name']===show).reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
+      const totalExpenses = this.data.expenses.filter(e=>e['Show Name']===show).reduce((a,e)=>a+(Number(e['Amount'])||0),0);
+      // Net cash physically taken in/paid out from trades at this show (e.g. someone trades
+      // in cards plus cash on top, or gets cash back as part of the deal) — this is real money
+      // moving in the cash box, so it counts toward actual (cash-basis) profit for the show.
+      const totalTradeCash = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+      const startCash=Number(c['Starting Cash'])||0, startInv=Number(c['Starting Inventory Value'])||0;
+      const endCash=Number(c['Ending Cash'])||0, endInv=Number(c['Ending Inventory Value'])||0;
+      const invChg = endInv-startInv;
+      c['Total Sales (auto)'] = totalSales;
+      c['Total Expenses (auto)'] = totalExpenses;
+      c['Total Trade Cash (auto)'] = totalTradeCash;
+      c['Change in Inventory Value (auto)'] = invChg;
+      c['Potential Profit (auto)'] = totalSales-totalExpenses+invChg;
+      c['Actual Profit (auto)'] = (endCash+endInv)-(startCash+startInv)+totalTradeCash;
+    });
+
+    this.itemCat = catById;
+  }
+
+  computeKPIs(){
+    const sum = (arr,f) => arr.reduce((a,r)=>a+(Number(r[f])||0),0);
+    // Potential profit = Retail Price minus Cost, added up across every card still in stock
+    // (quantity not counted — same basis as Total Cost / Inventory Value). Sold-out items
+    // contribute $0. This is separate from the per-show Potential Profit shown on the Cashflow
+    // tab, which tracks show-level cash movement instead.
+    const potentialProfit = this.data.inventory.reduce((a,i)=>{
+      const remaining = Number(i['Remaining Inventory (auto)'])||0;
+      if(remaining<=0) return a;
+      const retail = Number(i['Retail Price'])||0;
+      const cost = Number(i['Cost'])||0;
+      return a + (retail-cost);
+    }, 0);
+    const totalExpenses = sum(this.data.expenses,'Amount');
+    // Total Actual Profit = profit actually realized from selling inventory (Sale Price minus
+    // Cost, summed across every row in the Sales tab) plus Net Trade Cash (Cash Received minus
+    // Cash Paid Out, summed across every row in the Trades tab — the same total shown as
+    // "Net Trade Cash" on the Trades tab). This replaced the older per-show cash/inventory
+    // balance calculation, which depended on manually-entered Starting/Ending Cash and
+    // Inventory Value and could drift out of sync with what Sales/Trades actually recorded.
+    // A trade that's linked to a Sales row (Payment Method "Trade" + a Trade Ref) already has
+    // its cash folded into that sale's own Profit (auto) — see recalcAll(). So its Net Cash is
+    // excluded here to avoid counting it twice; only "standalone" trades (not backing any sale)
+    // contribute their Net Cash on top of Sales profit.
+    const linkedTradeIds = new Set(
+      this.data.sales
+        .filter(s=>s['Payment Method']==='Trade' && s['Linked Trade'])
+        .map(s=>s['Linked Trade'])
+    );
+    const salesProfit = sum(this.data.sales,'Profit (auto)');
+    const netTradeCash = this.data.trades.reduce((a,t)=>{
+      if(linkedTradeIds.has(t['Trade ID'])) return a;
+      return a + (Number(t['Net Cash (auto)'])||0);
+    }, 0);
+    const totalActualProfit = salesProfit + netTradeCash;
+    return {
+      totalSales: sum(this.data.sales,'Total Sale Amount (auto)'),
+      totalExpenses: totalExpenses,
+      totalActualProfit: totalActualProfit,
+      // Net Profit = Total Actual Profit minus Total Expenses.
+      netProfit: totalActualProfit - totalExpenses,
+      totalPotentialProfit: potentialProfit,
+      totalCost: sum(this.data.inventory,'Total Cost (auto)'),
+      inventoryValue: sum(this.data.inventory,'Total Inventory Value (auto)'),
+      itemsSold: sum(this.data.sales,'Quantity Sold'),
+      itemsTraded: this.data.trades.length,
+      netCashflow: sum(this.data.cashflow,'Ending Cash') - sum(this.data.cashflow,'Starting Cash'),
+    };
+  }
+
+  renderAll(){
+    this.filteredSales = this.data.sales;
+    this.filteredCashflow = this.data.cashflow;
+    this.filteredInventory = this.data.inventory;
+    this.filteredTrades = this.data.trades;
+    this.filteredExpenses = this.data.expenses;
+    this.renderLowStock();
+    this.renderKPIs();
+    this.renderCharts();
+    this.renderTopShows();
+    this.renderInventory();
+    this.renderSales();
+    this.renderCashflow();
+    this.renderTrades();
+    this.renderExpenses();
+    this.renderSettings();
+  }
+
+  renderLowStock(){
+    const el = document.getElementById('low-stock-alert');
+    const checkbox = document.getElementById('pref-low-stock-alert');
+    if(checkbox) checkbox.checked = this.data.settings.showLowStockAlert;
+    if(!this.data.settings.showLowStockAlert){ el.classList.add('hidden'); return; }
+    const low = this.data.inventory.filter(i=>i['Stock Status (auto)']==='LOW STOCK');
+    if(low.length===0){ el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const names = low.map(i=>`${i['Item Name']} (${i['Remaining Inventory (auto)']} left)`).join(', ');
+    el.innerHTML = `<button type="button" class="alert-dismiss" data-dismiss-low-stock title="Hide this alert">&times;</button><strong>&#9888; Low stock alert:</strong> ${low.length} item${low.length>1?'s':''} at or below reorder level &mdash; ${names}`;
+  }
+
+  renderKPIs(){
+    const k = this.computeKPIs();
+    document.getElementById('kpi-sales').textContent = fmtMoney(k.totalSales);
+    document.getElementById('kpi-expenses').textContent = fmtMoney(k.totalExpenses);
+    document.getElementById('kpi-profit').textContent = fmtMoney(k.totalActualProfit);
+    document.getElementById('kpi-netprofit').textContent = fmtMoney(k.netProfit);
+    document.getElementById('kpi-potential').textContent = fmtMoney(k.totalPotentialProfit);
+    document.getElementById('kpi-cost').textContent = fmtMoney(k.totalCost);
+    document.getElementById('kpi-inv').textContent = fmtMoney(k.inventoryValue);
+    document.getElementById('kpi-sold').textContent = fmtNum(k.itemsSold);
+    document.getElementById('kpi-traded').textContent = fmtNum(k.itemsTraded);
+    document.getElementById('kpi-cash').textContent = fmtMoney(k.netCashflow);
+  }
+
+  renderCharts(){
+    // "General Expense" is a bookkeeping bucket for overhead, not an actual card show — leave it
+    // out of the by-show chart so the chart only reflects real shows.
+    const cf = this.filteredCashflow.filter(c=>c['Show Name']!=='General Expense');
+    const labels = cf.map(c=>c['Show Name']);
+
+    this._barLine('chart-shows', labels, [
+      {type:'bar', label:'Total Sales', data:cf.map(c=>c['Total Sales (auto)']), color:PALETTE[1]},
+      {type:'bar', label:'Total Expenses', data:cf.map(c=>c['Total Expenses (auto)']), color:PALETTE[0]},
+      {type:'line', label:'Actual Profit', data:cf.map(c=>c['Actual Profit (auto)']), color:PALETTE[3]},
+    ]);
+
+    const catSales = this._aggregate(this.filteredSales, s=>this.itemCat[s['Item ID']]||'Other', s=>s['Total Sale Amount (auto)']||0);
+    this._doughnut('chart-cat-sales', catSales);
+    const paymentAgg = this._aggregate(this.filteredSales, s=>s['Payment Method']||'Other', s=>s['Total Sale Amount (auto)']||0);
+    this._doughnut('chart-payment', paymentAgg);
+
+    // Sales insights - top selling items
+    const itemRev = this._aggregate(this.filteredSales, s=>s['Item Name (auto)']||s['Item ID'], s=>s['Total Sale Amount (auto)']||0);
+    const topItems = Object.entries(itemRev).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    this._renderHBar('chart-top-items', topItems.map(x=>x[0]), topItems.map(x=>x[1]), PALETTE[1]);
+
+    // Inventory insights
+    const invByCat = this._aggregate(this.filteredInventory, i=>i['Category'], i=>i['Total Inventory Value (auto)']||0);
+    this._doughnut('chart-inv-value-cat', invByCat);
+    const stockCounts = {'In Stock':0, 'Sold':0};
+    this.filteredInventory.forEach(i=>{ const label = i['Stock Status (auto)']==='LOW STOCK' ? 'Sold' : 'In Stock'; stockCounts[label]++; });
+    this._doughnut('chart-stock-status', stockCounts, {'In Stock':'#2e8b57','Sold':'#c0392b'}, {integer:true});
+  }
+
+  _aggregate(arr, keyFn, valFn){
+    const out = {};
+    arr.forEach(r=>{ const k=keyFn(r); out[k]=(out[k]||0)+valFn(r); });
+    return out;
+  }
+
+  _destroy(id){ const el=document.getElementById(id); if(el) el.innerHTML=''; }
+
+  _renderCombo(id, labels, series){
+    const container = document.getElementById(id);
+    this._destroy(id);
+    if(!labels.length){ container.innerHTML = '<p style="color:var(--text-secondary);font-size:12px;padding:20px 0">No data for current filters.</p>'; return; }
+
+    const W=680, H=300, mL=52, mR=16, mT=16, mB=52;
+    const plotW = W-mL-mR, plotH = H-mT-mB;
+    const allVals = series.flatMap(s=>s.data.map(v=>Number(v)||0));
+    const rawMin = Math.min(0, ...allVals), rawMax = Math.max(0, ...allVals);
+    const scale = niceScale(rawMin, rawMax, 5);
+    let minVal = scale.min, maxVal = scale.max;
+    const yScale = v => mT + plotH - ((v-minVal)/(maxVal-minVal))*plotH;
+    const zeroY = yScale(0);
+
+    const barSeries = series.filter(s=>s.type!=='line');
+    const lineSeries = series.filter(s=>s.type==='line');
+    const groupW = plotW/labels.length;
+    const barGroupInset = groupW*0.16;
+    const barAreaW = groupW - barGroupInset*2;
+    const barW = barSeries.length ? barAreaW/barSeries.length : 0;
+
+    let svgParts = [];
+    for(let v=minVal; v<=maxVal+1e-9; v+=scale.step){
+      const y = yScale(v);
+      svgParts.push(`<line class="grid-line" x1="${mL}" x2="${W-mR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`);
+      svgParts.push(`<text class="axis-label" x="${mL-6}" y="${(y+3).toFixed(1)}" text-anchor="end">${fmtAxis(v)}</text>`);
+    }
+    if(minVal<0){ svgParts.push(`<line class="zero-line" x1="${mL}" x2="${W-mR}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}"/>`); }
+
+    labels.forEach((lab,i)=>{
+      const gx = mL + i*groupW + barGroupInset;
+      barSeries.forEach((s,j)=>{
+        const val = Number(s.data[i])||0;
+        const x = gx + j*barW;
+        const y0 = zeroY, y1 = yScale(val);
+        const y = Math.min(y0,y1), h = Math.max(1,Math.abs(y1-y0));
+        svgParts.push(`<rect x="${(x+1).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1,barW-2).toFixed(1)}" height="${h.toFixed(1)}" fill="${s.color}" rx="2"><title>${s.label} — ${lab}: ${fmtMoney(val)}</title></rect>`);
+        const labelY = val>=0 ? y-4 : y+h+11;
+        svgParts.push(`<text class="bar-val-label" x="${(x+barW/2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle">${fmtMoney(val)}</text>`);
+      });
+      const midX = mL + i*groupW + groupW/2;
+      const words = lab.length>16 ? lab.slice(0,15)+'…' : lab;
+      svgParts.push(`<text class="axis-label" x="${midX.toFixed(1)}" y="${H-mB+30}" text-anchor="middle" transform="rotate(-18 ${midX.toFixed(1)} ${H-mB+30})"><title>${lab}</title>${words}</text>`);
+    });
+
+    lineSeries.forEach(s=>{
+      const pts = labels.map((lab,i)=>{
+        const midX = mL + i*groupW + groupW/2;
+        const y = yScale(Number(s.data[i])||0);
+        return [midX,y];
+      });
+      const pathD = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+      svgParts.push(`<path d="${pathD}" fill="none" stroke="${s.color}" stroke-width="2.5"/>`);
+      pts.forEach((p,i)=>{
+        svgParts.push(`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4" fill="${s.color}"><title>${s.label} — ${labels[i]}: ${fmtMoney(s.data[i])}</title></circle>`);
+      });
+    });
+
+    const svgHtml = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${svgParts.join('')}</svg>`;
+    const legendHtml = `<div class="chart-legend">${series.map(s=>`<span class="legend-item"><span class="swatch" style="background:${s.color}"></span>${s.label}</span>`).join('')}</div>`;
+    container.innerHTML = `<div class="chart-svg-wrap">${svgHtml}</div>${legendHtml}`;
+  }
+
+  _barLine(id, labels, datasets){ this._renderCombo(id, labels, datasets); }
+  _grouped(id, labels, datasets){ this._renderCombo(id, labels, datasets.map(d=>({...d, type:'bar'}))); }
+
+  _doughnut(id, obj, colorMap, opts){
+    opts = opts || {};
+    const container = document.getElementById(id);
+    this._destroy(id);
+    const labels = Object.keys(obj);
+    const data = Object.values(obj).map(v=>Number(v)||0);
+    const total = data.reduce((a,b)=>a+b,0);
+    if(!total){ container.innerHTML = '<p style="color:var(--text-secondary);font-size:12px;padding:20px 0">No data for current filters.</p>'; return; }
+    const fmt = opts.integer ? fmtNum : fmtMoney;
+
+    const cx=90, cy=90, r=68, sw=26;
+    const circumference = 2*Math.PI*r;
+    let acc = 0;
+    const circles = labels.map((lab,i)=>{
+      const val = data[i];
+      const frac = val/total;
+      const len = frac*circumference;
+      const offset = -acc*circumference;
+      acc += frac;
+      const color = (colorMap && colorMap[lab]) || PALETTE[i%PALETTE.length];
+      return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(circumference-len).toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"><title>${lab}: ${fmt(val)}</title></circle>`;
+    }).join('');
+    const svgHtml = `<svg viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">${circles}<text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="15" font-weight="700" fill="var(--text-primary)">${fmt(total)}</text><text x="${cx}" y="${cy+13}" text-anchor="middle" font-size="9.5" fill="var(--text-secondary)">total</text></svg>`;
+
+    const legendRows = labels.map((lab,i)=>{
+      const val = data[i];
+      const pct = total ? ((val/total)*100).toFixed(1) : '0';
+      const color = (colorMap && colorMap[lab]) || PALETTE[i%PALETTE.length];
+      return `<div class="row"><span class="swatch" style="background:${color}"></span><span class="name">${lab}</span><span class="val">${fmt(val)}</span><span class="pct">${pct}%</span></div>`;
+    }).join('');
+
+    container.innerHTML = `<div class="donut-flex"><div class="chart-svg-wrap">${svgHtml}</div><div class="donut-legend-list">${legendRows}</div></div>`;
+  }
+
+  // Horizontal bar chart (ranked list) - used for Top Selling Items
+  _renderHBar(id, labels, data, color){
+    const container = document.getElementById(id);
+    this._destroy(id);
+    if(!labels.length){ container.innerHTML = '<p style="color:var(--text-secondary);font-size:12px;padding:20px 0">No data for current filters.</p>'; return; }
+
+    const barH=24, gap=10, mL=170, mR=60, mT=10, mB=10;
+    const W=680;
+    const plotW = W-mL-mR;
+    const n = labels.length;
+    const H = mT+mB+n*(barH+gap)-gap;
+    const maxVal = Math.max(...data,1);
+    const scale = niceScale(0, maxVal, 4);
+    const xScale = v => (v/scale.max)*plotW;
+
+    let parts = [];
+    for(let v=0; v<=scale.max+1e-9; v+=scale.step){
+      const x = mL+xScale(v);
+      parts.push(`<line class="grid-line" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${mT}" y2="${H-mB}"/>`);
+    }
+    labels.forEach((lab,i)=>{
+      const y = mT + i*(barH+gap);
+      const w = Math.max(1, xScale(data[i]));
+      const name = lab.length>22 ? lab.slice(0,21)+'…' : lab;
+      parts.push(`<text class="axis-label" x="${mL-8}" y="${(y+barH/2+3.5).toFixed(1)}" text-anchor="end"><title>${lab}</title>${name}</text>`);
+      parts.push(`<rect x="${mL}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${barH}" fill="${color}" rx="3"><title>${lab}: ${fmtMoney(data[i])}</title></rect>`);
+      parts.push(`<text class="bar-val-label" x="${(mL+w+6).toFixed(1)}" y="${(y+barH/2+3.5).toFixed(1)}" text-anchor="start" style="font-weight:700">${fmtMoney(data[i])}</text>`);
+    });
+
+    const svgHtml = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
+    container.innerHTML = `<div class="chart-svg-wrap">${svgHtml}</div>`;
+  }
+
+  renderTopShows(){
+    const top = [...this.data.cashflow]
+      .sort((a,b)=>(Number(b['Actual Profit (auto)'])||0)-(Number(a['Actual Profit (auto)'])||0))
+      .slice(0,5);
+    const body = document.getElementById('top-shows-body');
+    body.innerHTML = top.map((c,i)=>`
+      <tr><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}</td></tr>
+    `).join('');
+  }
+
+  // ---- generic sortable / editable table renderer ----
+  _sortData(data, sortState){
+    return [...data].sort((a,b)=>{
+      const {field,dir} = sortState;
+      let av=a[field], bv=b[field];
+      if(typeof av==='string') av=av.toLowerCase();
+      if(typeof bv==='string') bv=bv.toLowerCase();
+      if(av==null) av='';
+      if(bv==null) bv='';
+      const cmp = av<bv?-1:av>bv?1:0;
+      return dir==='asc'?cmp:-cmp;
+    });
+  }
+  // Columns not currently hidden for a table — used everywhere a table renders itself.
+  // View-only: never affects KPIs, charts, or CSV export (handleExport reads this.columns directly).
+  _visibleColumns(table){
+    const hidden = this.hiddenColumns[table];
+    return this.columns[table].filter(c => !hidden.has(c.field));
+  }
+
+  // ---------------- show/hide columns ----------------
+  renderColumnToggle(table){
+    const panel = document.getElementById('colpanel-'+table);
+    if(!panel) return;
+    const hidden = this.hiddenColumns[table];
+    panel.innerHTML = this.columns[table].map(c=>{
+      const checked = hidden.has(c.field) ? '' : 'checked';
+      return `<label class="col-toggle-row"><input type="checkbox" data-col-visibility data-table="${table}" data-field="${this._esc(c.field)}" ${checked}>${this._esc(c.label)}</label>`;
+    }).join('');
+  }
+  toggleColumnPanel(table){
+    const panel = document.getElementById('colpanel-'+table);
+    if(!panel) return;
+    const willOpen = panel.classList.contains('hidden');
+    this._closeColumnPanels();
+    if(willOpen){ this.renderColumnToggle(table); panel.classList.remove('hidden'); }
+  }
+  _closeColumnPanels(){
+    document.querySelectorAll('.col-toggle-panel').forEach(p=>p.classList.add('hidden'));
+  }
+  handleColumnVisibility(el){
+    const table = el.dataset.table, field = el.dataset.field;
+    const hidden = this.hiddenColumns[table];
+    if(el.checked) hidden.delete(field); else hidden.add(field);
+    // View-only preference — same treatment as tableFilters/columnWidths: no undo snapshot,
+    // no markDirty, not part of the saved payload. Just re-render this table's head+body.
+    switch(table){
+      case 'inventory': this.renderInventory(); break;
+      case 'sales': this.renderSales(); break;
+      case 'trades': this.renderTrades(); break;
+      case 'expenses': this.renderExpenses(); break;
+      case 'cashflow': this.renderCashflow(); break;
+    }
+  }
+
+  _renderHead(headId, cols, sortKey, sortHandler, withActions, table){
+    table = table || sortKey;
+    this._renderColgroup(table, cols, withActions);
+    const state = this.sortStates[sortKey];
+    const head = document.getElementById(headId);
+    const sortRow = '<tr>' + cols.map(c=>{
+      const arrow = state.field===c.field ? (state.dir==='asc'?' ▲':' ▼') : '';
+      return `<th><span class="th-label" title="${this._esc(c.label)}" onclick="dash.${sortHandler}('${c.field}')">${c.label}${arrow}</span><span class="col-resizer" data-resize data-table="${table}" data-field="${this._esc(c.field)}" title="Drag to resize — double-click to reset"></span></th>`;
+    }).join('') + (withActions ? '<th></th>' : '') + '</tr>';
+    const filterRow = '<tr class="filter-row">' + cols.map(c=>this._filterCell(table, c)).join('') +
+      (withActions ? `<th><button type="button" class="btn-sm filter-clear-btn" data-filter-clear data-table="${table}" title="Clear all filters on this table">Clear</button></th>` : '') + '</tr>';
+    head.innerHTML = sortRow + filterRow;
+  }
+
+  // ---------------- resizable columns ----------------
+  _colgroupId(table){
+    return { inventory:'inv-colgroup', sales:'sales-colgroup', trades:'trades-colgroup', expenses:'expenses-colgroup', cashflow:'cashflow-colgroup' }[table];
+  }
+  _defaultColWidth(col){
+    if(col.badge) return 100;
+    if(col.type==='date') return 115;
+    if(col.type==='multiselect') return 210;
+    if(col.money) return 95;
+    if(col.type==='number') return 75;
+    if(col.type==='select') return 140;
+    const wide = ['Item Name','Item Name (auto)','Description','Set / Expansion','Notes','SKU'];
+    if(wide.includes(col.field)) return 180;
+    if(!col.editable) return 150;
+    return 120;
+  }
+  // Columns are sized as a share of the table's own width (percentages that always sum to
+  // 100%) rather than literal pixels, so every tab's table fills exactly the space it has —
+  // no horizontal scrolling to see the rest of the columns. The numbers from _defaultColWidth
+  // (and any custom width the user drags in) are just relative weights: a column with a bigger
+  // number gets a bigger slice of the 100%, but the whole row of columns always fits.
+  _renderColgroup(table, cols, withActions){
+    const el = document.getElementById(this._colgroupId(table));
+    if(!el) return;
+    const widths = this.columnWidths[table] || (this.columnWidths[table] = {});
+    const actionsWeight = 36;
+    const weights = cols.map(c => widths[c.field] || this._defaultColWidth(c));
+    const totalWeight = weights.reduce((a,w)=>a+w,0) + (withActions ? actionsWeight : 0);
+    el.innerHTML = cols.map((c,i)=>{
+      const pct = totalWeight ? (weights[i]/totalWeight*100) : 0;
+      return `<col data-field="${this._esc(c.field)}" style="width:${pct.toFixed(3)}%">`;
+    }).join('') + (withActions ? `<col style="width:${totalWeight ? (actionsWeight/totalWeight*100).toFixed(3) : 0}%">` : '');
+  }
+  _applyColWidth(table, field, px){
+    const el = document.getElementById(this._colgroupId(table));
+    if(!el) return;
+    const col = el.querySelector(`col[data-field="${CSS.escape(field)}"]`);
+    if(col) col.style.width = px+'px';
+  }
+  _sortBy(key, field, defaultDir){
+    const state = this.sortStates[key];
+    if(state.field===field) state.dir = state.dir==='asc'?'desc':'asc';
+    else this.sortStates[key] = {field, dir: defaultDir||'asc'};
+  }
+
+  _esc(v){
+    return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // Renders one <td> for a column definition against a given row + table key.
+  _cell(table, row, col){
+    const isEditable = typeof col.editableIf==='function' ? col.editableIf(row) : col.editable;
+    if(!isEditable){
+      if(col.badge){
+        const status = row[col.field];
+        return status==='LOW STOCK' ? '<td><span class="badge low">Sold</span></td>' : '<td><span class="badge ok">In Stock</span></td>';
+      }
+      const raw = row[col.field];
+      let v = raw;
+      v = col.money ? fmtMoney(v) : this._esc(v);
+      const titleAttr = (!col.money && raw!=null && String(raw)!=='') ? ` title="${this._esc(raw)}"` : '';
+      return `<td class="auto-field"${titleAttr}>${v}</td>`;
+    }
+    const id = row._id;
+    const baseAttrs = `data-edit data-table="${table}" data-id="${id}" data-field="${this._esc(col.field)}"`;
+    if(col.type==='multiselect'){
+      const opts = typeof col.options==='function' ? col.options() : col.options;
+      const selected = Array.isArray(row[col.field]) ? row[col.field] : [];
+      const chips = selected.map(v=>{
+        const label = col.optionLabel ? col.optionLabel(v) : v;
+        return `<span class="chip">${this._esc(label)}<button type="button" data-multi-remove data-table="${table}" data-id="${id}" data-field="${this._esc(col.field)}" data-value="${this._esc(v)}" title="Remove">&times;</button></span>`;
+      }).join('');
+      const available = opts.filter(o=>!selected.includes(o));
+      const addOpts = available.map(o=>{
+        const label = col.optionLabel ? col.optionLabel(o) : o;
+        return `<option value="${this._esc(o)}">${this._esc(label)}</option>`;
+      }).join('');
+      const addSelect = available.length ? `<select class="add-picker" data-multi-add data-table="${table}" data-id="${id}" data-field="${this._esc(col.field)}"><option value="">+ add…</option>${addOpts}</select>` : '';
+      return `<td class="multiselect-cell">${chips}${addSelect}</td>`;
+    }
+    if(col.type==='select'){
+      const opts = typeof col.options==='function' ? col.options() : col.options;
+      const blank = col.allowBlank ? `<option value="" ${!row[col.field]?'selected':''}>—</option>` : '';
+      const optHtml = opts.map(o=>{
+        const label = col.optionLabel ? col.optionLabel(o) : o;
+        return `<option value="${this._esc(o)}" ${o===row[col.field]?'selected':''}>${this._esc(label)}</option>`;
+      }).join('');
+      return `<td><select ${baseAttrs} data-type="select">${blank}${optHtml}</select></td>`;
+    }
+    const val = row[col.field]==null?'':row[col.field];
+    const htmlType = col.type==='money' ? 'number' : (col.type||'text');
+    const step = col.type==='money' ? 'step="0.01"' : (col.type==='number' ? 'step="1"' : '');
+    const titleAttr = (!col.type || col.type==='text') && val!=='' ? ` title="${this._esc(val)}"` : '';
+    return `<td><input ${baseAttrs} data-type="${col.type||'text'}" type="${htmlType}" ${step} value="${this._esc(val)}"${titleAttr} onkeydown="if(event.key==='Enter') this.blur()"></td>`;
+  }
+
+  _deleteCell(table, row){
+    return `<td><button class="row-del" data-delete data-table="${table}" data-id="${row._id}" title="Delete row">&#10005;</button></td>`;
+  }
+
+  // ---------------- column schema for every editable table ----------------
+  defineColumns(){
+    const invIds = () => this.data.inventory.map(i=>i['Item ID']);
+    const invIdLabel = (id) => { const n=this.itemCat && this.data.inventory.find(i=>i['Item ID']===id); const nm=n?n['Item Name']:''; return nm?`${id} — ${nm}`:id; };
+    const showNames = () => [...new Set(this.data.cashflow.map(c=>c['Show Name']).filter(Boolean))];
+    const tradeIds = () => this.data.trades.map(t=>t['Trade ID']);
+    const tradeIdLabel = (id) => {
+      const t = this.data.trades.find(x=>x['Trade ID']===id);
+      if(!t) return id;
+      const items = t['Items Traded (auto)'] || (Array.isArray(t['Items Traded Out']) ? t['Items Traded Out'].join(', ') : '');
+      const value = fmtMoney(Number(t['Value of Trade'])||0);
+      const parts = [t['Date'], items, value].filter(Boolean);
+      return parts.length ? `${id} — ${parts.join(' · ')}` : id;
+    };
+    const paymentMethods = () => this.data.lists['Payment Methods']||[];
+    const invCategories = () => this.data.lists['Inventory Categories']||[];
+    const expCategories = () => this.data.lists['Expense Categories']||[];
+    const conditions = () => this.data.lists['Card Condition / Grade']||[];
+
+    this.columns = {
+      inventory: [
+        {field:'Item ID', label:'ID', editable:false},
+        {field:'Item Name', label:'Item', editable:true, type:'text'},
+        {field:'Category', label:'Category', editable:true, type:'select', options:invCategories},
+        {field:'SKU', label:'SKU', editable:true, type:'text'},
+        {field:'Set / Expansion', label:'Set', editable:true, type:'text'},
+        {field:'Condition / Grade', label:'Cond', editable:true, type:'select', options:conditions},
+        {field:'Cost', label:'Cost', editable:true, type:'money', money:true},
+        {field:'Retail Price', label:'Retail', editable:true, type:'money', money:true},
+        {field:'Qty Purchased', label:'Qty Purch.', editable:true, type:'number'},
+        {field:'Total Cost (auto)', label:'Total Cost', editable:false, money:true},
+        {field:'Qty Sold (auto)', label:'Sold', editable:false},
+        {field:'Remaining Inventory (auto)', label:'Qty Left', editable:false},
+        {field:'Total Inventory Value (auto)', label:'Value', editable:false, money:true},
+        {field:'Stock Status (auto)', label:'Status', editable:false, badge:true},
+      ],
+      sales: [
+        {field:'Date', label:'Date', editable:true, type:'date'},
+        {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
+        {field:'Item ID', label:'Item', editable:true, type:'select', options:invIds, optionLabel:invIdLabel},
+        {field:'Item Name (auto)', label:'Item Name', editable:false},
+        {field:'Cost (auto)', label:'Unit Cost', editable:false, money:true},
+        {field:'Quantity Sold', label:'Qty', editable:true, type:'number'},
+        {field:'Sale Price', label:'Price', editable:true, type:'money', money:true, editableIf:(row)=> !(row['Payment Method']==='Trade' && row['Linked Trade'])},
+        {field:'Total Sale Amount (auto)', label:'Total', editable:false, money:true},
+        {field:'Total Cost (auto)', label:'Total Cost', editable:false, money:true},
+        {field:'Profit (auto)', label:'Profit', editable:false, money:true},
+        {field:'Payment Method', label:'Payment', editable:true, type:'select', options:paymentMethods},
+        {field:'Linked Trade', label:'Trade Ref', editable:true, type:'select', options:tradeIds, optionLabel:tradeIdLabel, allowBlank:true},
+      ],
+      trades: [
+        {field:'Trade ID', label:'ID', editable:false},
+        {field:'Date', label:'Date', editable:true, type:'date'},
+        {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
+        {field:'Items Traded Out', label:'Traded Out', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
+        {field:'Items Traded (auto)', label:'Item(s) Out', editable:false},
+        {field:'Items Received', label:'Received', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
+        {field:'Items Received (auto)', label:'Item(s) In', editable:false},
+        {field:'Value of Trade', label:'Trade Value', editable:true, type:'money', money:true},
+        {field:'Cash Received', label:'Cash In', editable:true, type:'money', money:true},
+        {field:'Cash Paid Out', label:'Cash Out', editable:true, type:'money', money:true},
+        {field:'Net Cash (auto)', label:'Net Cash', editable:false, money:true},
+      ],
+      expenses: [
+        {field:'Date', label:'Date', editable:true, type:'date'},
+        {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
+        {field:'Category', label:'Category', editable:true, type:'select', options:expCategories},
+        {field:'Description', label:'Description', editable:true, type:'text'},
+        {field:'Amount', label:'Amount', editable:true, type:'money', money:true},
+      ],
+      cashflow: [
+        {field:'Show Name', label:'Show', editable:true, type:'text'},
+        {field:'Date', label:'Date', editable:true, type:'date'},
+        {field:'Starting Cash', label:'Start Cash', editable:true, type:'money', money:true},
+        {field:'Starting Inventory Value', label:'Start Inv Value', editable:true, type:'money', money:true},
+        {field:'Ending Cash', label:'End Cash', editable:true, type:'money', money:true},
+        {field:'Ending Inventory Value', label:'End Inv Value', editable:true, type:'money', money:true},
+        {field:'Total Sales (auto)', label:'Sales', editable:false, money:true},
+        {field:'Total Expenses (auto)', label:'Expenses', editable:false, money:true},
+        {field:'Total Trade Cash (auto)', label:'Trade Cash', editable:false, money:true},
+        {field:'Change in Inventory Value (auto)', label:'Inv Chg', editable:false, money:true},
+        {field:'Potential Profit (auto)', label:'Potential Profit', editable:false, money:true},
+        {field:'Actual Profit (auto)', label:'Actual Profit', editable:false, money:true},
+        {field:'Notes', label:'Notes', editable:true, type:'text'},
+      ],
+    };
+  }
+
+  todayStr(){ return new Date().toISOString().slice(0,10); }
+  nextItemId(){
+    let max = 0;
+    this.data.inventory.forEach(i=>{ const m=/^ITM(\d+)$/.exec(i['Item ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
+    return 'ITM'+String(max+1).padStart(3,'0');
+  }
+  nextTradeId(){
+    let max = 0;
+    this.data.trades.forEach(t=>{ const m=/^TRD(\d+)$/.exec(t['Trade ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
+    return 'TRD'+String(max+1).padStart(3,'0');
+  }
+  firstShow(){ return this.data.cashflow[0] ? this.data.cashflow[0]['Show Name'] : ''; }
+  firstItemId(){ return this.data.inventory[0] ? this.data.inventory[0]['Item ID'] : ''; }
+
+  blankRow(table){
+    switch(table){
+      case 'inventory': return {'Item ID':this.nextItemId(), 'Item Name':'New Item', 'Category':(this.data.lists['Inventory Categories']||[])[0]||'', 'SKU':'', 'Set / Expansion':'', 'Condition / Grade':(this.data.lists['Card Condition / Grade']||[])[0]||'', 'Cost':0, 'Retail Price':0, 'Qty Purchased':0, 'Reorder Level':0};
+      case 'sales': return {'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Item ID':this.firstItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
+      case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Value of Trade':0, 'Cash Received':0, 'Cash Paid Out':0};
+      case 'expenses': return {'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0};
+      case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Notes':''};
+    }
+  }
+
+  handleEdit(el){
+    const table = el.dataset.table, id = Number(el.dataset.id), field = el.dataset.field, type = el.dataset.type;
+    const row = this.data[table].find(r=>r._id===id);
+    if(!row) return;
+    let val = el.value;
+    if(type==='number' || type==='money'){ val = val===''? 0 : parseFloat(val); if(Number.isNaN(val)) val=0; }
+    this._pushUndoSnapshot();
+    row[field] = val;
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+  }
+
+  handleMultiAdd(el){
+    const table = el.dataset.table, id = Number(el.dataset.id), field = el.dataset.field, val = el.value;
+    if(!val) return;
+    const row = this.data[table].find(r=>r._id===id);
+    if(!row) return;
+    this._pushUndoSnapshot();
+    if(!Array.isArray(row[field])) row[field] = [];
+    if(!row[field].includes(val)) row[field].push(val);
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+  }
+
+  handleMultiRemove(el){
+    const table = el.dataset.table, id = Number(el.dataset.id), field = el.dataset.field, val = el.dataset.value;
+    const row = this.data[table].find(r=>r._id===id);
+    if(!row) return;
+    this._pushUndoSnapshot();
+    row[field] = (Array.isArray(row[field]) ? row[field] : []).filter(v=>v!==val);
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+  }
+
+  handleDelete(el){
+    const table = el.dataset.table, id = Number(el.dataset.id);
+    this._pushUndoSnapshot();
+    this.data[table] = this.data[table].filter(r=>r._id!==id);
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+  }
+
+  handleAddRow(el){
+    this.openAddModal(el.dataset.table);
+  }
+
+  // ---------------- Add-item popup (used by every "+ Add ___" button) ----------------
+  // Fields shown come straight from this.columns[table] — the same metadata that already
+  // drives inline table editing — so the popup can never drift out of sync with the table.
+  // Nothing touches this.data until Save / Save & Add Another is clicked, so Cancel (or
+  // Escape, or clicking the backdrop) is always a true no-op.
+  addModalTitle(table){
+    return { cashflow:'Add Show', inventory:'Add Inventory Item', sales:'Add Sale', trades:'Add Trade', expenses:'Add Expense' }[table] || 'Add Row';
+  }
+
+  openAddModal(table){
+    this._addModalTable = table;
+    this._addModalDraft = this.blankRow(table);
+    document.getElementById('add-modal-title').textContent = this.addModalTitle(table);
+    this._renderAddModalBody();
+    document.getElementById('add-modal-overlay').classList.remove('hidden');
+    this._focusFirstAddModalField();
+  }
+
+  closeAddModal(){
+    document.getElementById('add-modal-overlay').classList.add('hidden');
+    this._addModalTable = null;
+    this._addModalDraft = null;
+  }
+
+  _focusFirstAddModalField(){
+    requestAnimationFrame(()=>{
+      const el = document.querySelector('#add-modal-body input, #add-modal-body select');
+      if(el) el.focus();
+    });
+  }
+
+  // Which columns appear in the popup, and whether each is a live input or a read-only
+  // preview (mirrors the same editableIf() logic the live table uses — e.g. a Sales row's
+  // Price field becomes a preview once it's linked to a trade).
+  _addModalFieldPlan(){
+    const table = this._addModalTable;
+    const draft = this._addModalDraft;
+    return (this.columns[table]||[])
+      .map(col=>{
+        if(typeof col.editableIf==='function'){
+          return { col, mode: col.editableIf(draft) ? 'edit' : 'preview' };
+        }
+        return { col, mode: col.editable ? 'edit' : 'skip' };
+      })
+      .filter(f=>f.mode!=='skip');
+  }
+
+  // Mirrors the Sale Price auto-fill in recalcAll() for a sale linked to a trade, so the
+  // popup's preview matches exactly what the row will show once it's actually added.
+  _addModalPreviewValue(col){
+    const draft = this._addModalDraft;
+    if(col.field==='Sale Price'){
+      const trade = this.data.trades.find(t=>t['Trade ID']===draft['Linked Trade']);
+      const price = trade ? (Number(trade['Value of Trade'])||0) + (Number(trade['Net Cash (auto)'])||0) : 0;
+      return fmtMoney(price);
+    }
+    return this._esc(draft[col.field]);
+  }
+
+  _renderAddModalBody(){
+    const draft = this._addModalDraft;
+    const html = this._addModalFieldPlan().map(({col,mode})=>{
+      const fieldHtml = mode==='preview'
+        ? `<div class="modal-readonly">${this._addModalPreviewValue(col)}</div>`
+        : this._addModalControlHtml(col, draft);
+      return `<div class="modal-field"><label>${this._esc(col.label)}</label>${fieldHtml}</div>`;
+    }).join('');
+    document.getElementById('add-modal-body').innerHTML = html;
+  }
+
+  // Same select/multiselect/text/number/money/date control types the live table renders in
+  // _cell(), but bound to the in-memory draft object via data-addfield instead of data-edit
+  // (the draft isn't part of this.data yet, so there's no row _id to key off of).
+  _addModalControlHtml(col, draft){
+    const field = col.field;
+    const baseAttrs = `data-addfield data-field="${this._esc(field)}"`;
+    if(col.type==='multiselect'){
+      const opts = typeof col.options==='function' ? col.options() : (col.options||[]);
+      const selected = Array.isArray(draft[field]) ? draft[field] : [];
+      const chips = selected.map(v=>{
+        const label = col.optionLabel ? col.optionLabel(v) : v;
+        return `<span class="chip">${this._esc(label)}<button type="button" data-addmulti-remove data-field="${this._esc(field)}" data-value="${this._esc(v)}" title="Remove">&times;</button></span>`;
+      }).join('');
+      const available = opts.filter(o=>!selected.includes(o));
+      const addOpts = available.map(o=>{
+        const label = col.optionLabel ? col.optionLabel(o) : o;
+        return `<option value="${this._esc(o)}">${this._esc(label)}</option>`;
+      }).join('');
+      const addSelect = available.length ? `<select class="add-picker" data-addmulti-add data-field="${this._esc(field)}"><option value="">+ add…</option>${addOpts}</select>` : '';
+      return `<div class="modal-multiselect multiselect-cell">${chips}${addSelect}</div>`;
+    }
+    if(col.type==='select'){
+      const opts = typeof col.options==='function' ? col.options() : (col.options||[]);
+      const blank = col.allowBlank ? `<option value="" ${!draft[field]?'selected':''}>—</option>` : '';
+      const optHtml = opts.map(o=>{
+        const label = col.optionLabel ? col.optionLabel(o) : o;
+        return `<option value="${this._esc(o)}" ${o===draft[field]?'selected':''}>${this._esc(label)}</option>`;
+      }).join('');
+      return `<select ${baseAttrs} data-type="select">${blank}${optHtml}</select>`;
+    }
+    const val = draft[field]==null?'':draft[field];
+    const htmlType = col.type==='money' ? 'number' : (col.type||'text');
+    const step = col.type==='money' ? 'step="0.01"' : (col.type==='number' ? 'step="1"' : '');
+    return `<input ${baseAttrs} data-type="${col.type||'text'}" type="${htmlType}" ${step} value="${this._esc(val)}" onkeydown="if(event.key==='Enter'){ event.preventDefault(); this.blur(); }">`;
+  }
+
+  handleAddModalFieldChange(el){
+    const field = el.dataset.field, type = el.dataset.type;
+    let val = el.value;
+    if(type==='number' || type==='money'){ val = val===''? 0 : parseFloat(val); if(Number.isNaN(val)) val=0; }
+    this._addModalDraft[field] = val;
+    this._renderAddModalBody();
+  }
+
+  handleAddModalMultiAdd(el){
+    const field = el.dataset.field, val = el.value;
+    if(!val) return;
+    if(!Array.isArray(this._addModalDraft[field])) this._addModalDraft[field] = [];
+    if(!this._addModalDraft[field].includes(val)) this._addModalDraft[field].push(val);
+    this._renderAddModalBody();
+  }
+
+  handleAddModalMultiRemove(el){
+    const field = el.dataset.field, val = el.dataset.value;
+    this._addModalDraft[field] = (Array.isArray(this._addModalDraft[field]) ? this._addModalDraft[field] : []).filter(v=>v!==val);
+    this._renderAddModalBody();
+  }
+
+  saveAddModal(addAnother){
+    const table = this._addModalTable;
+    const row = this._addModalDraft;
+    this._pushUndoSnapshot();
+    row._id = this.nextId++;
+    this.data[table].push(row);
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.showToast(`${this.addModalTitle(table).replace(/^Add /,'')} added.`);
+    if(addAnother){
+      this._addModalDraft = this.blankRow(table);
+      this._renderAddModalBody();
+      this._focusFirstAddModalField();
+    } else {
+      this.closeAddModal();
+    }
+  }
+
+  handleExport(el){
+    const table = el.dataset.table;
+    const cols = this.columns[table];
+    const header = cols.map(c=>c.label).join(',');
+    const esc = (v)=>{ v = v==null?'':String(v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+    const lines = this.data[table].map(row=> cols.map(c=> esc(row[c.field])).join(','));
+    const csv = [header, ...lines].join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${table}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  _countLabel(shown, total, noun){
+    const base = `${shown} ${noun}${shown!==1?'s':''}`;
+    return shown===total ? base : `${base} (filtered from ${total})`;
+  }
+
+  renderInventory(skipHead){
+    const cols = this._visibleColumns('inventory');
+    if(!skipHead) this._renderHead('inv-head', cols, 'inv', 'sortInventory', true, 'inventory');
+    const filtered = this._applyTableFilter('inventory', cols, this.data.inventory);
+    const data = this._sortData(filtered, this.sortStates.inv);
+    document.getElementById('inv-count').textContent = this._countLabel(data.length, this.data.inventory.length, 'item');
+    document.getElementById('inv-body').innerHTML = data.map(row=>
+      '<tr>' + cols.map(c=>this._cell('inventory', row, c)).join('') + this._deleteCell('inventory', row) + '</tr>'
+    ).join('');
+  }
+  sortInventory(field){ this._sortBy('inv', field, 'asc'); this.renderInventory(); }
+
+  renderSales(skipHead){
+    const cols = this._visibleColumns('sales');
+    if(!skipHead) this._renderHead('sales-head', cols, 'sales', 'sortSales', true, 'sales');
+    const filtered = this._applyTableFilter('sales', cols, this.data.sales);
+    const data = this._sortData(filtered, this.sortStates.sales);
+    const start = this.salesPageIndex*this.salesPageSize;
+    const pageData = data.slice(start, start+this.salesPageSize);
+    document.getElementById('sales-page-info').textContent = data.length
+      ? `${start+1}-${Math.min(start+this.salesPageSize,data.length)} of ${data.length}${data.length!==this.data.sales.length?` (filtered from ${this.data.sales.length})`:''}` : '0 of 0';
+    document.getElementById('sales-prev').disabled = this.salesPageIndex===0;
+    document.getElementById('sales-next').disabled = start+this.salesPageSize>=data.length;
+    document.getElementById('sales-body').innerHTML = pageData.map(row=>
+      '<tr>' + cols.map(c=>this._cell('sales', row, c)).join('') + this._deleteCell('sales', row) + '</tr>'
+    ).join('');
+  }
+  sortSales(field){ this._sortBy('sales', field, 'desc'); this.renderSales(); }
+  salesPage(delta){ this.salesPageIndex = Math.max(0, this.salesPageIndex+delta); this.renderSales(); }
+
+  renderCashflow(skipHead){
+    const cols = this._visibleColumns('cashflow');
+    if(!skipHead) this._renderHead('cashflow-head', cols, 'cashflow', 'sortCashflow', true, 'cashflow');
+    const filtered = this._applyTableFilter('cashflow', cols, this.data.cashflow);
+    const data = this._sortData(filtered, this.sortStates.cashflow);
+    document.getElementById('cashflow-count').textContent = this._countLabel(data.length, this.data.cashflow.length, 'show');
+    document.getElementById('cashflow-body').innerHTML = data.map(row=>
+      '<tr>' + cols.map(c=>this._cell('cashflow', row, c)).join('') + this._deleteCell('cashflow', row) + '</tr>'
+    ).join('');
+  }
+  sortCashflow(field){ this._sortBy('cashflow', field, 'asc'); this.renderCashflow(); }
+
+  renderTrades(skipHead){
+    const cols = this._visibleColumns('trades');
+    if(!skipHead) this._renderHead('trades-head', cols, 'trades', 'sortTrades', true, 'trades');
+    const filtered = this._applyTableFilter('trades', cols, this.data.trades);
+    const data = this._sortData(filtered, this.sortStates.trades);
+    document.getElementById('trades-count').textContent = this._countLabel(data.length, this.data.trades.length, 'trade');
+    document.getElementById('trades-body').innerHTML = data.map(row=>
+      '<tr>' + cols.map(c=>this._cell('trades', row, c)).join('') + this._deleteCell('trades', row) + '</tr>'
+    ).join('');
+    const cashIn = this.data.trades.reduce((a,t)=>a+(Number(t['Cash Received'])||0),0);
+    const cashOut = this.data.trades.reduce((a,t)=>a+(Number(t['Cash Paid Out'])||0),0);
+    document.getElementById('kpi-trade-cash-in').textContent = fmtMoney(cashIn);
+    document.getElementById('kpi-trade-cash-out').textContent = fmtMoney(cashOut);
+    document.getElementById('kpi-trade-cash-net').textContent = fmtMoney(cashIn-cashOut);
+  }
+  sortTrades(field){ this._sortBy('trades', field, 'asc'); this.renderTrades(); }
+
+  renderExpenses(skipHead){
+    const cols = this._visibleColumns('expenses');
+    if(!skipHead) this._renderHead('expenses-head', cols, 'expenses', 'sortExpenses', true, 'expenses');
+    const filtered = this._applyTableFilter('expenses', cols, this.data.expenses);
+    const data = this._sortData(filtered, this.sortStates.expenses);
+    document.getElementById('expenses-count').textContent = this._countLabel(data.length, this.data.expenses.length, 'expense');
+    document.getElementById('expenses-body').innerHTML = data.map(row=>
+      '<tr>' + cols.map(c=>this._cell('expenses', row, c)).join('') + this._deleteCell('expenses', row) + '</tr>'
+    ).join('');
+
+    const byShowAgg = this._aggregate(this.filteredExpenses, e=>e['Show Name'], e=>e['Amount']||0);
+    const byCatAgg = this._aggregate(this.filteredExpenses, e=>e['Category'], e=>e['Amount']||0);
+    const byShow = Object.entries(byShowAgg).sort((a,b)=>b[1]-a[1]);
+    document.getElementById('exp-by-show-body').innerHTML = byShow.map(([k,v])=>`<tr><td>${k}</td><td>${fmtMoney(v)}</td></tr>`).join('');
+    const byCat = Object.entries(byCatAgg).sort((a,b)=>b[1]-a[1]);
+    document.getElementById('exp-by-cat-body').innerHTML = byCat.map(([k,v])=>`<tr><td>${k}</td><td>${fmtMoney(v)}</td></tr>`).join('');
+    this._doughnut('chart-exp-show', byShowAgg);
+    this._doughnut('chart-exp-cat', byCatAgg);
+  }
+  sortExpenses(field){ this._sortBy('expenses', field, 'desc'); this.renderExpenses(); }
+
+  renderSettings(){
+    const grid = document.getElementById('lists-grid');
+    grid.innerHTML = Object.entries(this.data.lists).map(([title, items])=>`
+      <div class="list-card">
+        <h4>${this._esc(title)}</h4>
+        <ul>${items.map((item, idx)=>`
+          <li>
+            <div class="list-item-row">
+              <input type="text" class="list-item-input" value="${this._esc(item)}" data-list-rename data-list="${this._esc(title)}" data-index="${idx}" onkeydown="if(event.key==='Enter') this.blur()">
+              <button type="button" class="row-del" data-list-remove data-list="${this._esc(title)}" data-index="${idx}" title="Remove">&#10005;</button>
+            </div>
+          </li>`).join('')}
+        </ul>
+        <div class="list-add-row">
+          <input type="text" class="list-item-input" placeholder="Add new…" onkeydown="if(event.key==='Enter'){ event.preventDefault(); this.nextElementSibling.click(); }">
+          <button type="button" class="btn-sm btn-add" data-list-add="${this._esc(title)}">+ Add</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  handleListRename(el){
+    const listName = el.dataset.list, idx = Number(el.dataset.index);
+    const arr = this.data.lists[listName];
+    if(!arr) return;
+    const oldVal = arr[idx];
+    const newVal = el.value.trim();
+    if(!newVal){ el.value = oldVal; return; }
+    if(newVal===oldVal) return;
+    if(arr.some((v,i)=>i!==idx && v===newVal)){
+      this.showToast(`"${newVal}" is already in this list.`);
+      el.value = oldVal;
+      return;
+    }
+    this._pushUndoSnapshot();
+    arr[idx] = newVal;
+    let updated = 0;
+    (this.listFieldMap[listName]||[]).forEach(({table,field})=>{
+      this.data[table].forEach(row=>{ if(row[field]===oldVal){ row[field]=newVal; updated++; } });
+    });
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.showToast(updated>0 ? `Renamed "${oldVal}" to "${newVal}" — updated ${updated} existing record${updated>1?'s':''}.` : `Renamed "${oldVal}" to "${newVal}".`);
+  }
+
+  handleListRemove(el){
+    const listName = el.dataset.list, idx = Number(el.dataset.index);
+    const arr = this.data.lists[listName];
+    if(!arr) return;
+    const val = arr[idx];
+    const usage = (this.listFieldMap[listName]||[]).reduce((count,{table,field})=>
+      count + this.data[table].filter(r=>r[field]===val).length, 0);
+    this._pushUndoSnapshot();
+    arr.splice(idx,1);
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.showToast(usage>0
+      ? `Removed "${val}" — ${usage} existing record${usage>1?'s':''} still show it, but it's no longer selectable for new entries.`
+      : `Removed "${val}".`);
+  }
+
+  handleListAdd(el){
+    const listName = el.dataset.listAdd;
+    const input = el.previousElementSibling;
+    const val = (input.value||'').trim();
+    if(!val) return;
+    const arr = this.data.lists[listName] || (this.data.lists[listName] = []);
+    if(arr.includes(val)){
+      this.showToast(`"${val}" is already in this list.`);
+      return;
+    }
+    this._pushUndoSnapshot();
+    arr.push(val);
+    input.value = '';
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.showToast(`Added "${val}" to ${listName}.`);
+  }
+}
+
+// ===================== Cloud auto-load / auto-save (Firebase, no login) =====================
+// Everything lives in ONE fixed Firestore document (no per-user accounts). On page load we
+// fetch it; if it doesn't exist yet (first time ever), we seed it from the sample data baked
+// into this file. From then on, every edit (via Dashboard.markDirty, above) debounces a write
+// back to that same document — no downloads, no manual re-loading, no sign-in step.
+const CLOUD_DOC_PATH = { collection: 'dashboards', doc: 'main' };
+let cloudSaveTimer = null;
+
+function cloudDocRef(){
+  return db.collection(CLOUD_DOC_PATH.collection).doc(CLOUD_DOC_PATH.doc);
+}
+
+window.scheduleCloudSave = function scheduleCloudSave(){
+  if(!dash) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(async () => {
+    try{
+      const payload = dash._buildSavePayload();
+      await cloudDocRef().set(payload);
+      dash.dirty = false;
+      dash.setSessionStatus(`Saved to the cloud at ${new Date().toLocaleTimeString()}.`, 'saved');
+    } catch(err){
+      console.error('Cloud save failed', err);
+      dash.setSessionStatus('Could not save to the cloud (offline or blocked) — your edits are still on screen; they\'ll retry on the next change, or use "Save a Copy" as a backup.', 'dirty');
+    }
+  }, 900);
+};
+
+const dash = new Dashboard(RAW);
+
+(async () => {
+  try{
+    const ref = cloudDocRef();
+    const snap = await ref.get();
+    if(snap.exists){
+      dash._applyLoadedPayload(snap.data(), 'the cloud');
+      dash.undoStack = [];
+      dash.redoStack = [];
+      dash._updateUndoRedoButtons();
+    } else {
+      // First time this ever ran — save the built-in sample data as the starting point so
+      // every later edit has something in Firestore to update.
+      await ref.set(dash._buildSavePayload());
+      dash.setSessionStatus('First load — starting from the built-in sample data. Every change now saves automatically to the cloud.', 'saved');
+    }
+  } catch(err){
+    console.error('Cloud load failed', err);
+    dash.setSessionStatus('Could not reach the cloud-saved data — showing the built-in sample data instead. Check your connection and reload.', 'dirty');
+  }
+})();
+</script>
+</body>
+</html>
