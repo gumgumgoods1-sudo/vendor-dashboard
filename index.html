@@ -32,17 +32,20 @@
 
 <style>
 :root {
-  --bg-primary:#f6f5f2; --bg-card:#ffffff; --bg-header:#1c1330;
-  --text-primary:#20182c; --text-secondary:#6b6478; --text-on-dark:#ffffff;
-  --accent1:#e0472c; --accent2:#2e6f9e;
-  --accent3:#e8a33d; --accent4:#4c8c6b; --accent5:#8a6bbf; --accent6:#c77dbb;
-  --positive:#2e8b57; --negative:#c0392b; --warning:#e8a33d;
-  --gap:16px; --radius:12px;
+  --bg-primary:#f4f4f9; --bg-card:#ffffff; --bg-header:#171225;
+  --text-primary:#191521; --text-secondary:#716d80; --text-on-dark:#ffffff;
+  --accent1:#e0472c; --accent2:#3573b1;
+  --accent3:#dd9a2e; --accent4:#3f9d78; --accent5:#8b6bd6; --accent6:#d6659c;
+  --positive:#2e9563; --negative:#d6455a; --warning:#dd9a2e;
+  --border-subtle:#eae8f2;
+  --gap:18px; --radius:16px; --radius-sm:11px;
+  --shadow-sm:0 1px 2px rgba(23,18,37,0.05), 0 1px 1px rgba(23,18,37,0.04);
+  --shadow-md:0 8px 24px rgba(23,18,37,0.08);
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg-primary); color:var(--text-primary); line-height:1.5; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg-primary); color:var(--text-primary); line-height:1.5; -webkit-font-smoothing:antialiased; padding-bottom:0; }
 .dashboard-container { max-width:1440px; margin:0 auto; padding:var(--gap); }
-.dashboard-header { background:linear-gradient(120deg,#1c1330,#3a1f4d); color:var(--text-on-dark); padding:24px 28px; border-radius:var(--radius); margin-bottom:var(--gap); display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; }
+.dashboard-header { background:linear-gradient(135deg,#171225,#352050); color:var(--text-on-dark); padding:26px 30px; border-radius:var(--radius); margin-bottom:var(--gap); display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; box-shadow:var(--shadow-md); }
 .dashboard-header h1 { font-size:22px; font-weight:700; }
 .dashboard-header p { font-size:13px; color:rgba(255,255,255,0.65); margin-top:4px; }
 .filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
@@ -53,23 +56,26 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
 .reset-btn { align-self:flex-end; padding:8px 14px; border-radius:6px; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.08); color:#fff; font-size:12px; cursor:pointer; }
 .reset-btn:hover { background:rgba(255,255,255,0.2); }
 
-.session-bar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; background:var(--bg-card); border-radius:var(--radius); padding:10px 16px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.session-bar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; background:var(--bg-card); border-radius:var(--radius); padding:12px 18px; margin-bottom:10px; box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); }
 .session-status { font-size:12px; color:var(--text-secondary); }
 .session-status.dirty { color:#8a5a00; }
 .session-status.saved { color:var(--positive); }
-.session-actions { display:flex; gap:8px; }
-.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(0); background:#1c1330; color:#fff; padding:10px 20px; border-radius:8px; font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,0.2); z-index:1000; transition:opacity .25s, transform .25s; opacity:1; }
+.session-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(0); background:var(--bg-header); color:#fff; padding:11px 22px; border-radius:99px; font-size:13px; box-shadow:var(--shadow-md); z-index:1000; transition:opacity .25s, transform .25s; opacity:1; }
 .toast.hidden { opacity:0; transform:translateX(-50%) translateY(10px); pointer-events:none; }
 
-.tab-bar { display:flex; gap:4px; background:var(--bg-card); border-radius:var(--radius); padding:6px; margin-bottom:var(--gap); box-shadow:0 1px 3px rgba(0,0,0,0.06); overflow-x:auto; }
-.tab-btn { padding:9px 20px; border:none; background:transparent; border-radius:8px; font-size:13px; font-weight:700; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
+.tab-bar { display:flex; gap:2px; background:var(--bg-card); border-radius:var(--radius); padding:6px; margin-bottom:var(--gap); box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); overflow-x:auto; }
+.tab-btn { padding:10px 20px; border:none; background:transparent; border-radius:10px; font-size:13px; font-weight:700; color:var(--text-secondary); cursor:pointer; white-space:nowrap; transition:background .12s, color .12s; }
 .tab-btn.active { background:var(--bg-header); color:#fff; }
-.tab-btn:hover:not(.active) { background:#f0eee9; color:var(--text-primary); }
+.tab-btn:hover:not(.active) { background:#f2f1f8; color:var(--text-primary); }
 .tab-panel { display:none; }
 .tab-panel.active { display:block; }
 
-.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:var(--gap); margin-bottom:var(--gap); }
-.kpi-card { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); border-left:4px solid var(--accent1); }
+.kpi-group { margin-bottom:var(--gap); }
+.kpi-group-title { font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-secondary); margin-bottom:10px; }
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+.kpi-card { background:var(--bg-card); border-radius:var(--radius-sm); padding:16px 18px; box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); border-left:4px solid var(--accent1); transition:box-shadow .15s, transform .15s; }
+.kpi-card:hover { box-shadow:var(--shadow-md); transform:translateY(-1px); }
 .kpi-card.expenses { border-left-color:var(--negative); }
 .kpi-card.profit { border-left-color:var(--positive); }
 .kpi-card.netprofit { border-left-color:#1f6f5c; }
@@ -79,10 +85,41 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
 .kpi-card.sold { border-left-color:var(--accent5); }
 .kpi-card.traded { border-left-color:var(--accent6); }
 .kpi-card.cash { border-left-color:#333; }
-.kpi-label { font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; font-weight:600; }
-.kpi-value { font-size:24px; font-weight:700; }
+.kpi-label { font-size:10.5px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.5px; margin-bottom:7px; font-weight:700; }
+.kpi-value { font-size:23px; font-weight:800; letter-spacing:-.01em; }
 
-.alert-banner { background:#fff4e5; border:1px solid #f3c98b; color:#8a5a00; border-radius:var(--radius); padding:14px 44px 14px 20px; margin-bottom:var(--gap); font-size:13px; display:flex; gap:10px; align-items:center; position:relative; }
+/* ---------- Bottom nav (mobile/PWA only — see @media block near the end) ---------- */
+.bottom-nav { display:none; }
+
+/* ---------- Quick Add floating button + modal ---------- */
+.fab { position:fixed; right:22px; bottom:22px; width:56px; height:56px; border-radius:50%; background:var(--bg-header); color:#fff; border:none; font-size:26px; line-height:1; box-shadow:var(--shadow-md); cursor:pointer; z-index:900; display:flex; align-items:center; justify-content:center; }
+.fab:hover { background:#2a2040; }
+.fab:active { transform:scale(0.96); }
+.qa-overlay { position:fixed; inset:0; background:rgba(20,16,32,0.45); z-index:1500; display:flex; align-items:flex-end; justify-content:center; }
+.qa-overlay.hidden { display:none; }
+.qa-modal { background:var(--bg-card); border-radius:20px 20px 0 0; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; padding:20px 22px 26px; box-shadow:var(--shadow-md); }
+@media (min-width:640px){
+  .qa-overlay { align-items:center; }
+  .qa-modal { border-radius:var(--radius); margin-bottom:0; }
+}
+.qa-modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+.qa-modal-head h2 { font-size:16px; font-weight:800; }
+.qa-close { border:none; background:#f2f1f8; color:var(--text-secondary); width:30px; height:30px; border-radius:50%; font-size:15px; cursor:pointer; }
+.qa-close:hover { background:#e8e6f2; color:var(--text-primary); }
+.qa-tabs { display:flex; gap:6px; background:#f2f1f8; border-radius:10px; padding:4px; margin-bottom:18px; }
+.qa-tab-btn { flex:1; padding:9px 8px; border:none; background:transparent; border-radius:8px; font-size:13px; font-weight:700; color:var(--text-secondary); cursor:pointer; }
+.qa-tab-btn.active { background:#fff; color:var(--text-primary); box-shadow:var(--shadow-sm); }
+.qa-form { display:none; flex-direction:column; gap:14px; }
+.qa-form.active { display:flex; }
+.qa-field label { display:block; font-size:12px; font-weight:700; color:var(--text-secondary); margin-bottom:6px; }
+.qa-field input, .qa-field select { width:100%; padding:12px 14px; border:1.5px solid var(--border-subtle); border-radius:10px; font-size:15px; font-family:inherit; color:var(--text-primary); background:#fff; }
+.qa-field input:focus, .qa-field select:focus { outline:none; border-color:var(--accent2); box-shadow:0 0 0 3px rgba(53,115,177,0.15); }
+.qa-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.qa-submit { margin-top:4px; padding:14px; border:none; border-radius:12px; background:var(--bg-header); color:#fff; font-size:15px; font-weight:800; cursor:pointer; }
+.qa-submit:hover { background:#2a2040; }
+.qa-submit:active { transform:scale(0.99); }
+
+.alert-banner { background:#fdf3e3; border:1px solid #f0d59f; color:#8a5a00; border-radius:var(--radius); padding:14px 44px 14px 20px; margin-bottom:var(--gap); font-size:13px; display:flex; gap:10px; align-items:center; position:relative; box-shadow:var(--shadow-sm); }
 .alert-banner strong { font-weight:700; }
 .alert-banner.hidden { display:none; }
 .alert-dismiss { position:absolute; top:8px; right:10px; border:none; background:transparent; color:#8a5a00; cursor:pointer; font-size:16px; line-height:1; padding:4px 7px; border-radius:5px; }
@@ -101,7 +138,7 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
 .section-title { font-size:15px; font-weight:700; margin:26px 0 12px 2px; color:var(--text-primary); }
 .section-title:first-child { margin-top:0; }
 .chart-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:var(--gap); margin-bottom:var(--gap); }
-.chart-container { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.chart-container { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); }
 .chart-container h3 { font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:14px; }
 .chart-svg-wrap { width:100%; }
 .chart-svg-wrap svg { width:100%; height:auto; display:block; overflow:visible; }
@@ -121,7 +158,7 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
 .grid-line { stroke:#eeece7; stroke-width:1; }
 .zero-line { stroke:#d8d5cd; stroke-width:1.2; }
 
-.table-section { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); overflow-x:auto; margin-bottom:var(--gap); }
+.table-section { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); overflow-x:auto; margin-bottom:var(--gap); position:relative; }
 .table-section h3 { font-size:13px; font-weight:700; margin-bottom:12px; }
 .data-table { width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed; }
 .data-table thead th { position:relative; text-align:left; padding:9px 10px; border-bottom:2px solid #ececec; color:var(--text-secondary); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none; }
@@ -142,14 +179,18 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
 
 .table-toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
 .table-toolbar .toolbar-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+/* Mobile-only "Filters" toggle + "Sort by" dropdown — see the max-width:768px block below,
+   which is where these actually become visible (and where the header row they stand in for
+   gets hidden once the table turns into a card list). */
+.mobile-table-controls { display:none; }
 .pager { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--text-secondary); }
 .pager button { border:1px solid #e2e0da; background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px; }
 .pager button:disabled { opacity:.4; cursor:default; }
-.btn-sm { border:1px solid #e2e0da; background:#fff; border-radius:6px; padding:5px 12px; cursor:pointer; font-size:12px; font-weight:600; color:var(--text-primary); }
+.btn-sm { border:1px solid var(--border-subtle); background:#fff; border-radius:8px; padding:6px 13px; cursor:pointer; font-size:12px; font-weight:700; color:var(--text-primary); }
 .btn-sm:hover { background:#f4f2ed; }
 .btn-sm:disabled { opacity:.4; cursor:not-allowed; }
 .btn-sm:disabled:hover { background:#fff; }
-.btn-add { border-color:#2e6f9e; color:#2e6f9e; }
+.btn-add { border-color:var(--accent2); color:var(--accent2); }
 .btn-add:hover { background:#eaf2f8; }
 .col-toggle-wrap { position:relative; display:inline-block; }
 .col-toggle-panel { position:absolute; top:calc(100% + 4px); left:0; z-index:20; background:#fff; border:1px solid #e2e0da; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.12); padding:8px 4px; min-width:190px; max-height:280px; overflow-y:auto; }
@@ -180,7 +221,7 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
 
 .two-col { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:var(--gap); }
 .lists-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--gap); }
-.list-card { background:var(--bg-card); border-radius:var(--radius); padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+.list-card { background:var(--bg-card); border-radius:var(--radius); padding:16px 20px; box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); }
 .list-card h4 { font-size:12px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-secondary); margin-bottom:10px; }
 .list-card ul { list-style:none; }
 .list-card li { padding:0; border-bottom:1px solid #f2f1ee; font-size:13px; }
@@ -199,10 +240,47 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
   .dashboard-header { flex-direction:column; align-items:flex-start; }
   .kpi-row { grid-template-columns:repeat(2,1fr); }
   .chart-row { grid-template-columns:1fr; }
+
+  /* ---------- Bottom nav replaces the top tab bar ---------- */
+  .tab-bar { display:none; }
+  .bottom-nav { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:850; background:var(--bg-card); border-top:1px solid var(--border-subtle); box-shadow:0 -4px 16px rgba(23,18,37,0.08); padding:4px 2px calc(4px + env(safe-area-inset-bottom, 0px)); gap:2px; }
+  .bottom-nav .tab-btn { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:7px 2px 6px; font-size:10px; border-radius:10px; white-space:normal; }
+  .bottom-nav .tab-btn .nav-ico { font-size:17px; line-height:1; }
+  .dashboard-container { padding-bottom:78px; }
+  .fab { bottom:80px; }
+
+  /* ---------- Card-list view for the 5 editable data tables ---------- */
+  /* Scoped to .table-cards (not every .data-table) so the small read-only summary tables
+     (Top Shows, Expenses by Show/Category) keep their normal compact table layout. */
+  .table-cards { table-layout:auto; }
+  .table-cards colgroup { display:none; }
+  .table-cards thead tr.sort-row { display:none; }
+  .table-cards thead tr.filter-row { display:none; }
+  .table-section.mobile-filters-open .table-cards thead { display:block; }
+  .table-section.mobile-filters-open .table-cards thead tr.filter-row { display:flex; flex-direction:column; gap:10px; background:#fbfaf7; border:1px solid var(--border-subtle); border-radius:12px; padding:12px; margin-bottom:12px; }
+  .table-section.mobile-filters-open .table-cards thead tr.filter-row th { display:block; padding:0; background:transparent; }
+  .table-cards tbody { display:block; }
+  .table-cards tbody tr { display:flex; flex-direction:column; background:#fff; border:1px solid var(--border-subtle); border-radius:12px; padding:12px 34px 12px 14px; margin-bottom:10px; position:relative; cursor:pointer; }
+  /* Bottom-right (not top-right) so the expand chevron never overlaps the delete "×" button,
+     which sits at the top-right via .row-actions below. */
+  .table-cards tbody tr::after { content:'\25BE'; position:absolute; bottom:10px; right:12px; color:var(--text-secondary); font-size:13px; transition:transform .15s; }
+  .table-cards tbody tr.row-expanded::after { transform:rotate(180deg); }
+  .table-cards tbody td { display:block; border-bottom:none; padding:3px 0; white-space:normal; overflow:visible; text-overflow:clip; order:5; }
+  .table-cards tbody td.cell-primary { order:1; font-weight:700; font-size:14.5px; }
+  .table-cards tbody td.cell-secondary { order:6; display:none; padding-top:7px; margin-top:6px; border-top:1px dashed #eee; }
+  .table-cards tbody td.cell-secondary::before { content:attr(data-label); display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--text-secondary); margin-bottom:3px; }
+  .table-cards tbody tr.row-expanded td.cell-secondary { display:block; }
+  .table-cards tbody td.row-actions { position:absolute; top:8px; right:4px; order:0; padding:0; }
+  .table-cards td input, .table-cards td select { padding:9px 10px; font-size:13.5px; }
+  .table-cards .multiselect-cell { min-width:0; }
+
+  /* ---------- Mobile "Filters" toggle + "Sort by" dropdown, shown per table-toolbar ---------- */
+  .mobile-table-controls { display:flex; gap:8px; width:100%; }
+  .mobile-table-controls select.mobile-sort-select { flex:1; min-width:0; border:1px solid var(--border-subtle); border-radius:8px; padding:7px 8px; font-size:12px; font-family:inherit; color:var(--text-primary); background:#fff; }
 }
 @media print {
   body { background:#fff; }
-  .filters, .reset-btn, .pager, .tab-bar { display:none; }
+  .filters, .reset-btn, .pager, .tab-bar, .bottom-nav, .fab, .qa-overlay, .modal-overlay { display:none; }
   .tab-panel { display:block !important; margin-bottom:30px; }
   .chart-container, .kpi-card, .table-section, .list-card { break-inside:avoid; box-shadow:none; border:1px solid #e2e0da; }
 }
@@ -251,22 +329,98 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
     <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')">Settings</button>
   </nav>
 
+  <!-- Mobile-only bottom nav — same class/data-tab/onclick pattern as the top tab bar above, so
+       dash.showTab() keeps every nav in sync automatically with zero extra JS. Hidden on desktop,
+       shown in place of .tab-bar under the max-width:768px media query. -->
+  <nav class="bottom-nav">
+    <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')"><span class="nav-ico">&#128202;</span>Dashboard</button>
+    <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')"><span class="nav-ico">&#128176;</span>Cashflow</button>
+    <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')"><span class="nav-ico">&#128230;</span>Inventory</button>
+    <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')"><span class="nav-ico">&#129517;</span>Sales</button>
+    <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')"><span class="nav-ico">&#128257;</span>Trades</button>
+    <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')"><span class="nav-ico">&#128179;</span>Expenses</button>
+    <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')"><span class="nav-ico">&#9881;</span>Settings</button>
+  </nav>
+
+  <!-- Quick Add floating button + modal (Sale / Trade / Expense) — visible on every tab. -->
+  <button class="fab" id="qa-fab" title="Quick Add a sale, trade, or expense">+</button>
+  <div class="qa-overlay hidden" id="qa-overlay">
+    <div class="qa-modal">
+      <div class="qa-modal-head">
+        <h2>Quick Add</h2>
+        <button type="button" class="qa-close" id="qa-close" title="Close">&times;</button>
+      </div>
+      <div class="qa-tabs">
+        <button type="button" class="qa-tab-btn active" data-qa-tab="sales" onclick="dash.switchQuickAddTab('sales')">Sale</button>
+        <button type="button" class="qa-tab-btn" data-qa-tab="trades" onclick="dash.switchQuickAddTab('trades')">Trade</button>
+        <button type="button" class="qa-tab-btn" data-qa-tab="expenses" onclick="dash.switchQuickAddTab('expenses')">Expense</button>
+      </div>
+
+      <form class="qa-form active" id="qa-form-sales" data-qa-form="sales">
+        <div class="qa-row">
+          <div class="qa-field"><label>Date</label><input type="date" name="Date" required></div>
+          <div class="qa-field"><label>Show</label><select name="Show Name"></select></div>
+        </div>
+        <div class="qa-field"><label>Item</label><select name="Item ID"></select></div>
+        <div class="qa-row">
+          <div class="qa-field"><label>Qty Sold</label><input type="number" name="Quantity Sold" min="1" step="1" value="1" required></div>
+          <div class="qa-field"><label>Sale Price</label><input type="number" name="Sale Price" min="0" step="0.01" value="0" required></div>
+        </div>
+        <div class="qa-field"><label>Payment Method</label><select name="Payment Method"></select></div>
+        <button type="submit" class="qa-submit">Add Sale</button>
+      </form>
+
+      <form class="qa-form" id="qa-form-trades" data-qa-form="trades">
+        <div class="qa-row">
+          <div class="qa-field"><label>Date</label><input type="date" name="Date" required></div>
+          <div class="qa-field"><label>Show</label><select name="Show Name"></select></div>
+        </div>
+        <div class="qa-field"><label>Item Traded Out</label><select name="Items Traded Out"></select></div>
+        <div class="qa-row">
+          <div class="qa-field"><label>Trade Value</label><input type="number" name="Value of Trade" min="0" step="0.01" value="0" required></div>
+          <div class="qa-field"><label>Cash In / Out</label><input type="number" name="Net Cash" step="0.01" value="0"></div>
+        </div>
+        <div class="edit-note" style="margin:-6px 0 0">Positive = cash you received, negative = cash you paid out. Add more items traded, an item received back, or edit further from the full Trades tab.</div>
+        <button type="submit" class="qa-submit">Add Trade</button>
+      </form>
+
+      <form class="qa-form" id="qa-form-expenses" data-qa-form="expenses">
+        <div class="qa-row">
+          <div class="qa-field"><label>Date</label><input type="date" name="Date" required></div>
+          <div class="qa-field"><label>Show</label><select name="Show Name"></select></div>
+        </div>
+        <div class="qa-field"><label>Category</label><select name="Category"></select></div>
+        <div class="qa-field"><label>Description</label><input type="text" name="Description" required></div>
+        <div class="qa-field"><label>Amount</label><input type="number" name="Amount" min="0" step="0.01" value="0" required></div>
+        <button type="submit" class="qa-submit">Add Expense</button>
+      </form>
+    </div>
+  </div>
+
   <!-- ===================== DASHBOARD TAB ===================== -->
   <section class="tab-panel active" id="tab-dashboard">
     <div id="low-stock-alert" class="alert-banner hidden"></div>
 
-    <section class="kpi-row">
-      <div class="kpi-card"><div class="kpi-label">Total Sales</div><div class="kpi-value" id="kpi-sales">$0</div></div>
-      <div class="kpi-card expenses"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="kpi-expenses">$0</div></div>
-      <div class="kpi-card profit" title="Profit from Sales (Sale Price − Cost, summed across every sale) + Cash In − Cash Out from Trades that are NOT linked to a sale (a linked trade's cash is already inside that sale's profit instead). Value of Trade is never added directly."><div class="kpi-label">Total Actual Profit</div><div class="kpi-value" id="kpi-profit">$0</div></div>
-      <div class="kpi-card netprofit" title="Total Actual Profit minus Total Expenses."><div class="kpi-label">Net Profit</div><div class="kpi-value" id="kpi-netprofit">$0</div></div>
-      <div class="kpi-card potential" title="Retail Price − Cost, added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Potential Profit (Inventory)</div><div class="kpi-value" id="kpi-potential">$0</div></div>
-      <div class="kpi-card cost" title="The Cost column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Total Cost (Inventory)</div><div class="kpi-value" id="kpi-cost">$0</div></div>
-      <div class="kpi-card inv" title="The Retail Price column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Inventory Value</div><div class="kpi-value" id="kpi-inv">$0</div></div>
-      <div class="kpi-card sold"><div class="kpi-label">Items Sold</div><div class="kpi-value" id="kpi-sold">0</div></div>
-      <div class="kpi-card traded"><div class="kpi-label">Items Traded</div><div class="kpi-value" id="kpi-traded">0</div></div>
-      <div class="kpi-card cash"><div class="kpi-label">Net Cashflow</div><div class="kpi-value" id="kpi-cash">$0</div></div>
-    </section>
+    <div class="kpi-group">
+      <div class="kpi-group-title">Revenue &amp; Profit</div>
+      <section class="kpi-row">
+        <div class="kpi-card"><div class="kpi-label">Total Sales</div><div class="kpi-value" id="kpi-sales">$0</div></div>
+        <div class="kpi-card expenses"><div class="kpi-label">Total Expenses</div><div class="kpi-value" id="kpi-expenses">$0</div></div>
+        <div class="kpi-card profit" title="Profit from Sales (Sale Price − Cost, summed across every sale) + Cash In − Cash Out from Trades that are NOT linked to a sale (a linked trade's cash is already inside that sale's profit instead). Value of Trade is never added directly."><div class="kpi-label">Total Actual Profit</div><div class="kpi-value" id="kpi-profit">$0</div></div>
+        <div class="kpi-card netprofit" title="Total Actual Profit minus Total Expenses."><div class="kpi-label">Net Profit</div><div class="kpi-value" id="kpi-netprofit">$0</div></div>
+        <div class="kpi-card potential" title="Retail Price − Cost, added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Potential Profit (Inventory)</div><div class="kpi-value" id="kpi-potential">$0</div></div>
+      </section>
+    </div>
+    <div class="kpi-group">
+      <div class="kpi-group-title">Inventory &amp; Activity</div>
+      <section class="kpi-row">
+        <div class="kpi-card cost" title="The Cost column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Total Cost (Inventory)</div><div class="kpi-value" id="kpi-cost">$0</div></div>
+        <div class="kpi-card inv" title="The Retail Price column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Inventory Value</div><div class="kpi-value" id="kpi-inv">$0</div></div>
+        <div class="kpi-card sold"><div class="kpi-label">Items Sold</div><div class="kpi-value" id="kpi-sold">0</div></div>
+        <div class="kpi-card traded"><div class="kpi-label">Items Traded</div><div class="kpi-value" id="kpi-traded">0</div></div>
+        <div class="kpi-card cash"><div class="kpi-label">Net Cashflow</div><div class="kpi-value" id="kpi-cash">$0</div></div>
+      </section>
+    </div>
 
     <div class="section-title">Sales Insights</div>
     <section class="chart-row">
@@ -331,8 +485,12 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
           <button class="btn-sm" data-export data-table="cashflow">Export CSV</button>
           <button class="btn-sm btn-add" data-addrow data-table="cashflow">+ Add Show</button>
         </div>
+        <div class="mobile-table-controls">
+          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <select class="mobile-sort-select" id="mobile-sort-cashflow" data-mobile-sort data-table="cashflow"></select>
+        </div>
       </div>
-      <table class="data-table">
+      <table class="data-table table-cards">
         <colgroup id="cashflow-colgroup"></colgroup>
         <thead id="cashflow-head"></thead>
         <tbody id="cashflow-body"></tbody>
@@ -355,8 +513,12 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
           <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
           <button class="btn-sm btn-add" data-addrow data-table="inventory">+ Add Item</button>
         </div>
+        <div class="mobile-table-controls">
+          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <select class="mobile-sort-select" id="mobile-sort-inventory" data-mobile-sort data-table="inventory"></select>
+        </div>
       </div>
-      <table class="data-table">
+      <table class="data-table table-cards">
         <colgroup id="inv-colgroup"></colgroup>
         <thead id="inv-head"></thead>
         <tbody id="inv-body"></tbody>
@@ -378,13 +540,17 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
           <button class="btn-sm" data-export data-table="sales">Export CSV</button>
           <button class="btn-sm btn-add" data-addrow data-table="sales">+ Add Sale</button>
         </div>
+        <div class="mobile-table-controls">
+          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <select class="mobile-sort-select" id="mobile-sort-sales" data-mobile-sort data-table="sales"></select>
+        </div>
         <div class="pager">
           <span id="sales-page-info"></span>
           <button id="sales-prev" onclick="dash.salesPage(-1)">&lt; Prev</button>
           <button id="sales-next" onclick="dash.salesPage(1)">Next &gt;</button>
         </div>
       </div>
-      <table class="data-table">
+      <table class="data-table table-cards">
         <colgroup id="sales-colgroup"></colgroup>
         <thead id="sales-head"></thead>
         <tbody id="sales-body"></tbody>
@@ -422,8 +588,12 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
           <button class="btn-sm" data-export data-table="trades">Export CSV</button>
           <button class="btn-sm btn-add" data-addrow data-table="trades">+ Add Trade</button>
         </div>
+        <div class="mobile-table-controls">
+          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <select class="mobile-sort-select" id="mobile-sort-trades" data-mobile-sort data-table="trades"></select>
+        </div>
       </div>
-      <table class="data-table">
+      <table class="data-table table-cards">
         <colgroup id="trades-colgroup"></colgroup>
         <thead id="trades-head"></thead>
         <tbody id="trades-body"></tbody>
@@ -472,8 +642,12 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif
           <button class="btn-sm" data-export data-table="expenses">Export CSV</button>
           <button class="btn-sm btn-add" data-addrow data-table="expenses">+ Add Expense</button>
         </div>
+        <div class="mobile-table-controls">
+          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <select class="mobile-sort-select" id="mobile-sort-expenses" data-mobile-sort data-table="expenses"></select>
+        </div>
       </div>
-      <table class="data-table">
+      <table class="data-table table-cards">
         <colgroup id="expenses-colgroup"></colgroup>
         <thead id="expenses-head"></thead>
         <tbody id="expenses-body"></tbody>
@@ -651,6 +825,7 @@ class Dashboard {
       if(e.target.matches('select.filter-input[data-filter]')){ this.handleFilterChange(e.target); return; }
       if(e.target.matches('[data-pref]')){ this.handlePrefChange(e.target); return; }
       if(e.target.matches('[data-col-visibility]')){ this.handleColumnVisibility(e.target); return; }
+      if(e.target.matches('[data-mobile-sort]')){ this.handleMobileSort(e.target); return; }
       if(e.target.matches('[data-addfield]')){ this.handleAddModalFieldChange(e.target); return; }
       if(e.target.matches('[data-addmulti-add]')){ this.handleAddModalMultiAdd(e.target); return; }
     });
@@ -673,6 +848,8 @@ class Dashboard {
       if(dls){ this.handleDismissLowStock(); return; }
       const ct = e.target.closest('[data-columns-toggle]');
       if(ct){ this.toggleColumnPanel(ct.dataset.table); return; }
+      const mft = e.target.closest('[data-mobile-filter-toggle]');
+      if(mft){ mft.closest('.table-section').classList.toggle('mobile-filters-open'); return; }
       const amrm = e.target.closest('[data-addmulti-remove]');
       if(amrm){ this.handleAddModalMultiRemove(amrm); return; }
       if(e.target.closest('#add-modal-save')){ this.saveAddModal(false); return; }
@@ -680,6 +857,11 @@ class Dashboard {
       if(e.target.closest('#add-modal-cancel') || e.target.closest('#add-modal-close')){ this.closeAddModal(); return; }
       // Clicking the dimmed backdrop itself (not the dialog box) also cancels.
       if(e.target.id==='add-modal-overlay'){ this.closeAddModal(); return; }
+      // Mobile card view: tapping anywhere on a data row (but not on its inputs/buttons/links)
+      // expands or collapses the fields tucked behind the "secondary" cells. No-op on desktop,
+      // where the CSS never hides those cells in the first place.
+      const cardRow = e.target.closest('.table-cards tbody tr');
+      if(cardRow && !e.target.closest('input, select, button, a, .chip')){ cardRow.classList.toggle('row-expanded'); return; }
       // Click landed outside any open column-toggle panel/button — close whatever's open.
       if(!e.target.closest('.col-toggle-wrap')){ this._closeColumnPanels(); }
     });
@@ -690,10 +872,6 @@ class Dashboard {
     document.getElementById('undo-btn').addEventListener('click', ()=>this.undo());
     document.getElementById('redo-btn').addEventListener('click', ()=>this.redo());
     document.addEventListener('keydown', e=>{
-      if(e.key==='Escape' && !document.getElementById('add-modal-overlay').classList.contains('hidden')){
-        this.closeAddModal();
-        return;
-      }
       const mod = e.ctrlKey || e.metaKey;
       if(!mod || e.key.toLowerCase()!=='z') return;
       // While a table cell / filter box is actively focused, let the browser's own in-field
@@ -703,12 +881,27 @@ class Dashboard {
       e.preventDefault();
       if(e.shiftKey) this.redo(); else this.undo();
     });
+    document.addEventListener('keydown', e=>{
+      if(e.key!=='Escape') return;
+      if(!document.getElementById('add-modal-overlay').classList.contains('hidden')){ this.closeAddModal(); return; }
+      this.closeQuickAdd();
+    });
     window.addEventListener('beforeunload', (e)=>{
       if(this.dirty && !this.autoSaveEnabled){ e.preventDefault(); e.returnValue = ''; }
     });
     this._initColumnResize();
+    this._initQuickAdd();
     this.recalcAll();
     this.renderAll();
+  }
+
+  // ---------------- mobile "Sort by" dropdown (mirrors clicking a column header) ----------------
+  handleMobileSort(el){
+    const table = el.dataset.table;
+    const field = el.value;
+    const sortFns = { inventory:'sortInventory', sales:'sortSales', trades:'sortTrades', expenses:'sortExpenses', cashflow:'sortCashflow' };
+    const fn = sortFns[table];
+    if(fn && typeof this[fn]==='function') this[fn](field);
   }
 
   // ---------------- column resize drag handling ----------------
@@ -769,19 +962,20 @@ class Dashboard {
   // ---------------- table column filters (view-only: never affects KPIs or charts) ----------------
   _filterCell(table, col){
     const current = (this.tableFilters[table] && this.tableFilters[table][col.field]) || '';
+    const label = this._esc(col.label);
     if(col.badge){
       const labels = ['In Stock','Sold'];
-      return `<th><select class="filter-input" data-filter data-table="${table}" data-field="${this._esc(col.field)}"><option value="">All</option>${labels.map(o=>`<option value="${this._esc(o)}" ${o===current?'selected':''}>${this._esc(o)}</option>`).join('')}</select></th>`;
+      return `<th data-label="${label}"><select class="filter-input" data-filter data-table="${table}" data-field="${this._esc(col.field)}"><option value="">All ${label}</option>${labels.map(o=>`<option value="${this._esc(o)}" ${o===current?'selected':''}>${this._esc(o)}</option>`).join('')}</select></th>`;
     }
     if(col.type==='select' || col.type==='multiselect'){
       const opts = typeof col.options==='function' ? col.options() : (col.options||[]);
       const optHtml = opts.map(o=>{
-        const label = col.optionLabel ? col.optionLabel(o) : o;
-        return `<option value="${this._esc(o)}" ${o===current?'selected':''}>${this._esc(label)}</option>`;
+        const optLabel = col.optionLabel ? col.optionLabel(o) : o;
+        return `<option value="${this._esc(o)}" ${o===current?'selected':''}>${this._esc(optLabel)}</option>`;
       }).join('');
-      return `<th><select class="filter-input" data-filter data-table="${table}" data-field="${this._esc(col.field)}"><option value="">All</option>${optHtml}</select></th>`;
+      return `<th data-label="${label}"><select class="filter-input" data-filter data-table="${table}" data-field="${this._esc(col.field)}"><option value="">All ${label}</option>${optHtml}</select></th>`;
     }
-    return `<th><input type="text" class="filter-input" placeholder="Filter…" data-filter data-table="${table}" data-field="${this._esc(col.field)}" value="${this._esc(current)}"></th>`;
+    return `<th data-label="${label}"><input type="text" class="filter-input" placeholder="${label}…" data-filter data-table="${table}" data-field="${this._esc(col.field)}" value="${this._esc(current)}"></th>`;
   }
 
   _applyTableFilter(table, cols, data){
@@ -1557,13 +1751,23 @@ class Dashboard {
     this._renderColgroup(table, cols, withActions);
     const state = this.sortStates[sortKey];
     const head = document.getElementById(headId);
-    const sortRow = '<tr>' + cols.map(c=>{
+    const sortRow = '<tr class="sort-row">' + cols.map(c=>{
       const arrow = state.field===c.field ? (state.dir==='asc'?' ▲':' ▼') : '';
       return `<th><span class="th-label" title="${this._esc(c.label)}" onclick="dash.${sortHandler}('${c.field}')">${c.label}${arrow}</span><span class="col-resizer" data-resize data-table="${table}" data-field="${this._esc(c.field)}" title="Drag to resize — double-click to reset"></span></th>`;
     }).join('') + (withActions ? '<th></th>' : '') + '</tr>';
     const filterRow = '<tr class="filter-row">' + cols.map(c=>this._filterCell(table, c)).join('') +
       (withActions ? `<th><button type="button" class="btn-sm filter-clear-btn" data-filter-clear data-table="${table}" title="Clear all filters on this table">Clear</button></th>` : '') + '</tr>';
     head.innerHTML = sortRow + filterRow;
+    // Mirror the same sort state into the mobile-only "Sort by" dropdown (see the table-toolbar
+    // markup) so narrow screens get a plain native picker instead of clickable column headers,
+    // which disappear on mobile once the table becomes a card list.
+    const mobileSortEl = document.getElementById('mobile-sort-'+table);
+    if(mobileSortEl){
+      mobileSortEl.innerHTML = cols.map(c=>{
+        const suffix = state.field===c.field ? (state.dir==='asc' ? ' (A→Z)' : ' (Z→A)') : '';
+        return `<option value="${this._esc(c.field)}" ${state.field===c.field?'selected':''}>${this._esc(c.label)}${suffix}</option>`;
+      }).join('');
+    }
   }
 
   // ---------------- resizable columns ----------------
@@ -1616,18 +1820,25 @@ class Dashboard {
   }
 
   // Renders one <td> for a column definition against a given row + table key.
+  // On narrow screens each <tr> becomes a card (see the mobile @media block): `cardCls` marks a
+  // field as always-visible/prominent ("primary") vs tucked behind the row's Details toggle
+  // ("secondary"), and `data-label` supplies the field name CSS shows in front of secondary values
+  // — none of this has any effect on desktop, where the normal table layout is unchanged.
   _cell(table, row, col){
+    const cardCls = col.primary ? 'cell-primary' : 'cell-secondary';
+    const label = this._esc(col.label);
     const isEditable = typeof col.editableIf==='function' ? col.editableIf(row) : col.editable;
     if(!isEditable){
       if(col.badge){
         const status = row[col.field];
-        return status==='LOW STOCK' ? '<td><span class="badge low">Sold</span></td>' : '<td><span class="badge ok">In Stock</span></td>';
+        const badge = status==='LOW STOCK' ? '<span class="badge low">Sold</span>' : '<span class="badge ok">In Stock</span>';
+        return `<td class="${cardCls}" data-label="${label}">${badge}</td>`;
       }
       const raw = row[col.field];
       let v = raw;
       v = col.money ? fmtMoney(v) : this._esc(v);
       const titleAttr = (!col.money && raw!=null && String(raw)!=='') ? ` title="${this._esc(raw)}"` : '';
-      return `<td class="auto-field"${titleAttr}>${v}</td>`;
+      return `<td class="auto-field ${cardCls}" data-label="${label}"${titleAttr}>${v}</td>`;
     }
     const id = row._id;
     const baseAttrs = `data-edit data-table="${table}" data-id="${id}" data-field="${this._esc(col.field)}"`;
@@ -1644,7 +1855,7 @@ class Dashboard {
         return `<option value="${this._esc(o)}">${this._esc(label)}</option>`;
       }).join('');
       const addSelect = available.length ? `<select class="add-picker" data-multi-add data-table="${table}" data-id="${id}" data-field="${this._esc(col.field)}"><option value="">+ add…</option>${addOpts}</select>` : '';
-      return `<td class="multiselect-cell">${chips}${addSelect}</td>`;
+      return `<td class="multiselect-cell ${cardCls}" data-label="${label}">${chips}${addSelect}</td>`;
     }
     if(col.type==='select'){
       const opts = typeof col.options==='function' ? col.options() : col.options;
@@ -1653,17 +1864,17 @@ class Dashboard {
         const label = col.optionLabel ? col.optionLabel(o) : o;
         return `<option value="${this._esc(o)}" ${o===row[col.field]?'selected':''}>${this._esc(label)}</option>`;
       }).join('');
-      return `<td><select ${baseAttrs} data-type="select">${blank}${optHtml}</select></td>`;
+      return `<td class="${cardCls}" data-label="${label}"><select ${baseAttrs} data-type="select">${blank}${optHtml}</select></td>`;
     }
     const val = row[col.field]==null?'':row[col.field];
     const htmlType = col.type==='money' ? 'number' : (col.type||'text');
     const step = col.type==='money' ? 'step="0.01"' : (col.type==='number' ? 'step="1"' : '');
     const titleAttr = (!col.type || col.type==='text') && val!=='' ? ` title="${this._esc(val)}"` : '';
-    return `<td><input ${baseAttrs} data-type="${col.type||'text'}" type="${htmlType}" ${step} value="${this._esc(val)}"${titleAttr} onkeydown="if(event.key==='Enter') this.blur()"></td>`;
+    return `<td class="${cardCls}" data-label="${label}"><input ${baseAttrs} data-type="${col.type||'text'}" type="${htmlType}" ${step} value="${this._esc(val)}"${titleAttr} onkeydown="if(event.key==='Enter') this.blur()"></td>`;
   }
 
   _deleteCell(table, row){
-    return `<td><button class="row-del" data-delete data-table="${table}" data-id="${row._id}" title="Delete row">&#10005;</button></td>`;
+    return `<td class="row-actions"><button class="row-del" data-delete data-table="${table}" data-id="${row._id}" title="Delete row">&#10005;</button></td>`;
   }
 
   // ---------------- column schema for every editable table ----------------
@@ -1688,57 +1899,57 @@ class Dashboard {
     this.columns = {
       inventory: [
         {field:'Item ID', label:'ID', editable:false},
-        {field:'Item Name', label:'Item', editable:true, type:'text'},
+        {field:'Item Name', label:'Item', editable:true, type:'text', primary:true},
         {field:'Category', label:'Category', editable:true, type:'select', options:invCategories},
         {field:'SKU', label:'SKU', editable:true, type:'text'},
         {field:'Set / Expansion', label:'Set', editable:true, type:'text'},
         {field:'Condition / Grade', label:'Cond', editable:true, type:'select', options:conditions},
         {field:'Cost', label:'Cost', editable:true, type:'money', money:true},
-        {field:'Retail Price', label:'Retail', editable:true, type:'money', money:true},
+        {field:'Retail Price', label:'Retail', editable:true, type:'money', money:true, primary:true},
         {field:'Qty Purchased', label:'Qty Purch.', editable:true, type:'number'},
         {field:'Total Cost (auto)', label:'Total Cost', editable:false, money:true},
         {field:'Qty Sold (auto)', label:'Sold', editable:false},
         {field:'Remaining Inventory (auto)', label:'Qty Left', editable:false},
         {field:'Total Inventory Value (auto)', label:'Value', editable:false, money:true},
-        {field:'Stock Status (auto)', label:'Status', editable:false, badge:true},
+        {field:'Stock Status (auto)', label:'Status', editable:false, badge:true, primary:true},
       ],
       sales: [
-        {field:'Date', label:'Date', editable:true, type:'date'},
+        {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
         {field:'Item ID', label:'Item', editable:true, type:'select', options:invIds, optionLabel:invIdLabel},
-        {field:'Item Name (auto)', label:'Item Name', editable:false},
+        {field:'Item Name (auto)', label:'Item Name', editable:false, primary:true},
         {field:'Cost (auto)', label:'Unit Cost', editable:false, money:true},
         {field:'Quantity Sold', label:'Qty', editable:true, type:'number'},
         {field:'Sale Price', label:'Price', editable:true, type:'money', money:true, editableIf:(row)=> !(row['Payment Method']==='Trade' && row['Linked Trade'])},
-        {field:'Total Sale Amount (auto)', label:'Total', editable:false, money:true},
+        {field:'Total Sale Amount (auto)', label:'Total', editable:false, money:true, primary:true},
         {field:'Total Cost (auto)', label:'Total Cost', editable:false, money:true},
         {field:'Profit (auto)', label:'Profit', editable:false, money:true},
         {field:'Payment Method', label:'Payment', editable:true, type:'select', options:paymentMethods},
         {field:'Linked Trade', label:'Trade Ref', editable:true, type:'select', options:tradeIds, optionLabel:tradeIdLabel, allowBlank:true},
       ],
       trades: [
-        {field:'Trade ID', label:'ID', editable:false},
-        {field:'Date', label:'Date', editable:true, type:'date'},
+        {field:'Trade ID', label:'ID', editable:false, primary:true},
+        {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
         {field:'Items Traded Out', label:'Traded Out', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
         {field:'Items Traded (auto)', label:'Item(s) Out', editable:false},
         {field:'Items Received', label:'Received', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
         {field:'Items Received (auto)', label:'Item(s) In', editable:false},
-        {field:'Value of Trade', label:'Trade Value', editable:true, type:'money', money:true},
+        {field:'Value of Trade', label:'Trade Value', editable:true, type:'money', money:true, primary:true},
         {field:'Cash Received', label:'Cash In', editable:true, type:'money', money:true},
         {field:'Cash Paid Out', label:'Cash Out', editable:true, type:'money', money:true},
         {field:'Net Cash (auto)', label:'Net Cash', editable:false, money:true},
       ],
       expenses: [
-        {field:'Date', label:'Date', editable:true, type:'date'},
+        {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
         {field:'Category', label:'Category', editable:true, type:'select', options:expCategories},
-        {field:'Description', label:'Description', editable:true, type:'text'},
-        {field:'Amount', label:'Amount', editable:true, type:'money', money:true},
+        {field:'Description', label:'Description', editable:true, type:'text', primary:true},
+        {field:'Amount', label:'Amount', editable:true, type:'money', money:true, primary:true},
       ],
       cashflow: [
-        {field:'Show Name', label:'Show', editable:true, type:'text'},
-        {field:'Date', label:'Date', editable:true, type:'date'},
+        {field:'Show Name', label:'Show', editable:true, type:'text', primary:true},
+        {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Starting Cash', label:'Start Cash', editable:true, type:'money', money:true},
         {field:'Starting Inventory Value', label:'Start Inv Value', editable:true, type:'money', money:true},
         {field:'Ending Cash', label:'End Cash', editable:true, type:'money', money:true},
@@ -1748,7 +1959,7 @@ class Dashboard {
         {field:'Total Trade Cash (auto)', label:'Trade Cash', editable:false, money:true},
         {field:'Change in Inventory Value (auto)', label:'Inv Chg', editable:false, money:true},
         {field:'Potential Profit (auto)', label:'Potential Profit', editable:false, money:true},
-        {field:'Actual Profit (auto)', label:'Actual Profit', editable:false, money:true},
+        {field:'Actual Profit (auto)', label:'Actual Profit', editable:false, money:true, primary:true},
         {field:'Notes', label:'Notes', editable:true, type:'text'},
       ],
     };
@@ -1973,6 +2184,116 @@ class Dashboard {
     } else {
       this.closeAddModal();
     }
+  }
+
+  // ---------------- Quick Add (floating + button → Sale/Trade/Expense modal) ----------------
+  // Every submit reuses the exact same undo → mutate → recalc → render → markDirty pipeline as
+  // the per-tab "+ Add" buttons (handleAddRow above) — this is just a faster front door for the
+  // three record types someone adds on the fly at a show, not a separate code path.
+  _initQuickAdd(){
+    document.getElementById('qa-fab').addEventListener('click', ()=>this.openQuickAdd());
+    document.getElementById('qa-close').addEventListener('click', ()=>this.closeQuickAdd());
+    document.getElementById('qa-overlay').addEventListener('click', (e)=>{
+      if(e.target.id==='qa-overlay') this.closeQuickAdd();
+    });
+    document.querySelectorAll('.qa-form').forEach(form=>{
+      form.addEventListener('submit', (e)=>{
+        e.preventDefault();
+        this.handleQuickAddSubmit(form.dataset.qaForm, form);
+      });
+    });
+  }
+
+  openQuickAdd(tab){
+    this.populateQuickAddForms();
+    if(tab) this.switchQuickAddTab(tab);
+    document.getElementById('qa-overlay').classList.remove('hidden');
+  }
+
+  closeQuickAdd(){
+    document.getElementById('qa-overlay').classList.add('hidden');
+  }
+
+  switchQuickAddTab(name){
+    document.querySelectorAll('.qa-tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.qaTab===name));
+    document.querySelectorAll('.qa-form').forEach(f=>f.classList.toggle('active', f.dataset.qaForm===name));
+  }
+
+  populateQuickAddForms(){
+    const showOpts = [...new Set(this.data.cashflow.map(c=>c['Show Name']).filter(Boolean))];
+    const invOpts = this.data.inventory.map(i=>({value:i['Item ID'], label:`${i['Item ID']} — ${i['Item Name']}`}));
+    const paymentOpts = this.data.lists['Payment Methods']||[];
+    const expCatOpts = this.data.lists['Expense Categories']||[];
+    const today = this.todayStr();
+    const showOptHtml = showOpts.length
+      ? showOpts.map(s=>`<option value="${this._esc(s)}">${this._esc(s)}</option>`).join('')
+      : `<option value="">— add a show on the Cashflow tab first —</option>`;
+    const invOptHtml = invOpts.length
+      ? invOpts.map(o=>`<option value="${this._esc(o.value)}">${this._esc(o.label)}</option>`).join('')
+      : `<option value="">— add an item on the Inventory tab first —</option>`;
+
+    const salesForm = document.getElementById('qa-form-sales');
+    salesForm.elements['Date'].value = today;
+    salesForm.elements['Show Name'].innerHTML = showOptHtml;
+    salesForm.elements['Item ID'].innerHTML = invOptHtml;
+    salesForm.elements['Quantity Sold'].value = 1;
+    salesForm.elements['Sale Price'].value = 0;
+    salesForm.elements['Payment Method'].innerHTML = paymentOpts.map(p=>`<option value="${this._esc(p)}">${this._esc(p)}</option>`).join('');
+
+    const tradesForm = document.getElementById('qa-form-trades');
+    tradesForm.elements['Date'].value = today;
+    tradesForm.elements['Show Name'].innerHTML = showOptHtml;
+    tradesForm.elements['Items Traded Out'].innerHTML = invOptHtml;
+    tradesForm.elements['Value of Trade'].value = 0;
+    tradesForm.elements['Net Cash'].value = 0;
+
+    const expensesForm = document.getElementById('qa-form-expenses');
+    expensesForm.elements['Date'].value = today;
+    expensesForm.elements['Show Name'].innerHTML = showOptHtml;
+    expensesForm.elements['Category'].innerHTML = expCatOpts.map(c=>`<option value="${this._esc(c)}">${this._esc(c)}</option>`).join('');
+    expensesForm.elements['Description'].value = '';
+    expensesForm.elements['Amount'].value = 0;
+  }
+
+  handleQuickAddSubmit(table, formEl){
+    this._pushUndoSnapshot();
+    const row = this.blankRow(table);
+    const fd = new FormData(formEl);
+    if(table==='sales'){
+      row['Date'] = fd.get('Date') || this.todayStr();
+      row['Show Name'] = fd.get('Show Name') || this.firstShow();
+      row['Item ID'] = fd.get('Item ID') || this.firstItemId();
+      row['Quantity Sold'] = parseFloat(fd.get('Quantity Sold'))||1;
+      row['Sale Price'] = parseFloat(fd.get('Sale Price'))||0;
+      row['Payment Method'] = fd.get('Payment Method') || '';
+    } else if(table==='trades'){
+      row['Date'] = fd.get('Date') || this.todayStr();
+      row['Show Name'] = fd.get('Show Name') || this.firstShow();
+      const itemOut = fd.get('Items Traded Out');
+      row['Items Traded Out'] = itemOut ? [itemOut] : [];
+      row['Value of Trade'] = parseFloat(fd.get('Value of Trade'))||0;
+      // A single "Cash In / Out" field is friendlier for a quick on-the-fly entry than two
+      // separate fields — positive means cash you received, negative means cash you paid out,
+      // matching the same "net cash" language used elsewhere (e.g. the Sales tab's trade-linked
+      // price formula). It maps straight onto the two real columns the full Trades tab uses.
+      const netCash = parseFloat(fd.get('Net Cash'))||0;
+      row['Cash Received'] = netCash>0 ? netCash : 0;
+      row['Cash Paid Out'] = netCash<0 ? Math.abs(netCash) : 0;
+    } else if(table==='expenses'){
+      row['Date'] = fd.get('Date') || this.todayStr();
+      row['Show Name'] = fd.get('Show Name') || this.firstShow();
+      row['Category'] = fd.get('Category') || '';
+      row['Description'] = fd.get('Description') || '';
+      row['Amount'] = parseFloat(fd.get('Amount'))||0;
+    }
+    row._id = this.nextId++;
+    this.data[table].push(row);
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.closeQuickAdd();
+    const labelMap = {sales:'Sale', trades:'Trade', expenses:'Expense'};
+    this.showToast(`${labelMap[table]||'Row'} added`);
   }
 
   handleExport(el){
