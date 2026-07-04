@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Gumgumgood TCG Vendor</title>
+
+<!-- ===================== PWA (installable Home Screen app) ===================== -->
+<!-- This page — not index.html — is the app's install target ("start_url" below), so
+     "Add to Home Screen" opens this hub first, then routes into the dashboard. -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#171225">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TCG Vendor">
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- ===================== FIREBASE (same project + document index.html syncs to) ===================== -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/data-sync.js"></script>
+
+<style>
+  :root {
+    --bg-primary:#f4f4f9; --bg-card:#ffffff; --bg-header:#171225;
+    --text-primary:#191521; --text-secondary:#716d80; --text-on-dark:#ffffff;
+    --accent1:#e0472c; --accent2:#3573b1; --accent4:#3f9d78;
+    --border-subtle:#eae8f2; --radius:16px; --radius-sm:11px;
+    --shadow-sm:0 1px 2px rgba(23,18,37,0.05), 0 1px 1px rgba(23,18,37,0.04);
+    --shadow-md:0 8px 24px rgba(23,18,37,0.08);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:var(--bg-primary); color:var(--text-primary); line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);
+  }
+  .home-header {
+    background:linear-gradient(135deg,#171225,#352050); color:var(--text-on-dark);
+    padding:32px 24px 26px; border-radius:0 0 var(--radius) var(--radius);
+    box-shadow:var(--shadow-md);
+  }
+  .home-header h1 { font-size:20px; font-weight:800; }
+  .home-header p { font-size:12.5px; color:rgba(255,255,255,0.65); margin-top:4px; }
+  .sync-pill {
+    display:inline-flex; align-items:center; gap:6px; margin-top:14px;
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);
+    border-radius:99px; padding:6px 12px; font-size:11.5px; color:rgba(255,255,255,0.85);
+  }
+  .sync-dot { width:7px; height:7px; border-radius:50%; background:#4c8c6b; flex-shrink:0; }
+  .sync-dot.stale { background:#dd9a2e; }
+  .sync-dot.offline { background:#d6455a; }
+
+  .home-body { max-width:640px; margin:0 auto; padding:20px 18px 40px; }
+
+  .quick-stats { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:20px; }
+  .stat-card {
+    background:var(--bg-card); border-radius:var(--radius-sm); padding:14px 16px;
+    box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle);
+  }
+  .stat-label { font-size:10.5px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.5px; font-weight:700; margin-bottom:6px; }
+  .stat-value { font-size:21px; font-weight:800; }
+
+  .tile-grid { display:grid; grid-template-columns:1fr; gap:12px; }
+  .tile {
+    display:flex; align-items:center; gap:14px; background:var(--bg-card);
+    border-radius:var(--radius); padding:18px; box-shadow:var(--shadow-sm);
+    border:1px solid var(--border-subtle); text-decoration:none; color:inherit;
+    transition:box-shadow .15s, transform .15s;
+  }
+  .tile:active { transform:scale(0.98); }
+  .tile:hover { box-shadow:var(--shadow-md); }
+  .tile-icon {
+    width:46px; height:46px; border-radius:12px; display:flex; align-items:center;
+    justify-content:center; font-size:22px; flex-shrink:0; background:#fdece7; color:var(--accent1);
+  }
+  .tile-text h3 { font-size:14.5px; font-weight:700; margin-bottom:2px; }
+  .tile-text p { font-size:12px; color:var(--text-secondary); }
+  .tile-arrow { margin-left:auto; color:var(--text-secondary); font-size:18px; }
+
+  .tile.disabled { opacity:0.5; pointer-events:none; }
+  .section-label { font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-secondary); margin:22px 0 10px 2px; }
+
+  .home-footer { text-align:center; font-size:11.5px; color:var(--text-secondary); padding:24px 0 6px; }
+</style>
+</head>
+<body>
+
+  <div class="home-header">
+    <h1>Gumgumgood TCG Vendor</h1>
+    <p>Pokemon &amp; One Piece card business — inventory, sales, trades &amp; shows</p>
+    <div class="sync-pill">
+      <span class="sync-dot" id="sync-dot"></span>
+      <span id="sync-label">Checking sync status…</span>
+    </div>
+  </div>
+
+  <div class="home-body">
+    <div class="quick-stats" id="quick-stats">
+      <div class="stat-card"><div class="stat-label">Inventory Items</div><div class="stat-value" id="stat-inventory">—</div></div>
+      <div class="stat-card"><div class="stat-label">Sales Logged</div><div class="stat-value" id="stat-sales">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Sales</div><div class="stat-value" id="stat-sales-amount">—</div></div>
+      <div class="stat-card"><div class="stat-label">Trades Logged</div><div class="stat-value" id="stat-trades">—</div></div>
+    </div>
+
+    <div class="section-label">Open</div>
+    <div class="tile-grid">
+      <a class="tile" href="index.html">
+        <div class="tile-icon">&#128202;</div>
+        <div class="tile-text">
+          <h3>Vendor Dashboard</h3>
+          <p>Full inventory, sales, trades, expenses &amp; cashflow</p>
+        </div>
+        <div class="tile-arrow">&#8250;</div>
+      </a>
+
+      <!-- Add more tiles here as the app grows — same markup pattern, any link target. -->
+      <div class="tile disabled">
+        <div class="tile-icon" style="background:#eef3f8;color:var(--accent2)">&#128196;</div>
+        <div class="tile-text">
+          <h3>Reports</h3>
+          <p>Coming soon</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="home-footer">Synced live via Firebase &middot; installed as a Home Screen app</div>
+
+<script>
+  DashboardSync.init();
+
+  const dotEl = document.getElementById('sync-dot');
+  const labelEl = document.getElementById('sync-label');
+  let staleTimer = null;
+
+  function renderStats(data){
+    const stats = DashboardSync.computeQuickStats(data);
+    document.getElementById('stat-inventory').textContent = stats.inventoryCount.toLocaleString();
+    document.getElementById('stat-sales').textContent = stats.salesCount.toLocaleString();
+    document.getElementById('stat-sales-amount').textContent = '$' + stats.totalSalesAmount.toLocaleString(undefined, {maximumFractionDigits:0});
+    document.getElementById('stat-trades').textContent = stats.tradesCount.toLocaleString();
+
+    dotEl.className = 'sync-dot';
+    labelEl.textContent = data ? `Synced ${DashboardSync.formatRelativeTime(stats.savedAt)}` : 'No data yet — open the dashboard once first';
+    if(!data) dotEl.classList.add('stale');
+
+    // If nothing has synced in a while, flag it as stale rather than silently looking current.
+    clearTimeout(staleTimer);
+    if(stats.savedAt){
+      const ageMs = Date.now() - new Date(stats.savedAt).getTime();
+      const staleAfterMs = 6 * 60 * 60 * 1000; // 6 hours with zero edits just means a quiet day, not a bug — flag as informational, not urgent
+      if(ageMs > staleAfterMs) dotEl.classList.add('stale');
+    }
+  }
+
+  // Live subscription: this hub updates in real time if you (or a co-worker) edits
+  // the dashboard on another device while this page is open.
+  DashboardSync.subscribe(
+    data => renderStats(data),
+    err => { dotEl.classList.add('offline'); labelEl.textContent = 'Offline — check your connection'; }
+  );
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker registration failed', err));
+    });
+  }
+</script>
+</body>
+</html>
