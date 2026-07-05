@@ -1,14 +1,13 @@
 // ===================================================================================
 // Shared Firebase configuration — single source of truth for every page in this app.
 //
-// This is the SAME project your dashboard (index.html) already syncs to
+// This is the SAME project the dashboard (index.html) already syncs to
 // (vendor-dashboard-31558) — nothing here creates a new project or a new document.
 // It just gives new pages (home.html, and anything you add later) a copy of the
 // same config instead of pasting it into every file.
 //
-// index.html is intentionally left untouched and keeps its own inline copy of this
-// config — that's by design (requirement: "keep index.html exactly as it is").
-// This file is for NEW pages only.
+// index.html keeps its own inline copy of this config by design — this file is for
+// the other pages.
 //
 // None of these values are secret — they're a public client identifier, same note
 // that's already in index.html. The only real protection on this data is (a) keeping
