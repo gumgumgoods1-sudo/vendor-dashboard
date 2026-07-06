@@ -1900,16 +1900,21 @@ class Dashboard {
     document.getElementById('kpi-cash').textContent = fmtMoney(k.netCashflow);
   }
 
+  // Bookkeeping buckets ("General Expense", "Start up cost") hold overhead that isn't tied to an
+  // actual card show. They stay fully tracked in the Expenses tab and the per-show ledger, but are
+  // left out of the by-show performance chart and the Top Shows ranking so those only compare real shows.
+  _isBookkeepingBucket(showName){
+    const n = String(showName||'').toLowerCase();
+    return n === 'general expense' || /start\s*-?\s*up/.test(n);
+  }
+
   renderCharts(){
-    // "General Expense" is a bookkeeping bucket for overhead, not an actual card show — leave it
-    // out of the by-show chart so the chart only reflects real shows.
-    const cf = this.filteredCashflow.filter(c=>c['Show Name']!=='General Expense');
+    const cf = this.filteredCashflow.filter(c=>!this._isBookkeepingBucket(c['Show Name']));
     const labels = cf.map(c=>c['Show Name']);
 
     this._barLine('chart-shows', labels, [
       {type:'bar', label:'Total Sales', data:cf.map(c=>c['Total Sales (auto)']), color:PALETTE[0]},
       {type:'bar', label:'Total Expenses', data:cf.map(c=>c['Total Expenses (auto)']), color:PALETTE[5]},
-      {type:'line', label:'Actual Profit', data:cf.map(c=>c['Actual Profit (auto)']), color:PALETTE[3]},
     ]);
 
     const catSales = this._aggregate(this.filteredSales, s=>this.itemCat[s['Item ID']]||'Other', s=>s['Total Sale Amount (auto)']||0);
@@ -2072,7 +2077,8 @@ class Dashboard {
   }
 
   renderTopShows(){
-    const top = [...this.data.cashflow]
+    const top = this.data.cashflow
+      .filter(c=>!this._isBookkeepingBucket(c['Show Name']))
       .sort((a,b)=>(Number(b['Actual Profit (auto)'])||0)-(Number(a['Actual Profit (auto)'])||0))
       .slice(0,5);
     const body = document.getElementById('top-shows-body');
