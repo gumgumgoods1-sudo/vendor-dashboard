@@ -1,14 +1,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // This app has no login — every reader/writer is trusted equally. The only two
-    // protections are (a) keeping your GitHub Pages URL unlisted and (b) these rules,
-    // which restrict access to exactly the one document the app uses and nothing else.
+    // The app now has a real sign-in (Firebase Authentication, Email/Password provider),
+    // so the dashboard document is only readable/writable by a signed-in account.
+    //
+    // IMPORTANT — this file does not apply itself. Paste it into:
+    //   Firebase Console → Firestore Database → Rules → Publish
+    //
+    // Also do BOTH of these in Firebase Console → Authentication:
+    //   1. Sign-in method → enable "Email/Password".
+    //   2. Settings → User actions → UNCHECK "Enable create (sign-up)" so strangers
+    //      can't self-register an account and pass this rule. You create your own
+    //      account manually under Authentication → Users → Add user.
+    //
+    // Optional, even tighter: pin access to your exact account by replacing the
+    // condition below with
+    //   request.auth != null && request.auth.token.email == 'you@example.com'
+    // (do that in the console version, so your email isn't published in this repo).
     match /dashboards/main {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
     }
-    // Everything else in this Firestore project is denied by default (no rule = no
-    // access), so even if someone finds your firebaseConfig they can't read or write
-    // any other collection/document.
+    // Everything else in this Firestore project is denied by default (no rule = no access).
   }
 }

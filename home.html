@@ -19,6 +19,7 @@
 <!-- ===================== FIREBASE (same project + document index.html syncs to) ===================== -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/data-sync.js"></script>
 
@@ -91,6 +92,22 @@
   .section-label { font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:var(--text-muted); margin:22px 0 10px 2px; }
 
   .home-footer { text-align:center; font-size:11.5px; color:var(--text-muted); padding:24px 0 6px; }
+
+  /* ---- Sign-in card (shown until Firebase Auth confirms a user) ---- */
+  .home-login { background:var(--bg-card); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); margin-bottom:20px; }
+  .home-login.hidden { display:none; }
+  .home-login h3 { font-size:15px; font-weight:800; letter-spacing:-0.01em; }
+  .home-login > p { font-size:12px; color:var(--text-secondary); margin:3px 0 14px; }
+  .home-login form { display:flex; flex-direction:column; gap:12px; }
+  .home-login label.field { display:block; font-size:12px; font-weight:700; color:var(--text-secondary); }
+  .home-login input[type=email], .home-login input[type=password] { width:100%; margin-top:5px; padding:11px 13px; border:1.5px solid var(--border-subtle); border-radius:11px; font-size:15px; font-family:inherit; color:var(--text-primary); background:#fff; }
+  .home-login input:focus { outline:none; border-color:var(--action); box-shadow:0 0 0 3px rgba(42,120,214,0.18); }
+  .home-login .remember { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); cursor:pointer; user-select:none; }
+  .home-login .remember input { width:15px; height:15px; accent-color:var(--action); }
+  .home-login .login-error { font-size:12.5px; color:var(--negative); }
+  .home-login .login-error:empty { display:none; }
+  .home-login button[type=submit] { padding:13px; border:none; border-radius:12px; background:var(--bg-header); color:#fff; font-size:15px; font-weight:800; cursor:pointer; }
+  .quick-stats.locked .stat-value { color:var(--text-muted); }
 </style>
 </head>
 <body>
@@ -105,6 +122,24 @@
   </div>
 
   <div class="home-body">
+    <!-- Sign-in card — hidden the moment Firebase Auth reports a signed-in user, which on a
+         "keep me signed in" device is immediately, every visit after the first. -->
+    <div class="home-login hidden" id="home-login">
+      <h3>Sign in</h3>
+      <p>Your live totals are protected — sign in once and this device stays signed in.</p>
+      <form id="home-login-form" autocomplete="on">
+        <label class="field">Email
+          <input type="email" id="home-login-email" name="email" autocomplete="username" required>
+        </label>
+        <label class="field">Password
+          <input type="password" id="home-login-password" name="password" autocomplete="current-password" required>
+        </label>
+        <label class="remember"><input type="checkbox" id="home-login-remember" checked> Keep me signed in on this device</label>
+        <div class="login-error" id="home-login-error"></div>
+        <button type="submit" id="home-login-submit">Sign In</button>
+      </form>
+    </div>
+
     <div class="quick-stats" id="quick-stats">
       <div class="stat-card"><div class="stat-label">Inventory Items</div><div class="stat-value" id="stat-inventory">—</div></div>
       <div class="stat-card"><div class="stat-label">Sales Logged</div><div class="stat-value" id="stat-sales">—</div></div>
@@ -163,12 +198,62 @@
     }
   }
 
-  // Live subscription: this hub updates in real time if you (or a co-worker) edits
-  // the dashboard on another device while this page is open.
-  DashboardSync.subscribe(
-    data => renderStats(data),
-    err => { dotEl.classList.add('offline'); labelEl.textContent = 'Offline — check your connection'; }
-  );
+  // ---- Sign-in gate: the Firestore rules only allow signed-in reads, so the live
+  // subscription starts after Firebase Auth confirms a user. With "keep me signed in"
+  // (the default) that happens instantly on every visit after the first.
+  const loginCard = document.getElementById('home-login');
+  const loginErr = document.getElementById('home-login-error');
+  const loginEmail = document.getElementById('home-login-email');
+  const savedEmail = localStorage.getItem('gg-signin-email');
+  if(savedEmail) loginEmail.value = savedEmail;
+
+  let subscribed = false;
+  firebase.auth().onAuthStateChanged(user => {
+    if(user){
+      loginCard.classList.add('hidden');
+      document.getElementById('quick-stats').classList.remove('locked');
+      if(!subscribed){
+        subscribed = true;
+        // Live subscription: this hub updates in real time if you (or a co-worker) edits
+        // the dashboard on another device while this page is open.
+        DashboardSync.subscribe(
+          data => renderStats(data),
+          err => { dotEl.classList.add('offline'); labelEl.textContent = 'Offline — check your connection'; }
+        );
+      }
+    } else {
+      loginCard.classList.remove('hidden');
+      document.getElementById('quick-stats').classList.add('locked');
+      dotEl.className = 'sync-dot stale';
+      labelEl.textContent = 'Signed out — sign in to see live totals';
+    }
+  });
+
+  document.getElementById('home-login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('home-login-submit');
+    loginErr.textContent = '';
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try{
+      await firebase.auth().setPersistence(document.getElementById('home-login-remember').checked
+        ? firebase.auth.Auth.Persistence.LOCAL
+        : firebase.auth.Auth.Persistence.SESSION);
+      await firebase.auth().signInWithEmailAndPassword(loginEmail.value.trim(), document.getElementById('home-login-password').value);
+      localStorage.setItem('gg-signin-email', loginEmail.value.trim());
+      document.getElementById('home-login-password').value = '';
+    } catch(err){
+      console.error('Sign-in failed', err);
+      const code = (err && err.code) || '';
+      loginErr.textContent =
+        code === 'auth/operation-not-allowed' ? 'Email/password sign-in is not enabled yet — enable it in the Firebase Console under Authentication → Sign-in method.' :
+        (code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials' || code === 'auth/wrong-password' || code === 'auth/user-not-found' || code === 'auth/invalid-email') ? 'Wrong email or password.' :
+        code === 'auth/too-many-requests' ? 'Too many attempts — wait a minute and try again.' :
+        code === 'auth/network-request-failed' ? 'No connection — check your internet and try again.' :
+        'Could not sign in (' + (code || 'unknown error') + ').';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+  });
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', () => {
