@@ -639,6 +639,14 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       </div>
     </section>
     <div class="kpi-group">
+      <div class="kpi-group-title">Sales Performance</div>
+      <section class="kpi-row">
+        <div class="kpi-card inv" title="Total Sales divided by Items Sold — what the average card sells for."><div class="kpi-label">Avg Sale Price</div><div class="kpi-value" id="kpi-asp">$0</div></div>
+        <div class="kpi-card profit" title="Profit from Sales divided by Total Sales — the share of each sales dollar you keep before expenses."><div class="kpi-label">Avg Margin</div><div class="kpi-value" id="kpi-margin">0%</div></div>
+        <div class="kpi-card sold" title="Items Sold divided by total Qty Purchased across the inventory — how much of what you buy actually sells."><div class="kpi-label">Sell-Through Rate</div><div class="kpi-value" id="kpi-sellthrough">0%</div></div>
+      </section>
+    </div>
+    <div class="kpi-group">
       <div class="kpi-group-title">Inventory &amp; Activity</div>
       <section class="kpi-row">
         <div class="kpi-card potential" title="Retail Price − Cost, added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Potential Profit</div><div class="kpi-value" id="kpi-potential">$0</div></div>
@@ -650,10 +658,18 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       </section>
     </div>
 
+    <div class="section-title">Profit Trend</div>
+    <section class="chart-row">
+      <div class="chart-container tall" style="grid-column:1/-1;">
+        <h3>Monthly Revenue &amp; Profit from Sales</h3>
+        <div class="chart-svg-wrap" id="chart-monthly-trend"></div>
+      </div>
+    </section>
+
     <div class="section-title">Sales Insights</div>
     <section class="chart-row">
       <div class="chart-container tall" style="grid-column:1/-1;">
-        <h3>Top Selling Items (by Revenue)</h3>
+        <h3>Top 10 Selling Items (by Revenue)</h3>
         <div class="chart-svg-wrap" id="chart-top-items"></div>
       </div>
     </section>
@@ -694,10 +710,18 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <div class="table-section">
       <h3>&#127942; Top Performing Shows (by Actual Profit)</h3>
       <table class="data-table">
-        <thead><tr><th>Rank</th><th>Show</th><th>Total Sales</th><th>Total Expenses</th><th>Actual Profit</th></tr></thead>
+        <thead><tr><th>Rank</th><th>Show</th><th>Total Sales</th><th>Total Expenses</th><th>Actual Profit</th><th title="Actual Profit divided by what you walked in with (Starting Cash + Starting Inventory Value). Blank when the show has no starting figures recorded.">ROI</th></tr></thead>
         <tbody id="top-shows-body"></tbody>
       </table>
     </div>
+
+    <div class="section-title">Cashflow Summary</div>
+    <section class="chart-row">
+      <div class="chart-container tall" style="grid-column:1/-1;">
+        <h3>Where the Money Went &mdash; Sales to Net Profit</h3>
+        <div class="chart-svg-wrap" id="chart-waterfall"></div>
+      </div>
+    </section>
 
     <div class="section-title">Per-Show Ledger</div>
     <div class="table-section">
@@ -1879,8 +1903,11 @@ class Dashboard {
       return a + (Number(t['Net Cash (auto)'])||0);
     }, 0);
     const totalActualProfit = salesProfit + netTradeCash;
+    const totalSalesAmt = sum(this.data.sales,'Total Sale Amount (auto)');
+    const itemsSold = sum(this.data.sales,'Quantity Sold');
+    const qtyPurchased = sum(this.data.inventory,'Qty Purchased');
     return {
-      totalSales: sum(this.data.sales,'Total Sale Amount (auto)'),
+      totalSales: totalSalesAmt,
       totalExpenses: totalExpenses,
       totalActualProfit: totalActualProfit,
       // Net Profit = Total Actual Profit minus Total Expenses.
@@ -1888,9 +1915,13 @@ class Dashboard {
       totalPotentialProfit: potentialProfit,
       totalCost: sum(this.data.inventory,'Total Cost (auto)'),
       inventoryValue: sum(this.data.inventory,'Total Inventory Value (auto)'),
-      itemsSold: sum(this.data.sales,'Quantity Sold'),
+      itemsSold: itemsSold,
       itemsTraded: this.data.trades.length,
       netCashflow: sum(this.data.cashflow,'Ending Cash') - sum(this.data.cashflow,'Starting Cash'),
+      // Sales-performance metrics
+      avgSalePrice: itemsSold>0 ? totalSalesAmt/itemsSold : 0,
+      avgMarginPct: totalSalesAmt>0 ? (salesProfit/totalSalesAmt)*100 : 0,
+      sellThroughPct: qtyPurchased>0 ? (itemsSold/qtyPurchased)*100 : 0,
     };
   }
 
@@ -1940,6 +1971,9 @@ class Dashboard {
     document.getElementById('kpi-sold').textContent = fmtNum(k.itemsSold);
     document.getElementById('kpi-traded').textContent = fmtNum(k.itemsTraded);
     document.getElementById('kpi-cash').textContent = fmtMoney(k.netCashflow);
+    document.getElementById('kpi-asp').textContent = fmtMoney(k.avgSalePrice);
+    document.getElementById('kpi-margin').textContent = k.avgMarginPct.toFixed(1)+'%';
+    document.getElementById('kpi-sellthrough').textContent = k.sellThroughPct.toFixed(1)+'%';
   }
 
   // Bookkeeping buckets ("General Expense", "Start up cost") hold overhead that isn't tied to an
@@ -1959,6 +1993,36 @@ class Dashboard {
       {type:'bar', label:'Total Expenses', data:cf.map(c=>c['Total Expenses (auto)']), color:PALETTE[5]},
     ]);
 
+    // Monthly revenue + profit trend (Dashboard tab) — grouped by the sale's YYYY-MM.
+    const byMonth = {};
+    this.filteredSales.forEach(s=>{
+      const m = String(s['Date']||'').slice(0,7);
+      if(!/^\d{4}-\d{2}$/.test(m)) return;
+      if(!byMonth[m]) byMonth[m] = {rev:0, profit:0};
+      byMonth[m].rev += Number(s['Total Sale Amount (auto)'])||0;
+      byMonth[m].profit += Number(s['Profit (auto)'])||0;
+    });
+    const months = Object.keys(byMonth).sort();
+    this._barLine('chart-monthly-trend', months, [
+      {type:'bar', label:'Revenue', data:months.map(m=>byMonth[m].rev), color:PALETTE[0]},
+      {type:'line', label:'Profit from Sales', data:months.map(m=>byMonth[m].profit), color:PALETTE[3]},
+    ]);
+
+    // Cashflow waterfall (Card Show tab): Sales → cost of the cards sold → standalone trade
+    // cash → expenses → Net Profit. Mirrors exactly how computeKPIs() builds Net Profit.
+    const wfRev = this.filteredSales.reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
+    const wfProfit = this.filteredSales.reduce((a,s)=>a+(Number(s['Profit (auto)'])||0),0);
+    const wfLinked = new Set(this.filteredSales.filter(s=>s['Payment Method']==='Trade' && s['Linked Trade']).map(s=>s['Linked Trade']));
+    const wfTradeCash = this.filteredTrades.reduce((a,t)=> wfLinked.has(t['Trade ID']) ? a : a+(Number(t['Net Cash (auto)'])||0), 0);
+    const wfExp = this.filteredExpenses.reduce((a,e)=>a+(Number(e['Amount'])||0),0);
+    this._waterfall('chart-waterfall', [
+      {label:'Sales', delta:wfRev},
+      {label:'Cost of Cards', delta:-(wfRev-wfProfit)},
+      {label:'Trade Cash', delta:wfTradeCash},
+      {label:'Expenses', delta:-wfExp},
+      {label:'Net Profit', total:true},
+    ]);
+
     const catSales = this._aggregate(this.filteredSales, s=>this.itemCat[s['Item ID']]||'Other', s=>s['Total Sale Amount (auto)']||0);
     this._doughnut('chart-cat-sales', catSales);
     const paymentAgg = this._aggregate(this.filteredSales, s=>s['Payment Method']||'Other', s=>s['Total Sale Amount (auto)']||0);
@@ -1966,7 +2030,7 @@ class Dashboard {
 
     // Sales insights - top selling items
     const itemRev = this._aggregate(this.filteredSales, s=>s['Item Name (auto)']||s['Item ID'], s=>s['Total Sale Amount (auto)']||0);
-    const topItems = Object.entries(itemRev).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const topItems = Object.entries(itemRev).sort((a,b)=>b[1]-a[1]).slice(0,10);
     this._renderHBar('chart-top-items', topItems.map(x=>x[0]), topItems.map(x=>x[1]), PALETTE[0]);
 
     // Inventory insights
@@ -2004,7 +2068,10 @@ class Dashboard {
     const groupW = plotW/labels.length;
     const barGroupInset = groupW*0.16;
     const barAreaW = groupW - barGroupInset*2;
-    const barW = barSeries.length ? barAreaW/barSeries.length : 0;
+    // Cap bar width so a chart with only one or two categories doesn't draw absurdly wide
+    // slabs; the group stays centered in its slot either way.
+    const barW = barSeries.length ? Math.min(barAreaW/barSeries.length, 90) : 0;
+    const groupPad = barSeries.length ? (barAreaW - barW*barSeries.length)/2 : 0;
 
     let svgParts = [];
     for(let v=minVal; v<=maxVal+1e-9; v+=scale.step){
@@ -2015,7 +2082,7 @@ class Dashboard {
     if(minVal<0){ svgParts.push(`<line class="zero-line" x1="${mL}" x2="${W-mR}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}"/>`); }
 
     labels.forEach((lab,i)=>{
-      const gx = mL + i*groupW + barGroupInset;
+      const gx = mL + i*groupW + barGroupInset + groupPad;
       barSeries.forEach((s,j)=>{
         const val = Number(s.data[i])||0;
         const x = gx + j*barW;
@@ -2050,6 +2117,58 @@ class Dashboard {
 
   _barLine(id, labels, datasets){ this._renderCombo(id, labels, datasets); }
   _grouped(id, labels, datasets){ this._renderCombo(id, labels, datasets.map(d=>({...d, type:'bar'}))); }
+
+  // Waterfall: each step is {label, delta} (positive = money in, negative = money out) or
+  // {label, total:true} which draws the running total from zero. Same SVG idiom / classes
+  // as _renderCombo so it inherits the chart styling.
+  _waterfall(id, steps){
+    const container = document.getElementById(id);
+    this._destroy(id);
+    let running = 0;
+    const computed = steps.map(st=>{
+      if(st.total){ return {...st, from:0, to:running, value:running}; }
+      const from = running; running += (Number(st.delta)||0);
+      return {...st, from, to:running, value:Number(st.delta)||0};
+    });
+    if(computed.every(c=>Math.abs(c.value)<1e-9)){
+      container.innerHTML = '<p style="color:var(--text-secondary);font-size:12px;padding:20px 0">No data for current filters.</p>';
+      return;
+    }
+    const W=680, H=280, mL=52, mR=16, mT=18, mB=34;
+    const plotW=W-mL-mR, plotH=H-mT-mB;
+    const lo = Math.min(0, ...computed.map(c=>Math.min(c.from,c.to)));
+    const hi = Math.max(0, ...computed.map(c=>Math.max(c.from,c.to)));
+    const scale = niceScale(lo, hi, 5);
+    const yScale = v => mT + plotH - ((v-scale.min)/(scale.max-scale.min))*plotH;
+    const n = computed.length, slotW = plotW/n, barW = Math.min(86, slotW*0.6);
+    const colInc = '#008300', colDec = '#e34948', colTot = '#181b28';
+
+    let parts = [];
+    for(let v=scale.min; v<=scale.max+1e-9; v+=scale.step){
+      const y = yScale(v);
+      parts.push(`<line class="grid-line" x1="${mL}" x2="${W-mR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`);
+      parts.push(`<text class="axis-label" x="${mL-6}" y="${(y+3).toFixed(1)}" text-anchor="end">${fmtAxis(v)}</text>`);
+    }
+    if(scale.min<0) parts.push(`<line class="zero-line" x1="${mL}" x2="${W-mR}" y1="${yScale(0).toFixed(1)}" y2="${yScale(0).toFixed(1)}"/>`);
+
+    computed.forEach((c,i)=>{
+      const x = mL + i*slotW + (slotW-barW)/2;
+      const yTop = yScale(Math.max(c.from,c.to));
+      const h = Math.max(1.5, Math.abs(yScale(c.from)-yScale(c.to)));
+      const color = c.total ? colTot : (c.value>=0 ? colInc : colDec);
+      parts.push(`<rect x="${x.toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" rx="3"><title>${c.label}: ${fmtMoney(c.value)}</title></rect>`);
+      // dashed connector to the next step's starting level
+      if(i<n-1){
+        const y = yScale(c.to);
+        parts.push(`<line x1="${(x+barW).toFixed(1)}" x2="${(mL+(i+1)*slotW+(slotW-barW)/2).toFixed(1)}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#c1c4d2" stroke-width="1" stroke-dasharray="3 3"/>`);
+      }
+      const sign = c.total ? '' : (c.value>=0 ? '+' : '−');
+      parts.push(`<text class="bar-val-label" x="${(x+barW/2).toFixed(1)}" y="${(yTop-5).toFixed(1)}" text-anchor="middle">${sign}${fmtMoney(Math.abs(c.value))}</text>`);
+      parts.push(`<text class="axis-label" x="${(x+barW/2).toFixed(1)}" y="${H-mB+22}" text-anchor="middle">${c.label}</text>`);
+    });
+
+    container.innerHTML = `<div class="chart-svg-wrap"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg></div>`;
+  }
 
   _doughnut(id, obj, colorMap, opts){
     opts = opts || {};
@@ -2124,8 +2243,14 @@ class Dashboard {
       .sort((a,b)=>(Number(b['Actual Profit (auto)'])||0)-(Number(a['Actual Profit (auto)'])||0))
       .slice(0,5);
     const body = document.getElementById('top-shows-body');
+    const roiCell = (c)=>{
+      const basis = (Number(c['Starting Cash'])||0) + (Number(c['Starting Inventory Value'])||0);
+      if(basis<=0) return '<td>&mdash;</td>';
+      const roi = (Number(c['Actual Profit (auto)'])||0)/basis*100;
+      return `<td><span class="badge ${roi>=0?'pos':'neg'}">${roi>=0?'+':''}${roi.toFixed(1)}%</span></td>`;
+    };
     body.innerHTML = top.map((c,i)=>`
-      <tr><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}</td></tr>
+      <tr><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}</td>${roiCell(c)}</tr>
     `).join('');
   }
 
