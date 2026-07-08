@@ -1169,7 +1169,7 @@ class Dashboard {
     this.hiddenColumns = { inventory:new Set(), sales:new Set(), trades:new Set(), expenses:new Set(), cashflow:new Set() };
     this.data = {
       inventory: raw.inventory.map(r=>({...r, _id:this.nextId++})),
-      sales: raw.sales.map(r=>({...r, _id:this.nextId++})),
+      sales: this.normalizeSales(raw.sales),
       trades: this.normalizeTrades(raw.trades),
       expenses: raw.expenses.map(r=>({...r, _id:this.nextId++})),
       cashflow: raw.cashflow.map(r=>({...r, _id:this.nextId++})),
@@ -1209,6 +1209,19 @@ class Dashboard {
   // into the multi-item array schema ('Items Traded Out' / 'Items Received'), and backfills
   // cash fields and a stable Trade ID on older records so multi-card trades, cash-in/out, and
   // Sales-tab linking are always available.
+  // Assigns a stable Sale ID (SALE001, SALE002, …) to every sale, backfilling any row that
+  // doesn't have one yet — mirrors how normalizeTrades handles Trade IDs.
+  normalizeSales(arr){
+    let maxSaleId = 0;
+    (arr||[]).forEach(r=>{ const m=/^SALE(\d+)$/.exec((r&&r['Sale ID'])||''); if(m) maxSaleId=Math.max(maxSaleId, parseInt(m[1],10)); });
+    return (arr||[]).map(r=>{
+      const row = {...r};
+      if(!row['Sale ID']){ maxSaleId += 1; row['Sale ID'] = 'SALE'+String(maxSaleId).padStart(3,'0'); }
+      row._id = this.nextId++;
+      return row;
+    });
+  }
+
   normalizeTrades(arr){
     let maxTradeId = 0;
     (arr||[]).forEach(r=>{ const m=/^TRD(\d+)$/.exec((r&&r['Trade ID'])||''); if(m) maxTradeId=Math.max(maxTradeId, parseInt(m[1],10)); });
@@ -1646,7 +1659,7 @@ class Dashboard {
     this._suppressDirty = true;
     this.data = {
       inventory: snap.inventory.map(r=>({...r, _id:this.nextId++})),
-      sales: snap.sales.map(r=>({...r, _id:this.nextId++})),
+      sales: this.normalizeSales(snap.sales),
       trades: snap.trades.map(r=>({...r, _id:this.nextId++})),
       expenses: snap.expenses.map(r=>({...r, _id:this.nextId++})),
       cashflow: snap.cashflow.map(r=>({...r, _id:this.nextId++})),
@@ -1731,7 +1744,7 @@ class Dashboard {
     this._suppressDirty = true;
     this.data = {
       inventory: parsed.inventory.map(r=>({...r, _id:this.nextId++})),
-      sales: parsed.sales.map(r=>({...r, _id:this.nextId++})),
+      sales: this.normalizeSales(parsed.sales),
       trades: this.normalizeTrades(parsed.trades),
       expenses: parsed.expenses.map(r=>({...r, _id:this.nextId++})),
       cashflow: parsed.cashflow.map(r=>({...r, _id:this.nextId++})),
@@ -2922,6 +2935,7 @@ class Dashboard {
         {field:'Stock Status (auto)', label:'Status', editable:false, badge:true, primary:true},
       ],
       sales: [
+        {field:'Sale ID', label:'Sale ID', editable:false},
         {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
         {field:'Item ID', label:'Item', editable:true, type:'select', options:invIds, optionLabel:invIdLabel},
@@ -2984,6 +2998,11 @@ class Dashboard {
     this.data.trades.forEach(t=>{ const m=/^TRD(\d+)$/.exec(t['Trade ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
     return 'TRD'+String(max+1).padStart(3,'0');
   }
+  nextSaleId(){
+    let max = 0;
+    this.data.sales.forEach(s=>{ const m=/^SALE(\d+)$/.exec(s['Sale ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
+    return 'SALE'+String(max+1).padStart(3,'0');
+  }
   firstShow(){ return this.data.cashflow[0] ? this.data.cashflow[0]['Show Name'] : ''; }
   firstItemId(){ return this.data.inventory[0] ? this.data.inventory[0]['Item ID'] : ''; }
 
@@ -3013,7 +3032,7 @@ class Dashboard {
   blankRow(table){
     switch(table){
       case 'inventory': return {'Item ID':this.nextItemId(), 'Item Name':'New Item', 'Category':(this.data.lists['Inventory Categories']||[])[0]||'', 'SKU':'', 'Set / Expansion':'', 'Condition / Grade':(this.data.lists['Card Condition / Grade']||[])[0]||'', 'Cost':0, 'Retail Price':0, 'Qty Purchased':0, 'Reorder Level':0};
-      case 'sales': return {'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Item ID':this.firstItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
+      case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Item ID':this.firstItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
       case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Value of Trade':0, 'Cash Received':0, 'Cash Paid Out':0};
       case 'expenses': return {'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0};
       case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Notes':''};
