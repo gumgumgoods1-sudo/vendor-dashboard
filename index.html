@@ -465,6 +465,7 @@ body {
 .modal-close:hover { background:var(--bg-inset); color:var(--negative); }
 .modal-body { padding:16px 20px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
 .modal-field label { display:block; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); margin-bottom:5px; }
+.modal-field label .req-mark { color:var(--negative); }
 .modal-field input, .modal-field select { width:100%; padding:9px 11px; border:1px solid #d9dce8; border-radius:9px; font-size:13px; font-family:inherit; color:var(--text-primary); box-sizing:border-box; transition:border-color .15s, box-shadow .15s; }
 .modal-field input:focus, .modal-field select:focus { outline:none; border-color:var(--action); box-shadow:var(--ring); }
 .modal-field .modal-readonly { padding:9px 11px; border:1px solid transparent; background:var(--bg-inset); border-radius:9px; font-size:13px; color:var(--text-secondary); font-style:italic; }
@@ -588,7 +589,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="qa-row">
           <div class="qa-field"><label>Qty Purchased</label><input type="number" name="Qty Purchased" min="0" step="1" value="1" required></div>
-          <div class="qa-field"><label>SKU (optional)</label><input type="text" name="SKU"></div>
+          <div class="qa-field"><label>SKU</label><input type="text" name="SKU" required></div>
         </div>
         <div class="qa-field"><label>Set / Expansion (optional)</label><input type="text" name="Set / Expansion"></div>
         <button type="submit" class="qa-submit">Add Item</button>
@@ -2907,7 +2908,7 @@ class Dashboard {
         {field:'Item ID', label:'ID', editable:false},
         {field:'Item Name', label:'Item', editable:true, type:'text', primary:true},
         {field:'Category', label:'Category', editable:true, type:'select', options:invCategories},
-        {field:'SKU', label:'SKU', editable:true, type:'text'},
+        {field:'SKU', label:'SKU', editable:true, type:'text', required:true},
         {field:'Set / Expansion', label:'Set', editable:true, type:'text'},
         {field:'Condition / Grade', label:'Cond', editable:true, type:'select', options:conditions},
         {field:'Cost', label:'Cost', editable:true, type:'money', money:true},
@@ -3135,7 +3136,8 @@ class Dashboard {
         ? `<div class="modal-readonly">${this._addModalPreviewValue(col)}</div>`
         : this._addModalControlHtml(col, draft);
       const lookup = this._addModalSkuLookupHtml(table, col.field);
-      return `${lookup}<div class="modal-field"><label>${this._esc(col.label)}</label>${fieldHtml}</div>`;
+      const req = (col.required && mode==='edit') ? ' <span class="req-mark">*</span>' : '';
+      return `${lookup}<div class="modal-field"><label>${this._esc(col.label)}${req}</label>${fieldHtml}</div>`;
     }).join('');
     document.getElementById('add-modal-body').innerHTML = html;
   }
@@ -3211,6 +3213,16 @@ class Dashboard {
   saveAddModal(addAnother){
     const table = this._addModalTable;
     const row = this._addModalDraft;
+    // Required-field check (currently SKU on inventory) — block save and point at the first gap.
+    const missing = this._addModalFieldPlan()
+      .filter(f => f.mode==='edit' && f.col.required && !String(row[f.col.field] ?? '').trim())
+      .map(f => f.col);
+    if(missing.length){
+      this.showToast(`${missing[0].label} is required.`);
+      const el = document.querySelector(`#add-modal-body [data-addfield][data-field="${missing[0].field}"]`);
+      if(el) el.focus();
+      return;
+    }
     this._pushUndoSnapshot();
     row._id = this.nextId++;
     this.data[table].push(row);
