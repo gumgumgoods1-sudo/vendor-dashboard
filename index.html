@@ -246,6 +246,11 @@ body {
 .cal-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
 .cal-title { font-size:16px; font-weight:800; letter-spacing:-0.01em; margin:0; }
 .cal-nav { display:flex; gap:8px; flex-wrap:wrap; }
+.cal-book-form { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; padding:12px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:12px; }
+.cal-book-form.hidden { display:none; }
+.cal-book-form input { padding:9px 11px; border:1.5px solid var(--border-subtle); border-radius:9px; font-size:14px; font-family:inherit; color:var(--text-primary); background:#fff; }
+.cal-book-form input[type=text] { flex:1; min-width:160px; }
+.cal-book-form input:focus { outline:none; border-color:var(--action); box-shadow:var(--ring); }
 .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
 .cal-dow { text-align:center; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); padding:2px 0 6px; }
 .cal-cell { background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; min-height:92px; padding:7px 7px 6px; overflow:hidden; }
@@ -272,6 +277,8 @@ body {
 .upcoming-notes { font-size:11.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .upcoming-count { flex-shrink:0; font-size:11.5px; font-weight:700; color:var(--text-secondary); }
 .upcoming-count.soon { color:var(--positive); }
+.upcoming-del { flex-shrink:0; border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:16px; padding:4px 8px; border-radius:6px; line-height:1; }
+.upcoming-del:hover { background:var(--negative-tint); color:var(--negative); }
 .upcoming-empty { font-size:12.5px; color:var(--text-secondary); padding:12px 0; }
 
 /* ---------- Charts ---------- */
@@ -800,8 +807,8 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   </section>
 
   <!-- ===================== CALENDAR TAB ===================== -->
-  <!-- Booked shows = rows in the Card Show ledger with a date. Add a future show there
-       (or with the "+ Book a Show" button here) and it appears on this calendar. -->
+  <!-- Standalone planner: its own list of {name, date} bookings, kept entirely separate from
+       the Card Show ledger. Nothing here reads from or writes to sales/expenses/cashflow. -->
   <section class="tab-panel" id="tab-calendar">
     <div class="table-section">
       <div class="cal-toolbar">
@@ -810,14 +817,20 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button class="btn-sm" onclick="dash.calStep(-1)" title="Previous month">&lsaquo; Prev</button>
           <button class="btn-sm" onclick="dash.calStep(0)">Today</button>
           <button class="btn-sm" onclick="dash.calStep(1)" title="Next month">Next &rsaquo;</button>
-          <button class="btn-sm btn-add" data-addrow data-table="cashflow">+ Book a Show</button>
+          <button class="btn-sm btn-add" id="cal-book-btn" onclick="dash.toggleBookForm()">+ Book a Show</button>
         </div>
       </div>
+      <form class="cal-book-form hidden" id="cal-book-form" onsubmit="dash.addBooking(event)">
+        <input type="text" id="cal-book-name" placeholder="Show name" required>
+        <input type="date" id="cal-book-date" required>
+        <button type="submit" class="btn-sm btn-add">Add</button>
+        <button type="button" class="btn-sm" onclick="dash.toggleBookForm(false)">Cancel</button>
+      </form>
       <div class="cal-grid" id="cal-grid"></div>
       <div class="cal-legend">
         <span class="cal-legend-item"><span class="cal-swatch upcoming"></span>Booked / upcoming</span>
         <span class="cal-legend-item"><span class="cal-swatch today"></span>Today</span>
-        <span class="cal-legend-item"><span class="cal-swatch past"></span>Past show</span>
+        <span class="cal-legend-item"><span class="cal-swatch past"></span>Past date</span>
       </div>
     </div>
 
@@ -1155,6 +1168,7 @@ class Dashboard {
       trades: this.normalizeTrades(raw.trades),
       expenses: raw.expenses.map(r=>({...r, _id:this.nextId++})),
       cashflow: raw.cashflow.map(r=>({...r, _id:this.nextId++})),
+      calendar: this.normalizeCalendar(raw.calendar),
       lists: this.normalizeLists(raw.lists),
       settings: this.normalizeSettings(raw.settings),
     };
@@ -1176,6 +1190,14 @@ class Dashboard {
     const out = {};
     Object.keys(lists||{}).forEach(k=>{ out[k] = Array.isArray(lists[k]) ? [...lists[k]] : []; });
     return out;
+  }
+
+  // Standalone calendar bookings — just {name, date}. Deliberately independent of the Card
+  // Show ledger; older saved data has no calendar array, so this defaults to empty.
+  normalizeCalendar(arr){
+    return (Array.isArray(arr) ? arr : [])
+      .map(e => ({ name:String((e&&e.name)||'').trim(), date:String((e&&e.date)||'').slice(0,10), _id:this.nextId++ }))
+      .filter(e => e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
   }
 
   // Migrates legacy single-item trade rows ('Item ID Traded Out' / 'Item ID Received (optional)')
@@ -1602,6 +1624,7 @@ class Dashboard {
       trades: this.data.trades,
       expenses: this.data.expenses,
       cashflow: this.data.cashflow,
+      calendar: this.data.calendar,
       lists: this.data.lists,
       settings: this.data.settings,
     }));
@@ -1622,6 +1645,7 @@ class Dashboard {
       trades: snap.trades.map(r=>({...r, _id:this.nextId++})),
       expenses: snap.expenses.map(r=>({...r, _id:this.nextId++})),
       cashflow: snap.cashflow.map(r=>({...r, _id:this.nextId++})),
+      calendar: this.normalizeCalendar(snap.calendar),
       lists: snap.lists,
       settings: snap.settings,
     };
@@ -1667,6 +1691,7 @@ class Dashboard {
       trades: strip(this.data.trades),
       expenses: strip(this.data.expenses),
       cashflow: strip(this.data.cashflow),
+      calendar: strip(this.data.calendar),
       lists: this.data.lists,
       settings: this.data.settings,
     };
@@ -1705,6 +1730,7 @@ class Dashboard {
       trades: this.normalizeTrades(parsed.trades),
       expenses: parsed.expenses.map(r=>({...r, _id:this.nextId++})),
       cashflow: parsed.cashflow.map(r=>({...r, _id:this.nextId++})),
+      calendar: this.normalizeCalendar(parsed.calendar),
       lists: this.normalizeLists(Array.isArray(parsed.lists) ? {} : (parsed.lists || this.raw.lists)),
       settings: this.normalizeSettings(parsed.settings),
     };
@@ -2315,9 +2341,9 @@ class Dashboard {
     container.innerHTML = `<div class="chart-svg-wrap">${svgHtml}</div>`;
   }
 
-  // ---- Calendar of booked shows (Calendar tab) ----
-  // A "booking" is simply a Card Show ledger row with a date; future dates are upcoming
-  // bookings, past dates are show history. Bookkeeping buckets are excluded.
+  // ---- Calendar (standalone show planner) ----
+  // Reads only this.data.calendar — a plain list of {name, date} bookings with no link to the
+  // Card Show ledger or any financial data. Purely for planning and viewing upcoming shows.
   calStep(delta){
     if(delta===0){ this.calMonth = null; }
     else {
@@ -2327,6 +2353,47 @@ class Dashboard {
     this.renderCalendar();
   }
 
+  toggleBookForm(show){
+    const form = document.getElementById('cal-book-form');
+    const open = show === undefined ? form.classList.contains('hidden') : show;
+    form.classList.toggle('hidden', !open);
+    if(open){
+      const dateInput = document.getElementById('cal-book-date');
+      if(!dateInput.value) dateInput.value = this.todayStr();
+      document.getElementById('cal-book-name').focus();
+    }
+  }
+
+  addBooking(e){
+    if(e) e.preventDefault();
+    const nameEl = document.getElementById('cal-book-name');
+    const dateEl = document.getElementById('cal-book-date');
+    const name = (nameEl.value||'').trim();
+    const date = (dateEl.value||'').slice(0,10);
+    if(!name || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
+      this.showToast('Enter a show name and a date.');
+      return;
+    }
+    this._pushUndoSnapshot();
+    this.data.calendar.push({ name, date, _id:this.nextId++ });
+    nameEl.value = '';
+    this.toggleBookForm(false);
+    this.renderCalendar();
+    this.markDirty();
+    this.showToast(`Booked "${name}".`);
+  }
+
+  removeBooking(id){
+    const idx = this.data.calendar.findIndex(b=>b._id===id);
+    if(idx<0) return;
+    const name = this.data.calendar[idx].name;
+    this._pushUndoSnapshot();
+    this.data.calendar.splice(idx,1);
+    this.renderCalendar();
+    this.markDirty();
+    this.showToast(`Removed "${name}".`);
+  }
+
   renderCalendar(){
     const grid = document.getElementById('cal-grid');
     if(!grid) return;
@@ -2334,10 +2401,9 @@ class Dashboard {
     const y = this.calMonth.getFullYear(), mo = this.calMonth.getMonth();
     document.getElementById('cal-title').textContent = this.calMonth.toLocaleString(undefined, {month:'long', year:'numeric'});
 
-    const shows = this.data.cashflow.filter(c =>
-      !this._isBookkeepingBucket(c['Show Name']) && /^\d{4}-\d{2}-\d{2}/.test(String(c['Date']||'')));
+    const bookings = this.data.calendar.filter(b => /^\d{4}-\d{2}-\d{2}$/.test(String(b.date||'')));
     const byDate = {};
-    shows.forEach(c => { const d = String(c['Date']).slice(0,10); (byDate[d] = byDate[d]||[]).push(c); });
+    bookings.forEach(b => { (byDate[b.date] = byDate[b.date]||[]).push(b); });
     const today = this.todayStr();
 
     const firstDow = new Date(y, mo, 1).getDay();            // 0 = Sunday
@@ -2349,12 +2415,9 @@ class Dashboard {
       const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
       const out = d.getMonth() !== mo;
       const isToday = ds === today;
-      const chips = (byDate[ds]||[]).map(c=>{
+      const chips = (byDate[ds]||[]).map(b=>{
         const cls = ds === today ? 'today' : (ds < today ? 'past' : '');
-        let tip = `${c['Show Name']} — ${ds}`;
-        if(ds < today) tip += ` — Actual Profit ${fmtMoney(c['Actual Profit (auto)'])}`;
-        if(c['Notes']) tip += `\n${c['Notes']}`;
-        return `<span class="cal-chip ${cls}" title="${this._esc(tip)}"><span class="cal-chip-label">${this._esc(c['Show Name'])}</span></span>`;
+        return `<span class="cal-chip ${cls}" title="${this._esc(b.name+' — '+ds)}"><span class="cal-chip-label">${this._esc(b.name)}</span></span>`;
       }).join('');
       html += `<div class="cal-cell${out?' out':''}${isToday?' today':''}"><div class="cal-daynum">${d.getDate()}</div>${chips}</div>`;
     }
@@ -2362,28 +2425,27 @@ class Dashboard {
 
     // Upcoming list: everything from today forward, soonest first.
     const listEl = document.getElementById('upcoming-list');
-    const upcoming = shows
-      .filter(c => String(c['Date']).slice(0,10) >= today)
-      .sort((a,b) => String(a['Date']).localeCompare(String(b['Date'])));
+    const upcoming = bookings
+      .filter(b => b.date >= today)
+      .sort((a,b) => a.date.localeCompare(b.date));
     if(!upcoming.length){
-      listEl.innerHTML = '<div class="upcoming-empty">No upcoming shows booked — use <strong>+ Book a Show</strong> above to add one (just a name and a date; fill in the money fields after the show).</div>';
+      listEl.innerHTML = '<div class="upcoming-empty">No upcoming shows booked — use <strong>+ Book a Show</strong> above to add one (just a name and a date).</div>';
       return;
     }
     const MS_DAY = 86400000;
     const toUTC = ds => { const p = ds.split('-').map(Number); return Date.UTC(p[0], p[1]-1, p[2]); };
-    listEl.innerHTML = upcoming.map(c=>{
-      const ds = String(c['Date']).slice(0,10);
-      const days = Math.round((toUTC(ds) - toUTC(today)) / MS_DAY);
+    listEl.innerHTML = upcoming.map(b=>{
+      const days = Math.round((toUTC(b.date) - toUTC(today)) / MS_DAY);
       const count = days === 0 ? 'Today!' : days === 1 ? 'Tomorrow' : `in ${days} days`;
-      const dt = new Date(toUTC(ds));
+      const dt = new Date(toUTC(b.date));
       const mon = dt.toLocaleString(undefined, {month:'short', timeZone:'UTC'});
       return `<div class="upcoming-row">
         <div class="upcoming-datebox"><span class="mon">${mon}</span><span class="day">${dt.getUTCDate()}</span></div>
         <div class="upcoming-main">
-          <div class="upcoming-name">${this._esc(c['Show Name'])}</div>
-          ${c['Notes'] ? `<div class="upcoming-notes">${this._esc(c['Notes'])}</div>` : ''}
+          <div class="upcoming-name">${this._esc(b.name)}</div>
         </div>
         <div class="upcoming-count${days<=7?' soon':''}">${count}</div>
+        <button type="button" class="upcoming-del" title="Remove booking" onclick="dash.removeBooking(${b._id})">&times;</button>
       </div>`;
     }).join('');
   }
