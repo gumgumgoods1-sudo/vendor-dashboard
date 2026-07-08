@@ -190,6 +190,7 @@ body {
 .qa-form { display:none; flex-direction:column; gap:14px; }
 .qa-form.active { display:flex; }
 .qa-field label { display:block; font-size:12px; font-weight:700; color:var(--text-secondary); margin-bottom:6px; }
+.qa-field label .req-mark { color:var(--negative); }
 .qa-field input, .qa-field select { width:100%; padding:12px 14px; border:1.5px solid var(--border-subtle); border-radius:11px; font-size:15px; font-family:inherit; color:var(--text-primary); background:#fff; transition:border-color .15s, box-shadow .15s; }
 .qa-field input:focus, .qa-field select:focus { outline:none; border-color:var(--action); box-shadow:var(--ring); }
 .qa-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
@@ -589,7 +590,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="qa-row">
           <div class="qa-field"><label>Qty Purchased</label><input type="number" name="Qty Purchased" min="0" step="1" value="1" required></div>
-          <div class="qa-field"><label>SKU</label><input type="text" name="SKU" required></div>
+          <div class="qa-field"><label>SKU <span class="req-mark">*</span></label><input type="text" name="SKU" required></div>
         </div>
         <div class="qa-field"><label>Set / Expansion (optional)</label><input type="text" name="Set / Expansion"></div>
         <button type="submit" class="qa-submit">Add Item</button>
