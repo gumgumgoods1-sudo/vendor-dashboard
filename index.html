@@ -277,7 +277,9 @@ body {
 .upcoming-notes { font-size:11.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .upcoming-count { flex-shrink:0; font-size:11.5px; font-weight:700; color:var(--text-secondary); }
 .upcoming-count.soon { color:var(--positive); }
-.upcoming-del { flex-shrink:0; border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:16px; padding:4px 8px; border-radius:6px; line-height:1; }
+.upcoming-edit, .upcoming-del { flex-shrink:0; border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:15px; padding:4px 8px; border-radius:6px; line-height:1; }
+.upcoming-edit:hover { background:#eaf2fc; color:var(--action); }
+.upcoming-del { font-size:16px; }
 .upcoming-del:hover { background:var(--negative-tint); color:var(--negative); }
 .upcoming-empty { font-size:12.5px; color:var(--text-secondary); padding:12px 0; }
 
@@ -824,7 +826,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <input type="text" id="cal-book-name" placeholder="Show name" required>
         <input type="text" id="cal-book-location" placeholder="Location (optional)">
         <input type="date" id="cal-book-date" required>
-        <button type="submit" class="btn-sm btn-add">Add</button>
+        <button type="submit" class="btn-sm btn-add" id="cal-book-submit">Add</button>
         <button type="button" class="btn-sm" onclick="dash.toggleBookForm(false)">Cancel</button>
       </form>
       <div class="cal-grid" id="cal-grid"></div>
@@ -2354,15 +2356,34 @@ class Dashboard {
     this.renderCalendar();
   }
 
+  // Opens the form fresh for a NEW booking (clears any in-progress edit).
   toggleBookForm(show){
     const form = document.getElementById('cal-book-form');
     const open = show === undefined ? form.classList.contains('hidden') : show;
+    this._editingBookingId = null;
+    document.getElementById('cal-book-submit').textContent = 'Add';
     form.classList.toggle('hidden', !open);
     if(open){
-      const dateInput = document.getElementById('cal-book-date');
-      if(!dateInput.value) dateInput.value = this.todayStr();
+      document.getElementById('cal-book-name').value = '';
+      document.getElementById('cal-book-location').value = '';
+      document.getElementById('cal-book-date').value = this.todayStr();
       document.getElementById('cal-book-name').focus();
     }
+  }
+
+  // Opens the same form pre-filled to EDIT an existing booking.
+  editBooking(id){
+    const b = this.data.calendar.find(x=>x._id===id);
+    if(!b) return;
+    this._editingBookingId = id;
+    const form = document.getElementById('cal-book-form');
+    form.classList.remove('hidden');
+    document.getElementById('cal-book-name').value = b.name || '';
+    document.getElementById('cal-book-location').value = b.location || '';
+    document.getElementById('cal-book-date').value = b.date || this.todayStr();
+    document.getElementById('cal-book-submit').textContent = 'Save';
+    document.getElementById('cal-book-name').focus();
+    form.scrollIntoView({block:'nearest'});
   }
 
   addBooking(e){
@@ -2378,13 +2399,17 @@ class Dashboard {
       return;
     }
     this._pushUndoSnapshot();
-    this.data.calendar.push({ name, location, date, _id:this.nextId++ });
-    nameEl.value = '';
-    locEl.value = '';
-    this.toggleBookForm(false);
+    const editing = this._editingBookingId != null
+      ? this.data.calendar.find(b=>b._id===this._editingBookingId) : null;
+    if(editing){
+      editing.name = name; editing.location = location; editing.date = date;
+    } else {
+      this.data.calendar.push({ name, location, date, _id:this.nextId++ });
+    }
+    this.toggleBookForm(false);  // also clears edit state + fields
     this.renderCalendar();
     this.markDirty();
-    this.showToast(`Booked "${name}".`);
+    this.showToast(editing ? `Updated "${name}".` : `Booked "${name}".`);
   }
 
   removeBooking(id){
@@ -2451,6 +2476,7 @@ class Dashboard {
           ${b.location ? `<div class="upcoming-notes">&#128205; ${this._esc(b.location)}</div>` : ''}
         </div>
         <div class="upcoming-count${days<=7?' soon':''}">${count}</div>
+        <button type="button" class="upcoming-edit" title="Edit booking" onclick="dash.editBooking(${b._id})">&#9998;</button>
         <button type="button" class="upcoming-del" title="Remove booking" onclick="dash.removeBooking(${b._id})">&times;</button>
       </div>`;
     }).join('');
