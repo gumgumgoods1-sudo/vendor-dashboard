@@ -249,7 +249,7 @@ body {
 .cal-book-form { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; padding:12px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:12px; }
 .cal-book-form.hidden { display:none; }
 .cal-book-form input { padding:9px 11px; border:1.5px solid var(--border-subtle); border-radius:9px; font-size:14px; font-family:inherit; color:var(--text-primary); background:#fff; }
-.cal-book-form input[type=text] { flex:1; min-width:160px; }
+.cal-book-form input[type=text] { flex:1; min-width:140px; }
 .cal-book-form input:focus { outline:none; border-color:var(--action); box-shadow:var(--ring); }
 .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
 .cal-dow { text-align:center; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); padding:2px 0 6px; }
@@ -822,6 +822,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       </div>
       <form class="cal-book-form hidden" id="cal-book-form" onsubmit="dash.addBooking(event)">
         <input type="text" id="cal-book-name" placeholder="Show name" required>
+        <input type="text" id="cal-book-location" placeholder="Location (optional)">
         <input type="date" id="cal-book-date" required>
         <button type="submit" class="btn-sm btn-add">Add</button>
         <button type="button" class="btn-sm" onclick="dash.toggleBookForm(false)">Cancel</button>
@@ -1196,7 +1197,7 @@ class Dashboard {
   // Show ledger; older saved data has no calendar array, so this defaults to empty.
   normalizeCalendar(arr){
     return (Array.isArray(arr) ? arr : [])
-      .map(e => ({ name:String((e&&e.name)||'').trim(), date:String((e&&e.date)||'').slice(0,10), _id:this.nextId++ }))
+      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), _id:this.nextId++ }))
       .filter(e => e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
   }
 
@@ -2367,16 +2368,19 @@ class Dashboard {
   addBooking(e){
     if(e) e.preventDefault();
     const nameEl = document.getElementById('cal-book-name');
+    const locEl = document.getElementById('cal-book-location');
     const dateEl = document.getElementById('cal-book-date');
     const name = (nameEl.value||'').trim();
+    const location = (locEl.value||'').trim();
     const date = (dateEl.value||'').slice(0,10);
     if(!name || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
       this.showToast('Enter a show name and a date.');
       return;
     }
     this._pushUndoSnapshot();
-    this.data.calendar.push({ name, date, _id:this.nextId++ });
+    this.data.calendar.push({ name, location, date, _id:this.nextId++ });
     nameEl.value = '';
+    locEl.value = '';
     this.toggleBookForm(false);
     this.renderCalendar();
     this.markDirty();
@@ -2417,7 +2421,8 @@ class Dashboard {
       const isToday = ds === today;
       const chips = (byDate[ds]||[]).map(b=>{
         const cls = ds === today ? 'today' : (ds < today ? 'past' : '');
-        return `<span class="cal-chip ${cls}" title="${this._esc(b.name+' — '+ds)}"><span class="cal-chip-label">${this._esc(b.name)}</span></span>`;
+        const tip = b.name + (b.location ? ' @ '+b.location : '') + ' — ' + ds;
+        return `<span class="cal-chip ${cls}" title="${this._esc(tip)}"><span class="cal-chip-label">${this._esc(b.name)}</span></span>`;
       }).join('');
       html += `<div class="cal-cell${out?' out':''}${isToday?' today':''}"><div class="cal-daynum">${d.getDate()}</div>${chips}</div>`;
     }
@@ -2443,6 +2448,7 @@ class Dashboard {
         <div class="upcoming-datebox"><span class="mon">${mon}</span><span class="day">${dt.getUTCDate()}</span></div>
         <div class="upcoming-main">
           <div class="upcoming-name">${this._esc(b.name)}</div>
+          ${b.location ? `<div class="upcoming-notes">&#128205; ${this._esc(b.location)}</div>` : ''}
         </div>
         <div class="upcoming-count${days<=7?' soon':''}">${count}</div>
         <button type="button" class="upcoming-del" title="Remove booking" onclick="dash.removeBooking(${b._id})">&times;</button>
