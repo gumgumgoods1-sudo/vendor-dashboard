@@ -241,6 +241,39 @@ body {
 .settings-rate-field input { width:90px; padding:7px 9px; border:1.5px solid var(--border-subtle); border-radius:9px; font-size:14px; font-family:inherit; color:var(--text-primary); font-weight:400; }
 .settings-rate-field input:focus { outline:none; border-color:var(--action); box-shadow:var(--ring); }
 
+/* ---------- Calendar (booked shows) ---------- */
+.cal-shortcut { display:none; }  /* mobile-only — desktop reaches Calendar via the top tab bar */
+.cal-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+.cal-title { font-size:16px; font-weight:800; letter-spacing:-0.01em; margin:0; }
+.cal-nav { display:flex; gap:8px; flex-wrap:wrap; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.cal-dow { text-align:center; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); padding:2px 0 6px; }
+.cal-cell { background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; min-height:92px; padding:7px 7px 6px; overflow:hidden; }
+.cal-cell.out { opacity:.4; }
+.cal-cell.today { border-color:var(--action); box-shadow:var(--ring); background:#fff; }
+.cal-daynum { font-size:11px; font-weight:800; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.cal-cell.today .cal-daynum { color:var(--action); }
+.cal-chip { display:block; margin-top:4px; font-size:10.5px; font-weight:700; line-height:1.35; padding:3px 7px; border-radius:6px; background:#eaf2fc; color:#1c5cab; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:default; }
+.cal-chip.past { background:#eef0f6; color:var(--text-secondary); }
+.cal-chip.today { background:var(--positive-tint); color:var(--positive); }
+.cal-legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary); }
+.cal-legend-item { display:inline-flex; align-items:center; gap:6px; }
+.cal-swatch { width:10px; height:10px; border-radius:3px; }
+.cal-swatch.upcoming { background:#2a78d6; }
+.cal-swatch.today { background:#188038; }
+.cal-swatch.past { background:#c1c4d2; }
+.upcoming-row { display:flex; align-items:center; gap:14px; padding:11px 2px; border-bottom:1px solid #f1f2f7; }
+.upcoming-row:last-child { border-bottom:none; }
+.upcoming-datebox { flex-shrink:0; width:52px; text-align:center; background:#eaf2fc; border-radius:10px; padding:6px 0 7px; }
+.upcoming-datebox .mon { display:block; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:#1c5cab; }
+.upcoming-datebox .day { display:block; font-size:18px; font-weight:800; color:#1c5cab; line-height:1.1; font-variant-numeric:tabular-nums; }
+.upcoming-main { flex:1; min-width:0; }
+.upcoming-name { font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.upcoming-notes { font-size:11.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.upcoming-count { flex-shrink:0; font-size:11.5px; font-weight:700; color:var(--text-secondary); }
+.upcoming-count.soon { color:var(--positive); }
+.upcoming-empty { font-size:12.5px; color:var(--text-secondary); padding:12px 0; }
+
 /* ---------- Charts ---------- */
 .section-title { font-size:15px; font-weight:800; letter-spacing:-0.01em; margin:26px 0 12px 2px; color:var(--text-primary); }
 .section-title:first-child { margin-top:0; }
@@ -389,6 +422,18 @@ body {
   .table-cards td input, .table-cards td select { padding:9px 10px; font-size:13.5px; }
   .table-cards .multiselect-cell { min-width:0; }
 
+  /* Mobile-only Calendar shortcut on the Card Show tab (Calendar is intentionally absent
+     from the bottom nav). Full-width so it reads as a clear entry point. */
+  .cal-shortcut { display:block; width:100%; margin-bottom:14px; padding:11px; font-size:13px; }
+
+  /* ---------- Calendar: compact cells, chips collapse to dots (Upcoming list has the detail) ---------- */
+  .cal-grid { gap:3px; }
+  .cal-cell { min-height:52px; padding:4px 4px 3px; border-radius:8px; }
+  .cal-chip { width:8px; height:8px; padding:0; border-radius:50%; background:#2a78d6; margin:4px auto 0; }
+  .cal-chip.past { background:#c1c4d2; }
+  .cal-chip.today { background:#188038; }
+  .cal-chip .cal-chip-label { display:none; }
+
   /* ---------- Mobile "Filters" toggle + "Sort by" dropdown, shown per table-toolbar ---------- */
   .mobile-table-controls { display:flex; gap:8px; width:100%; }
   .mobile-table-controls select.mobile-sort-select { flex:1; min-width:0; border:1px solid var(--border-subtle); border-radius:9px; padding:7px 8px; font-size:12px; font-family:inherit; color:var(--text-primary); background:#fff; }
@@ -490,6 +535,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')">Sales</button>
     <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')">Trades</button>
     <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')">Expenses</button>
+    <button class="tab-btn" data-tab="calendar" onclick="dash.showTab('calendar')">Calendar</button>
     <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')">Settings</button>
   </nav>
 
@@ -699,6 +745,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
   <!-- ===================== CASHFLOW / SHOWS TAB ===================== -->
   <section class="tab-panel" id="tab-cashflow">
+    <!-- Mobile-only shortcut into the Calendar tab (which has no bottom-nav icon by design).
+         Hidden on desktop, where Calendar sits in the top tab bar. -->
+    <button type="button" class="btn-sm cal-shortcut" onclick="dash.showTab('calendar')">&#128197; View Show Calendar</button>
     <div class="section-title" style="margin-top:0">Show Performance</div>
     <section class="chart-row">
       <div class="chart-container tall" style="grid-column:1/-1;">
@@ -747,6 +796,34 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <thead id="cashflow-head"></thead>
         <tbody id="cashflow-body"></tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- ===================== CALENDAR TAB ===================== -->
+  <!-- Booked shows = rows in the Card Show ledger with a date. Add a future show there
+       (or with the "+ Book a Show" button here) and it appears on this calendar. -->
+  <section class="tab-panel" id="tab-calendar">
+    <div class="table-section">
+      <div class="cal-toolbar">
+        <h3 class="cal-title" id="cal-title">&nbsp;</h3>
+        <div class="cal-nav">
+          <button class="btn-sm" onclick="dash.calStep(-1)" title="Previous month">&lsaquo; Prev</button>
+          <button class="btn-sm" onclick="dash.calStep(0)">Today</button>
+          <button class="btn-sm" onclick="dash.calStep(1)" title="Next month">Next &rsaquo;</button>
+          <button class="btn-sm btn-add" data-addrow data-table="cashflow">+ Book a Show</button>
+        </div>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-legend">
+        <span class="cal-legend-item"><span class="cal-swatch upcoming"></span>Booked / upcoming</span>
+        <span class="cal-legend-item"><span class="cal-swatch today"></span>Today</span>
+        <span class="cal-legend-item"><span class="cal-swatch past"></span>Past show</span>
+      </div>
+    </div>
+
+    <div class="table-section">
+      <h3>&#128197; Upcoming Shows</h3>
+      <div id="upcoming-list"></div>
     </div>
   </section>
 
@@ -1935,6 +2012,7 @@ class Dashboard {
     this.renderKPIs();
     this.renderCharts();
     this.renderTopShows();
+    this.renderCalendar();
     this.renderInventory();
     this.renderSales();
     this.renderCashflow();
@@ -2235,6 +2313,79 @@ class Dashboard {
 
     const svgHtml = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
     container.innerHTML = `<div class="chart-svg-wrap">${svgHtml}</div>`;
+  }
+
+  // ---- Calendar of booked shows (Calendar tab) ----
+  // A "booking" is simply a Card Show ledger row with a date; future dates are upcoming
+  // bookings, past dates are show history. Bookkeeping buckets are excluded.
+  calStep(delta){
+    if(delta===0){ this.calMonth = null; }
+    else {
+      const m = this.calMonth || new Date();
+      this.calMonth = new Date(m.getFullYear(), m.getMonth()+delta, 1);
+    }
+    this.renderCalendar();
+  }
+
+  renderCalendar(){
+    const grid = document.getElementById('cal-grid');
+    if(!grid) return;
+    if(!this.calMonth){ const now = new Date(); this.calMonth = new Date(now.getFullYear(), now.getMonth(), 1); }
+    const y = this.calMonth.getFullYear(), mo = this.calMonth.getMonth();
+    document.getElementById('cal-title').textContent = this.calMonth.toLocaleString(undefined, {month:'long', year:'numeric'});
+
+    const shows = this.data.cashflow.filter(c =>
+      !this._isBookkeepingBucket(c['Show Name']) && /^\d{4}-\d{2}-\d{2}/.test(String(c['Date']||'')));
+    const byDate = {};
+    shows.forEach(c => { const d = String(c['Date']).slice(0,10); (byDate[d] = byDate[d]||[]).push(c); });
+    const today = this.todayStr();
+
+    const firstDow = new Date(y, mo, 1).getDay();            // 0 = Sunday
+    const daysInMonth = new Date(y, mo+1, 0).getDate();
+    const weeks = Math.ceil((firstDow + daysInMonth) / 7);
+    let html = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+    for(let i = 0; i < weeks*7; i++){
+      const d = new Date(y, mo, 1 - firstDow + i);
+      const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+      const out = d.getMonth() !== mo;
+      const isToday = ds === today;
+      const chips = (byDate[ds]||[]).map(c=>{
+        const cls = ds === today ? 'today' : (ds < today ? 'past' : '');
+        let tip = `${c['Show Name']} — ${ds}`;
+        if(ds < today) tip += ` — Actual Profit ${fmtMoney(c['Actual Profit (auto)'])}`;
+        if(c['Notes']) tip += `\n${c['Notes']}`;
+        return `<span class="cal-chip ${cls}" title="${this._esc(tip)}"><span class="cal-chip-label">${this._esc(c['Show Name'])}</span></span>`;
+      }).join('');
+      html += `<div class="cal-cell${out?' out':''}${isToday?' today':''}"><div class="cal-daynum">${d.getDate()}</div>${chips}</div>`;
+    }
+    grid.innerHTML = html;
+
+    // Upcoming list: everything from today forward, soonest first.
+    const listEl = document.getElementById('upcoming-list');
+    const upcoming = shows
+      .filter(c => String(c['Date']).slice(0,10) >= today)
+      .sort((a,b) => String(a['Date']).localeCompare(String(b['Date'])));
+    if(!upcoming.length){
+      listEl.innerHTML = '<div class="upcoming-empty">No upcoming shows booked — use <strong>+ Book a Show</strong> above to add one (just a name and a date; fill in the money fields after the show).</div>';
+      return;
+    }
+    const MS_DAY = 86400000;
+    const toUTC = ds => { const p = ds.split('-').map(Number); return Date.UTC(p[0], p[1]-1, p[2]); };
+    listEl.innerHTML = upcoming.map(c=>{
+      const ds = String(c['Date']).slice(0,10);
+      const days = Math.round((toUTC(ds) - toUTC(today)) / MS_DAY);
+      const count = days === 0 ? 'Today!' : days === 1 ? 'Tomorrow' : `in ${days} days`;
+      const dt = new Date(toUTC(ds));
+      const mon = dt.toLocaleString(undefined, {month:'short', timeZone:'UTC'});
+      return `<div class="upcoming-row">
+        <div class="upcoming-datebox"><span class="mon">${mon}</span><span class="day">${dt.getUTCDate()}</span></div>
+        <div class="upcoming-main">
+          <div class="upcoming-name">${this._esc(c['Show Name'])}</div>
+          ${c['Notes'] ? `<div class="upcoming-notes">${this._esc(c['Notes'])}</div>` : ''}
+        </div>
+        <div class="upcoming-count${days<=7?' soon':''}">${count}</div>
+      </div>`;
+    }).join('');
   }
 
   renderTopShows(){
