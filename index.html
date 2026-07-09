@@ -581,13 +581,13 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <button type="button" class="qa-close" id="qa-close" title="Close">&times;</button>
       </div>
       <div class="qa-tabs">
-        <button type="button" class="qa-tab-btn" data-qa-tab="inventory" onclick="dash.switchQuickAddTab('inventory')">Inventory</button>
-        <button type="button" class="qa-tab-btn active" data-qa-tab="sales" onclick="dash.switchQuickAddTab('sales')">Sale</button>
+        <button type="button" class="qa-tab-btn active" data-qa-tab="inventory" onclick="dash.switchQuickAddTab('inventory')">Inventory</button>
+        <button type="button" class="qa-tab-btn" data-qa-tab="sales" onclick="dash.switchQuickAddTab('sales')">Sale</button>
         <button type="button" class="qa-tab-btn" data-qa-tab="trades" onclick="dash.switchQuickAddTab('trades')">Trade</button>
         <button type="button" class="qa-tab-btn" data-qa-tab="expenses" onclick="dash.switchQuickAddTab('expenses')">Expense</button>
       </div>
 
-      <form class="qa-form" id="qa-form-inventory" data-qa-form="inventory">
+      <form class="qa-form active" id="qa-form-inventory" data-qa-form="inventory">
         <div class="qa-field"><label>Item Name</label><input type="text" name="Item Name" required autofocus></div>
         <div class="qa-row">
           <div class="qa-field"><label>Category</label><select name="Category"></select></div>
@@ -605,7 +605,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <button type="submit" class="qa-submit">Add Item</button>
       </form>
 
-      <form class="qa-form active" id="qa-form-sales" data-qa-form="sales">
+      <form class="qa-form" id="qa-form-sales" data-qa-form="sales">
         <div class="qa-row">
           <div class="qa-field"><label>Date</label><input type="date" name="Date" required></div>
           <div class="qa-field"><label>Show</label><select name="Show Name"></select></div>
@@ -3418,7 +3418,8 @@ class Dashboard {
 
   openQuickAdd(tab){
     this.populateQuickAddForms();
-    if(tab) this.switchQuickAddTab(tab);
+    // Default to the Inventory tab (falls back to it when the FAB is tapped with no specific tab).
+    this.switchQuickAddTab(tab || 'inventory');
     document.getElementById('qa-overlay').classList.remove('hidden');
   }
 
