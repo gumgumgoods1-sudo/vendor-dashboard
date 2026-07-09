@@ -926,6 +926,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <div class="table-section">
       <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
       <div class="edit-note" style="margin-top:-6px">Tip: a trade can involve several cards on either side (e.g. a customer trading 3 lower-value cards for 1 high-end card) — use the "+ add…" picker in the Traded Out / Received cells to add every card involved, and use Cash In / Cash Out to record any cash that changed hands to balance the trade.</div>
+      <div class="edit-note" style="margin-top:-6px"><strong>Trade Profit</strong> = the cash this trade nets (Cash In − Cash Out) — the amount it adds to Total Actual Profit. A pure card-for-card swap shows $0 here because profit on the cards you took in is realized <em>later, when you sell them</em> (it flows through Sales profit, and the upside shows in Potential Profit). A trade linked to a sale shows $0 too — its profit is counted on that sale instead.</div>
       <div class="table-toolbar">
         <h3 style="margin:0">Trades Log</h3>
         <div class="toolbar-actions">
@@ -1918,6 +1919,14 @@ class Dashboard {
     const nameById = {}, catById = {}, costById = {};
     this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; catById[i['Item ID']] = i['Category']; costById[i['Item ID']] = Number(i['Cost'])||0; });
 
+    // A trade is "linked" when a Sales row points at it via Trade Ref — its economics live in
+    // that sale, so on its own it books $0 extra profit (avoids double counting). A standalone
+    // trade books only the cash it netted; the profit on cards you took in is recognized later,
+    // when those cards sell (via the normal Sales profit / Potential Profit). This mirrors
+    // exactly how computeKPIs() rolls trades into Total Actual Profit — the column below is just
+    // that same contribution made visible per row, so no headline number changes.
+    const linkedTradeIdSet = new Set(this.data.sales.filter(s=>s['Linked Trade']).map(s=>s['Linked Trade']));
+
     // Trades are recalculated first so their auto-fields (and Value of Trade) are
     // available to pull into any Sales rows paid for via a linked trade, below.
     this.data.trades.forEach(t=>{
@@ -1927,6 +1936,7 @@ class Dashboard {
       t['Items Received (auto)'] = inIds.map(id=>nameById[id]||id).join(', ');
       const cashIn = Number(t['Cash Received'])||0, cashOut = Number(t['Cash Paid Out'])||0;
       t['Net Cash (auto)'] = cashIn - cashOut;
+      t['Trade Profit (auto)'] = linkedTradeIdSet.has(t['Trade ID']) ? 0 : (cashIn - cashOut);
     });
     const tradeById = {};
     this.data.trades.forEach(t=>{ tradeById[t['Trade ID']] = t; });
@@ -2964,6 +2974,7 @@ class Dashboard {
         {field:'Cash Received', label:'Cash In', editable:true, type:'money', money:true},
         {field:'Cash Paid Out', label:'Cash Out', editable:true, type:'money', money:true},
         {field:'Net Cash (auto)', label:'Net Cash', editable:false, money:true},
+        {field:'Trade Profit (auto)', label:'Trade Profit', editable:false, money:true},
       ],
       expenses: [
         {field:'Date', label:'Date', editable:true, type:'date', primary:true},
