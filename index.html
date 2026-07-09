@@ -477,8 +477,10 @@ body {
    confirms a user; live cloud data never loads while it is up. ---------------- */
 .login-overlay { position:fixed; inset:0; z-index:2000; background:linear-gradient(135deg,#101322 0%,#1b2142 55%,#28305f 100%); display:flex; align-items:center; justify-content:center; padding:20px; }
 .login-overlay.hidden { display:none; }
-.login-card { background:var(--bg-card); border-radius:20px; width:100%; max-width:380px; padding:28px 26px 26px; box-shadow:0 24px 60px rgba(5,7,18,0.5); }
+.login-card { background:var(--bg-card); border-radius:20px; width:100%; max-width:380px; padding:28px 26px 26px; box-shadow:0 24px 60px rgba(5,7,18,0.5); text-align:center; }
+.login-logo { width:96px; height:96px; border-radius:20px; object-fit:cover; margin:0 auto 14px; display:block; box-shadow:0 6px 18px rgba(5,7,18,0.28); }
 .login-card h2 { font-size:19px; font-weight:800; letter-spacing:-0.02em; }
+.login-card form { text-align:left; }
 .login-card > p { font-size:12.5px; color:var(--text-secondary); margin:4px 0 18px; }
 .login-card form { display:flex; flex-direction:column; gap:14px; }
 .login-remember { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); cursor:pointer; user-select:none; }
@@ -1042,6 +1044,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
      can't load at all; onAuthStateChanged shows it whenever nobody is signed in. -->
 <div class="login-overlay hidden" id="login-overlay">
   <div class="login-card">
+    <img class="login-logo" src="assets/icons/logo.png" alt="GumGumGoods logo">
     <h2>GumGumGoods Vendor Dashboard</h2>
     <p>Sign in to load your live inventory, sales &amp; cashflow.</p>
     <form id="login-form" autocomplete="on">
