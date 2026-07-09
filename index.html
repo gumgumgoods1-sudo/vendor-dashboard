@@ -2177,7 +2177,11 @@ class Dashboard {
   }
 
   renderCharts(){
-    const cf = this.filteredCashflow.filter(c=>!this._isBookkeepingBucket(c['Show Name']));
+    // Exclude bookkeeping buckets (Start up cost / General Expense) and order the shows
+    // chronologically by their date so the bars read left-to-right in date order.
+    const cf = [...this.filteredCashflow]
+      .filter(c=>!this._isBookkeepingBucket(c['Show Name']))
+      .sort((a,b)=>String(a['Date']||'').localeCompare(String(b['Date']||'')));
     const labels = cf.map(c=>c['Show Name']);
 
     this._barLine('chart-shows', labels, [
