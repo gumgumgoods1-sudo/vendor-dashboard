@@ -715,6 +715,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <div class="kpi-card sold"><div class="kpi-label">Items Sold</div><div class="kpi-value" id="kpi-sold">0</div></div>
         <div class="kpi-card traded"><div class="kpi-label">Items Traded</div><div class="kpi-value" id="kpi-traded">0</div></div>
         <div class="kpi-card cash"><div class="kpi-label">Net Cashflow</div><div class="kpi-value" id="kpi-cash">$0</div></div>
+        <div class="kpi-card" style="--dot:#0c5f28" title="Physical cash box: Starting Cash Float (set in Settings) + cash-payment sales + net trade cash (cash in − out) − expenses. Sales paid by Venmo/card aren't counted here; expenses are assumed paid from cash."><div class="kpi-label">Cash on Hand</div><div class="kpi-value" id="kpi-cashonhand">$0</div></div>
       </section>
     </div>
 
@@ -745,6 +746,12 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </section>
 
     <div class="section-title">Inventory Insights</div>
+    <section class="chart-row">
+      <div class="chart-container tall" style="grid-column:1/-1;">
+        <h3>Inventory Value Over Time</h3>
+        <div class="chart-svg-wrap" id="chart-inv-trend"></div>
+      </div>
+    </section>
     <section class="chart-row">
       <div class="chart-container">
         <h3>Inventory Value by Category</h3>
@@ -1025,6 +1032,10 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <span>Trade Rate (Credit) %</span>
           <input type="number" id="pref-trade-rate" data-pref-num="tradeRatePct" min="0" max="100" step="1">
         </label>
+        <label class="settings-rate-field">
+          <span>Starting Cash Float $</span>
+          <input type="number" id="pref-cash-float" data-pref-cash="baseCashOnHand" min="0" step="1">
+        </label>
       </div>
       <div class="settings-account-row">
         <span>Signed in as <strong id="signedin-email">&hellip;</strong></span>
@@ -1182,6 +1193,7 @@ class Dashboard {
       calendar: this.normalizeCalendar(raw.calendar),
       lists: this.normalizeLists(raw.lists),
       settings: this.normalizeSettings(raw.settings),
+      snapshots: this.normalizeSnapshots(raw.snapshots),
     };
     this.defineColumns();
     this.init();
@@ -1190,11 +1202,39 @@ class Dashboard {
   normalizeSettings(settings){
     const buy = settings ? Number(settings.buyRatePct) : NaN;
     const trade = settings ? Number(settings.tradeRatePct) : NaN;
+    const cash = settings ? Number(settings.baseCashOnHand) : NaN;
     return {
       showLowStockAlert: settings ? settings.showLowStockAlert !== false : true,
       buyRatePct: Number.isFinite(buy) ? buy : 80,
       tradeRatePct: Number.isFinite(trade) ? trade : 85,
+      baseCashOnHand: Number.isFinite(cash) ? cash : 0,
     };
+  }
+
+  // Daily inventory-value snapshots {date, cost, value} powering the "Inventory Value Over
+  // Time" chart. Deduped by date (latest wins); older saved data has none, defaults to empty.
+  normalizeSnapshots(arr){
+    const byDate = {};
+    (Array.isArray(arr) ? arr : []).forEach(e=>{
+      const d = String((e&&e.date)||'').slice(0,10);
+      if(/^\d{4}-\d{2}-\d{2}$/.test(d)) byDate[d] = { date:d, cost:Number(e.cost)||0, value:Number(e.value)||0 };
+    });
+    return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
+  }
+
+  // Upsert today's inventory-value point. Called at the end of recalcAll so it always reflects
+  // the latest totals; returns true only when a brand-new day was added (so the caller can
+  // persist that first-of-day point even on a no-edit visit).
+  _recordSnapshot(){
+    if(!Array.isArray(this.data.snapshots)) this.data.snapshots = [];
+    const today = this.todayStr();
+    const cost = this.data.inventory.reduce((a,i)=>a+(Number(i['Total Cost (auto)'])||0),0);
+    const value = this.data.inventory.reduce((a,i)=>a+(Number(i['Total Inventory Value (auto)'])||0),0);
+    const existing = this.data.snapshots.find(s=>s.date===today);
+    if(existing){ existing.cost = cost; existing.value = value; return false; }
+    this.data.snapshots.push({ date:today, cost, value });
+    this.data.snapshots.sort((a,b)=>a.date.localeCompare(b.date));
+    return true;
   }
 
   normalizeLists(lists){
@@ -1269,6 +1309,7 @@ class Dashboard {
       if(e.target.matches('select.filter-input[data-filter]')){ this.handleFilterChange(e.target); return; }
       if(e.target.matches('[data-pref]')){ this.handlePrefChange(e.target); return; }
       if(e.target.matches('[data-pref-num]')){ this.handlePrefNumChange(e.target); return; }
+      if(e.target.matches('[data-pref-cash]')){ this.handlePrefCashChange(e.target); return; }
       if(e.target.matches('[data-col-visibility]')){ this.handleColumnVisibility(e.target); return; }
       if(e.target.matches('[data-mobile-sort]')){ this.handleMobileSort(e.target); return; }
       if(e.target.matches('[data-addfield]')){ this.handleAddModalFieldChange(e.target); return; }
@@ -1441,6 +1482,17 @@ class Dashboard {
     this.data.settings[key] = val;
     this.markDirty();
     this.renderCalculator();
+  }
+
+  handlePrefCashChange(el){
+    const key = el.dataset.prefCash;
+    this._pushUndoSnapshot();
+    let val = parseFloat(el.value);
+    if(!Number.isFinite(val) || val < 0) val = 0;
+    el.value = val;
+    this.data.settings[key] = val;
+    this.markDirty();
+    this.renderKPIs();
   }
 
   getBuyRatePct(){
@@ -1650,6 +1702,7 @@ class Dashboard {
       expenses: this.data.expenses,
       cashflow: this.data.cashflow,
       calendar: this.data.calendar,
+      snapshots: this.data.snapshots,
       lists: this.data.lists,
       settings: this.data.settings,
     }));
@@ -1671,6 +1724,7 @@ class Dashboard {
       expenses: snap.expenses.map(r=>({...r, _id:this.nextId++})),
       cashflow: snap.cashflow.map(r=>({...r, _id:this.nextId++})),
       calendar: this.normalizeCalendar(snap.calendar),
+      snapshots: this.normalizeSnapshots(snap.snapshots),
       lists: snap.lists,
       settings: snap.settings,
     };
@@ -1717,6 +1771,7 @@ class Dashboard {
       expenses: strip(this.data.expenses),
       cashflow: strip(this.data.cashflow),
       calendar: strip(this.data.calendar),
+      snapshots: this.data.snapshots,
       lists: this.data.lists,
       settings: this.data.settings,
     };
@@ -1758,6 +1813,7 @@ class Dashboard {
       calendar: this.normalizeCalendar(parsed.calendar),
       lists: this.normalizeLists(Array.isArray(parsed.lists) ? {} : (parsed.lists || this.raw.lists)),
       settings: this.normalizeSettings(parsed.settings),
+      snapshots: this.normalizeSnapshots(parsed.snapshots),
     };
     this.tableFilters = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
     // A freshly loaded file may contain entirely different rows — old persisted filters could
@@ -2005,6 +2061,7 @@ class Dashboard {
     });
 
     this.itemCat = catById;
+    this._recordSnapshot();
   }
 
   computeKPIs(){
@@ -2057,6 +2114,13 @@ class Dashboard {
       itemsSold: itemsSold,
       itemsTraded: this.data.trades.length,
       netCashflow: sum(this.data.cashflow,'Ending Cash') - sum(this.data.cashflow,'Starting Cash'),
+      // Cash on Hand — physical cash box: starting float + cash-payment sales + net trade cash
+      // (cash physically taken in/paid out) − expenses. Sales taken via Venmo/card/etc. are not
+      // counted here (they don't land in the cash box). Expenses are assumed paid from cash.
+      cashOnHand: (Number(this.data.settings.baseCashOnHand)||0)
+        + this.data.sales.filter(s=>s['Payment Method']==='Cash').reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0)
+        + sum(this.data.trades,'Net Cash (auto)')
+        - totalExpenses,
       // Sales-performance metrics
       avgSalePrice: itemsSold>0 ? totalSalesAmt/itemsSold : 0,
       avgMarginPct: totalSalesAmt>0 ? (salesProfit/totalSalesAmt)*100 : 0,
@@ -2111,6 +2175,7 @@ class Dashboard {
     document.getElementById('kpi-sold').textContent = fmtNum(k.itemsSold);
     document.getElementById('kpi-traded').textContent = fmtNum(k.itemsTraded);
     document.getElementById('kpi-cash').textContent = fmtMoney(k.netCashflow);
+    document.getElementById('kpi-cashonhand').textContent = fmtMoney(k.cashOnHand);
     document.getElementById('kpi-asp').textContent = fmtMoney(k.avgSalePrice);
     document.getElementById('kpi-margin').textContent = k.avgMarginPct.toFixed(1)+'%';
     document.getElementById('kpi-sellthrough').textContent = k.sellThroughPct.toFixed(1)+'%';
@@ -2175,6 +2240,14 @@ class Dashboard {
 
     // Inventory insights
     const invByCat = this._aggregate(this.filteredInventory, i=>i['Category'], i=>i['Total Inventory Value (auto)']||0);
+    // Inventory Value Over Time — one point per day the app recorded (see _recordSnapshot).
+    const snaps = Array.isArray(this.data.snapshots) ? this.data.snapshots : [];
+    const snapLabels = snaps.map(s=>s.date.slice(5).replace('-','/'));
+    this._barLine('chart-inv-trend', snapLabels, [
+      {type:'line', label:'Inventory Value', data:snaps.map(s=>s.value), color:PALETTE[0]},
+      {type:'line', label:'Total Cost', data:snaps.map(s=>s.cost), color:PALETTE[3]},
+    ]);
+
     this._doughnut('chart-inv-value-cat', invByCat);
     const stockCounts = {'In Stock':0, 'Sold':0};
     this.filteredInventory.forEach(i=>{ const label = i['Stock Status (auto)']==='LOW STOCK' ? 'Sold' : 'In Stock'; stockCounts[label]++; });
@@ -3637,6 +3710,7 @@ class Dashboard {
     `).join('');
     document.getElementById('pref-buy-rate').value = this.data.settings.buyRatePct;
     document.getElementById('pref-trade-rate').value = this.data.settings.tradeRatePct;
+    document.getElementById('pref-cash-float').value = this.data.settings.baseCashOnHand;
   }
 
   handleListRename(el){
@@ -3778,10 +3852,15 @@ async function loadCloudData(){
     const ref = cloudDocRef();
     const snap = await ref.get();
     if(snap.exists){
-      dash._applyLoadedPayload(snap.data(), 'the cloud');
+      const cloudData = snap.data();
+      dash._applyLoadedPayload(cloudData, 'the cloud');
       dash.undoStack = [];
       dash.redoStack = [];
       dash._updateUndoRedoButtons();
+      // Persist today's first inventory-value snapshot even on a no-edit visit, so the
+      // "Inventory Value Over Time" chart still gets a daily point.
+      const hadToday = Array.isArray(cloudData.snapshots) && cloudData.snapshots.some(s=>String((s&&s.date)||'').slice(0,10)===dash.todayStr());
+      if(!hadToday && typeof window.scheduleCloudSave==='function') window.scheduleCloudSave();
     } else {
       // First time this ever ran — save the built-in sample data as the starting point so
       // every later edit has something in Firestore to update.
