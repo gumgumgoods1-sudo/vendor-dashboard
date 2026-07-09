@@ -1,7 +1,7 @@
 {
   "name": "Gumgumgood TCG Vendor Dashboard",
   "short_name": "TCG Vendor",
-  "description": "Pokemon & One Piece TCG vendor tracking — home screen, inventory, sales, trades, expenses, and cashflow.",
+  "description": "One Piece TCG vendor tracking — home screen, inventory, sales, trades, expenses, and cashflow.",
   "start_url": "./home.html",
   "scope": "./",
   "display": "standalone",
