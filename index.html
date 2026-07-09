@@ -535,14 +535,13 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   </header>
 
   <div class="session-bar">
-    <div class="session-status" id="session-status">Working from the original snapshot &mdash; click &#9889; Enable Auto-Save to save every change automatically, or use Load/Save Progress manually.</div>
+    <div class="session-status" id="session-status">Working from the original snapshot &mdash; sign in and your changes save automatically to the cloud.</div>
     <div class="session-actions">
       <input type="file" id="load-file-input" accept="application/json" style="display:none">
       <button class="btn-sm" id="undo-btn" title="Undo (Ctrl+Z)" disabled>&#8617; Undo</button>
       <button class="btn-sm" id="redo-btn" title="Redo (Ctrl+Shift+Z)" disabled>&#8618; Redo</button>
       <button class="btn-sm" id="clear-all-filters-btn" title="Clear every table's filters at once">&#129529; Clear Filters</button>
       <button class="btn-sm" id="refresh-btn" title="Pull the latest data from the cloud (e.g. changes another person made on their device)">&#128260; Refresh</button>
-      <button class="btn-sm" id="autosave-btn" title="Pick a file once — every change is then saved to it automatically in the background.">&#9889; Enable Auto-Save</button>
       <button class="btn-sm" id="load-progress-btn">&#128193; Load Progress</button>
       <button class="btn-sm btn-add" id="save-progress-btn">&#128190; Save a Copy</button>
     </div>
@@ -1381,7 +1380,6 @@ class Dashboard {
     document.getElementById('confirm-overlay').addEventListener('click', (e)=>{ if(e.target.id==='confirm-overlay') this._closeConfirm(); });
     document.getElementById('load-progress-btn').addEventListener('click', ()=>this.openProgressFile());
     document.getElementById('load-file-input').addEventListener('change', (e)=>this.loadProgress(e.target.files[0]));
-    document.getElementById('autosave-btn').addEventListener('click', ()=>this.toggleAutoSave());
     document.getElementById('undo-btn').addEventListener('click', ()=>this.undo());
     document.getElementById('redo-btn').addEventListener('click', ()=>this.redo());
     document.getElementById('clear-all-filters-btn').addEventListener('click', ()=>this.handleClearAllFilters());
