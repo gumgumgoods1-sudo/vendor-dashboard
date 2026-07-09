@@ -908,6 +908,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
   <!-- ===================== TRADES TAB ===================== -->
   <section class="tab-panel" id="tab-trades">
+    <div id="trade-conflict-alert" class="alert-banner hidden"></div>
     <div class="kpi-row" style="margin-bottom:var(--gap)">
       <div class="kpi-card" style="--dot:var(--positive)">
         <div class="kpi-label">Total Cash In</div>
@@ -1937,7 +1938,9 @@ class Dashboard {
       // Value of Trade, adjusted by any cash that changed hands as part of that trade
       // (cash the customer paid in on top increases the effective price; cash paid back
       // out to the customer reduces it) — i.e. Value of Trade + Net Cash (auto).
-      const linkedTrade = (s['Payment Method']==='Trade' && s['Linked Trade']) ? tradeById[s['Linked Trade']] : null;
+      // The link is driven by the Linked Trade field alone (not Payment Method) — setting a
+      // Trade Ref on a sale makes it trade-financed, so its price derives from that trade.
+      const linkedTrade = s['Linked Trade'] ? tradeById[s['Linked Trade']] : null;
       if(linkedTrade){ s['Sale Price'] = (Number(linkedTrade['Value of Trade'])||0) + (Number(linkedTrade['Net Cash (auto)'])||0); }
       const qty = Number(s['Quantity Sold'])||0, price = Number(s['Sale Price'])||0;
       const unitCost = costById[s['Item ID']] || 0;
@@ -2015,7 +2018,7 @@ class Dashboard {
     // contribute their Net Cash on top of Sales profit.
     const linkedTradeIds = new Set(
       this.data.sales
-        .filter(s=>s['Payment Method']==='Trade' && s['Linked Trade'])
+        .filter(s=>s['Linked Trade'])
         .map(s=>s['Linked Trade'])
     );
     const salesProfit = sum(this.data.sales,'Profit (auto)');
@@ -2134,7 +2137,7 @@ class Dashboard {
     // cash → expenses → Net Profit. Mirrors exactly how computeKPIs() builds Net Profit.
     const wfRev = this.filteredSales.reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
     const wfProfit = this.filteredSales.reduce((a,s)=>a+(Number(s['Profit (auto)'])||0),0);
-    const wfLinked = new Set(this.filteredSales.filter(s=>s['Payment Method']==='Trade' && s['Linked Trade']).map(s=>s['Linked Trade']));
+    const wfLinked = new Set(this.filteredSales.filter(s=>s['Linked Trade']).map(s=>s['Linked Trade']));
     const wfTradeCash = this.filteredTrades.reduce((a,t)=> wfLinked.has(t['Trade ID']) ? a : a+(Number(t['Net Cash (auto)'])||0), 0);
     const wfExp = this.filteredExpenses.reduce((a,e)=>a+(Number(e['Amount'])||0),0);
     this._waterfall('chart-waterfall', [
@@ -2942,7 +2945,7 @@ class Dashboard {
         {field:'Item Name (auto)', label:'Item Name', editable:false, primary:true},
         {field:'Cost (auto)', label:'Unit Cost', editable:false, money:true},
         {field:'Quantity Sold', label:'Qty', editable:true, type:'number'},
-        {field:'Sale Price', label:'Price', editable:true, type:'money', money:true, editableIf:(row)=> !(row['Payment Method']==='Trade' && row['Linked Trade'])},
+        {field:'Sale Price', label:'Price', editable:true, type:'money', money:true, editableIf:(row)=> !row['Linked Trade']},
         {field:'Total Sale Amount (auto)', label:'Total', editable:false, money:true, primary:true},
         {field:'Total Cost (auto)', label:'Total Cost', editable:false, money:true},
         {field:'Profit (auto)', label:'Profit', editable:false, money:true},
@@ -3552,6 +3555,27 @@ class Dashboard {
     document.getElementById('kpi-trade-cash-in').textContent = fmtMoney(cashIn);
     document.getElementById('kpi-trade-cash-out').textContent = fmtMoney(cashOut);
     document.getElementById('kpi-trade-cash-net').textContent = fmtMoney(cashIn-cashOut);
+    this._renderTradeConflictAlert();
+  }
+
+  // Warn when a card is recorded as leaving inventory through BOTH a Sale and a trade's
+  // "Items Traded Out" — that double-counts its departure and drives Remaining Inventory
+  // negative. A trade-financed sale should list the card in the Sale only; the trade should
+  // carry just the cards received (plus cash).
+  _renderTradeConflictAlert(){
+    const el = document.getElementById('trade-conflict-alert');
+    if(!el) return;
+    const soldIds = new Set(this.data.sales.filter(s=>(Number(s['Quantity Sold'])||0)>0).map(s=>s['Item ID']));
+    const tradedOut = new Set();
+    this.data.trades.forEach(t=>(Array.isArray(t['Items Traded Out'])?t['Items Traded Out']:[]).forEach(id=>tradedOut.add(id)));
+    const nameById = {}; this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; });
+    const conflicts = [...tradedOut].filter(id=>soldIds.has(id));
+    if(!conflicts.length){ el.classList.add('hidden'); el.innerHTML=''; return; }
+    const names = conflicts.map(id=>this._esc(nameById[id]||id)).join(', ');
+    el.classList.remove('hidden');
+    el.innerHTML = `<strong>&#9888; Double-counted item${conflicts.length>1?'s':''}:</strong> ${names} `
+      + `${conflicts.length>1?'are':'is'} in both a Sale and a trade's "Traded Out" list, so `
+      + `inventory is being subtracted twice. For a trade-financed sale, keep the card in the Sale only and remove it from the trade's Traded Out.`;
   }
   sortTrades(field){ this._sortBy('trades', field, 'asc'); this.renderTrades(); }
 
