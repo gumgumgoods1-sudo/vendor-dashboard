@@ -532,6 +532,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <button class="btn-sm" id="undo-btn" title="Undo (Ctrl+Z)" disabled>&#8617; Undo</button>
       <button class="btn-sm" id="redo-btn" title="Redo (Ctrl+Shift+Z)" disabled>&#8618; Redo</button>
       <button class="btn-sm" id="clear-all-filters-btn" title="Clear every table's filters at once">&#129529; Clear Filters</button>
+      <button class="btn-sm" id="refresh-btn" title="Pull the latest data from the cloud (e.g. changes another person made on their device)">&#128260; Refresh</button>
       <button class="btn-sm" id="autosave-btn" title="Pick a file once — every change is then saved to it automatically in the background.">&#9889; Enable Auto-Save</button>
       <button class="btn-sm" id="load-progress-btn">&#128193; Load Progress</button>
       <button class="btn-sm btn-add" id="save-progress-btn">&#128190; Save a Copy</button>
@@ -1319,6 +1320,7 @@ class Dashboard {
       setTimeout(()=>{ this._clearSkuSuggestions(el); }, 200);
     });
     document.getElementById('save-progress-btn').addEventListener('click', ()=>this.saveProgress());
+    document.getElementById('refresh-btn').addEventListener('click', ()=>{ if(typeof window.refreshFromCloud==='function') window.refreshFromCloud(); });
     document.getElementById('load-progress-btn').addEventListener('click', ()=>this.openProgressFile());
     document.getElementById('load-file-input').addEventListener('change', (e)=>this.loadProgress(e.target.files[0]));
     document.getElementById('autosave-btn').addEventListener('click', ()=>this.toggleAutoSave());
@@ -3727,6 +3729,39 @@ window.scheduleCloudSave = function scheduleCloudSave(){
       dash.setSessionStatus('Could not save to the cloud (offline or blocked) — your edits are still on screen; they\'ll retry on the next change, or use "Save a Copy" as a backup.', 'dirty');
     }
   }, 900);
+};
+
+// Manual "Refresh" — pull the newest cloud document on demand (the dashboard otherwise only
+// reads once at load, so a second person's edits don't appear until reload). Guards against
+// silently throwing away unsaved local edits.
+window.refreshFromCloud = async function refreshFromCloud(){
+  if(!dash) return;
+  if(!(window.firebase && firebase.auth && firebase.auth().currentUser)){
+    dash.showToast('Sign in first to load cloud data.');
+    return;
+  }
+  if(dash.dirty && !confirm('You have unsaved changes that haven\'t reached the cloud yet. Refreshing replaces what\'s on screen with the latest cloud data and discards those local edits. Continue?')){
+    return;
+  }
+  const btn = document.getElementById('refresh-btn');
+  if(btn) btn.disabled = true;
+  dash.setSessionStatus('Refreshing from the cloud…', 'saved');
+  try{
+    const snap = await cloudDocRef().get();
+    if(snap.exists){
+      // _applyLoadedPayload pushes an undo snapshot first, so an accidental refresh is undoable.
+      dash._applyLoadedPayload(snap.data(), 'the cloud');
+      dash.showToast('Data refreshed from the cloud.');
+    } else {
+      dash.showToast('No cloud data found yet.');
+    }
+  } catch(err){
+    console.error('Refresh failed', err);
+    dash.setSessionStatus('Could not refresh — check your connection and try again.', 'dirty');
+    dash.showToast('Refresh failed — check your connection.');
+  } finally {
+    if(btn) btn.disabled = false;
+  }
 };
 
 const dash = new Dashboard(RAW);
