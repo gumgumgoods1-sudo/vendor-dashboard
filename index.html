@@ -747,12 +747,6 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
     <div class="section-title">Inventory Insights</div>
     <section class="chart-row">
-      <div class="chart-container tall" style="grid-column:1/-1;">
-        <h3>Inventory Value Over Time</h3>
-        <div class="chart-svg-wrap" id="chart-inv-trend"></div>
-      </div>
-    </section>
-    <section class="chart-row">
       <div class="chart-container">
         <h3>Inventory Value by Category</h3>
         <div id="chart-inv-value-cat"></div>
@@ -784,14 +778,6 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <tbody id="top-shows-body"></tbody>
       </table>
     </div>
-
-    <div class="section-title">Cashflow Summary</div>
-    <section class="chart-row">
-      <div class="chart-container tall" style="grid-column:1/-1;">
-        <h3>Where the Money Went &mdash; Sales to Net Profit</h3>
-        <div class="chart-svg-wrap" id="chart-waterfall"></div>
-      </div>
-    </section>
 
     <div class="section-title">Per-Show Ledger</div>
     <div class="table-section">
@@ -2061,7 +2047,6 @@ class Dashboard {
     });
 
     this.itemCat = catById;
-    this._recordSnapshot();
   }
 
   computeKPIs(){
@@ -2213,21 +2198,6 @@ class Dashboard {
       {type:'line', label:'Profit from Sales', data:months.map(m=>byMonth[m].profit), color:PALETTE[3]},
     ]);
 
-    // Cashflow waterfall (Card Show tab): Sales → cost of the cards sold → standalone trade
-    // cash → expenses → Net Profit. Mirrors exactly how computeKPIs() builds Net Profit.
-    const wfRev = this.filteredSales.reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
-    const wfProfit = this.filteredSales.reduce((a,s)=>a+(Number(s['Profit (auto)'])||0),0);
-    const wfLinked = new Set(this.filteredSales.filter(s=>s['Linked Trade']).map(s=>s['Linked Trade']));
-    const wfTradeCash = this.filteredTrades.reduce((a,t)=> wfLinked.has(t['Trade ID']) ? a : a+(Number(t['Net Cash (auto)'])||0), 0);
-    const wfExp = this.filteredExpenses.reduce((a,e)=>a+(Number(e['Amount'])||0),0);
-    this._waterfall('chart-waterfall', [
-      {label:'Sales', delta:wfRev},
-      {label:'Cost of Cards', delta:-(wfRev-wfProfit)},
-      {label:'Trade Cash', delta:wfTradeCash},
-      {label:'Expenses', delta:-wfExp},
-      {label:'Net Profit', total:true},
-    ]);
-
     const catSales = this._aggregate(this.filteredSales, s=>this.itemCat[s['Item ID']]||'Other', s=>s['Total Sale Amount (auto)']||0);
     this._doughnut('chart-cat-sales', catSales);
     const paymentAgg = this._aggregate(this.filteredSales, s=>s['Payment Method']||'Other', s=>s['Total Sale Amount (auto)']||0);
@@ -2240,14 +2210,6 @@ class Dashboard {
 
     // Inventory insights
     const invByCat = this._aggregate(this.filteredInventory, i=>i['Category'], i=>i['Total Inventory Value (auto)']||0);
-    // Inventory Value Over Time — one point per day the app recorded (see _recordSnapshot).
-    const snaps = Array.isArray(this.data.snapshots) ? this.data.snapshots : [];
-    const snapLabels = snaps.map(s=>s.date.slice(5).replace('-','/'));
-    this._barLine('chart-inv-trend', snapLabels, [
-      {type:'line', label:'Inventory Value', data:snaps.map(s=>s.value), color:PALETTE[0]},
-      {type:'line', label:'Total Cost', data:snaps.map(s=>s.cost), color:PALETTE[3]},
-    ]);
-
     this._doughnut('chart-inv-value-cat', invByCat);
     const stockCounts = {'In Stock':0, 'Sold':0};
     this.filteredInventory.forEach(i=>{ const label = i['Stock Status (auto)']==='LOW STOCK' ? 'Sold' : 'In Stock'; stockCounts[label]++; });
@@ -3852,15 +3814,10 @@ async function loadCloudData(){
     const ref = cloudDocRef();
     const snap = await ref.get();
     if(snap.exists){
-      const cloudData = snap.data();
-      dash._applyLoadedPayload(cloudData, 'the cloud');
+      dash._applyLoadedPayload(snap.data(), 'the cloud');
       dash.undoStack = [];
       dash.redoStack = [];
       dash._updateUndoRedoButtons();
-      // Persist today's first inventory-value snapshot even on a no-edit visit, so the
-      // "Inventory Value Over Time" chart still gets a daily point.
-      const hadToday = Array.isArray(cloudData.snapshots) && cloudData.snapshots.some(s=>String((s&&s.date)||'').slice(0,10)===dash.todayStr());
-      if(!hadToday && typeof window.scheduleCloudSave==='function') window.scheduleCloudSave();
     } else {
       // First time this ever ran — save the built-in sample data as the starting point so
       // every later edit has something in Firestore to update.
