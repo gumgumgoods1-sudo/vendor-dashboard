@@ -721,7 +721,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <div class="kpi-card sold"><div class="kpi-label">Items Sold</div><div class="kpi-value" id="kpi-sold">0</div></div>
         <div class="kpi-card traded"><div class="kpi-label">Items Traded</div><div class="kpi-value" id="kpi-traded">0</div></div>
         <div class="kpi-card cash"><div class="kpi-label">Net Cashflow</div><div class="kpi-value" id="kpi-cash">$0</div></div>
-        <div class="kpi-card" style="--dot:#0c5f28" title="Physical cash box: Starting Cash Float (set in Settings) + cash-payment sales + net trade cash (cash in − out) − expenses. Sales paid by Venmo/card aren't counted here; expenses are assumed paid from cash."><div class="kpi-label">Cash on Hand</div><div class="kpi-value" id="kpi-cashonhand">$0</div></div>
+        <div class="kpi-card" style="--dot:#0c5f28" title="The cash you're physically holding right now (e.g. what you walk into a show with). Set and update it in Settings — it is not auto-calculated."><div class="kpi-label">Cash on Hand</div><div class="kpi-value" id="kpi-cashonhand">$0</div></div>
       </section>
     </div>
 
@@ -1025,8 +1025,8 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <input type="number" id="pref-trade-rate" data-pref-num="tradeRatePct" min="0" max="100" step="1">
         </label>
         <label class="settings-rate-field">
-          <span>Starting Cash Float $</span>
-          <input type="number" id="pref-cash-float" data-pref-cash="baseCashOnHand" min="0" step="1">
+          <span>Cash on Hand $</span>
+          <input type="number" id="pref-cash-float" data-pref-cash="baseCashOnHand" min="0" step="0.01">
         </label>
       </div>
       <div class="settings-account-row">
@@ -2126,13 +2126,9 @@ class Dashboard {
       itemsSold: itemsSold,
       itemsTraded: this.data.trades.length,
       netCashflow: sum(this.data.cashflow,'Ending Cash') - sum(this.data.cashflow,'Starting Cash'),
-      // Cash on Hand — physical cash box: starting float + cash-payment sales + net trade cash
-      // (cash physically taken in/paid out) − expenses. Sales taken via Venmo/card/etc. are not
-      // counted here (they don't land in the cash box). Expenses are assumed paid from cash.
-      cashOnHand: (Number(this.data.settings.baseCashOnHand)||0)
-        + this.data.sales.filter(s=>s['Payment Method']==='Cash').reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0)
-        + sum(this.data.trades,'Net Cash (auto)')
-        - totalExpenses,
+      // Cash on Hand — the cash you're physically holding right now (e.g. what you walk into a
+      // show with). A manually maintained figure you set in Settings; not auto-computed.
+      cashOnHand: Number(this.data.settings.baseCashOnHand)||0,
       // Sales-performance metrics
       avgSalePrice: itemsSold>0 ? totalSalesAmt/itemsSold : 0,
       avgMarginPct: totalSalesAmt>0 ? (salesProfit/totalSalesAmt)*100 : 0,
