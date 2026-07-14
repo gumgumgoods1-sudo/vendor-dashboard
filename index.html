@@ -2060,6 +2060,9 @@ class Dashboard {
       const inStock = remaining > 0;
       i['Total Cost (auto)'] = inStock ? (Number(i['Cost'])||0) : 0;
       i['Total Inventory Value (auto)'] = inStock ? (Number(i['Retail Price'])||0) : 0;
+      // Per-card potential profit = Retail − Cost (what you'd make selling this card at retail).
+      // $0 once sold out, matching the Total Cost / Value basis above.
+      i['Card Potential Profit (auto)'] = inStock ? ((Number(i['Retail Price'])||0) - (Number(i['Cost'])||0)) : 0;
       i['Stock Status (auto)'] = remaining <= (Number(i['Reorder Level'])||0) ? 'LOW STOCK' : 'OK';
     });
 
@@ -3046,7 +3049,7 @@ class Dashboard {
         {field:'Cost', label:'Cost', editable:true, type:'money', money:true},
         {field:'Retail Price', label:'Retail', editable:true, type:'money', money:true, primary:true},
         {field:'Qty Purchased', label:'Qty Purch.', editable:true, type:'number'},
-        {field:'Total Cost (auto)', label:'Total Cost', editable:false, money:true},
+        {field:'Card Potential Profit (auto)', label:'Potential Profit', editable:false, money:true},
         {field:'Qty Sold (auto)', label:'Sold', editable:false},
         {field:'Remaining Inventory (auto)', label:'Qty Left', editable:false},
         {field:'Total Inventory Value (auto)', label:'Value', editable:false, money:true},
