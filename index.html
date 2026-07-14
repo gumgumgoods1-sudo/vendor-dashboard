@@ -370,6 +370,10 @@ body {
 .data-table td input[type=date] { min-width:100px; }
 .row-del { border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 6px; border-radius:6px; line-height:1; transition:background .12s, color .12s; }
 .row-del:hover { background:var(--negative-tint); color:var(--negative); }
+.row-return { border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:15px; padding:2px 6px; border-radius:6px; line-height:1; transition:background .12s, color .12s; }
+.row-return:hover { background:#eaf2fc; color:var(--action); }
+.show-sold-toggle { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer; user-select:none; white-space:nowrap; }
+.show-sold-toggle input { width:15px; height:15px; accent-color:var(--action); margin:0; }
 
 .multiselect-cell { min-width:150px; white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
 .chip { display:inline-flex; align-items:center; gap:4px; background:#eaf2fc; color:var(--action-deep); border:1px solid #cfe1f6; border-radius:99px; padding:2px 4px 2px 9px; font-size:11.5px; margin:2px 3px 2px 0; white-space:nowrap; }
@@ -855,6 +859,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <h3 style="margin:0">Inventory (click column headers to sort)</h3>
         <div class="toolbar-actions">
           <span id="inv-count" style="font-size:12px;color:var(--text-secondary)"></span>
+          <label class="show-sold-toggle" title="Sold-out items leave the Inventory tab; tick this to show them again."><input type="checkbox" id="show-sold-toggle"> Show sold-out</label>
           <div class="col-toggle-wrap">
             <button class="btn-sm" data-columns-toggle data-table="inventory">&#9776; Columns</button>
             <div class="col-toggle-panel hidden" id="colpanel-inventory"></div>
@@ -1170,6 +1175,7 @@ class Dashboard {
     };
     this.salesPageIndex = 0;
     this.salesPageSize = 10;
+    this.showSoldOut = false;   // Inventory tab hides sold-out items until this is toggled on
     this.nextId = 1;
     // Buy & Trade Calculator scratchpad: in-memory only, deliberately never part of `this.data`
     // and never touched by undo/autosave/cloud sync — a throwaway running list for pricing
@@ -1324,6 +1330,8 @@ class Dashboard {
       if(e.target.matches('[data-addmulti-add]')){ this.handleAddModalMultiAdd(e.target); return; }
     });
     document.addEventListener('click', e=>{
+      const ret = e.target.closest('[data-return-sale]');
+      if(ret){ this.returnSaleToInventory(Number(ret.dataset.id)); return; }
       const del = e.target.closest('[data-delete]');
       if(del){ this.handleDelete(del); return; }
       const calcDel = e.target.closest('[data-calc-delete]');
@@ -1383,6 +1391,7 @@ class Dashboard {
     document.getElementById('undo-btn').addEventListener('click', ()=>this.undo());
     document.getElementById('redo-btn').addEventListener('click', ()=>this.redo());
     document.getElementById('clear-all-filters-btn').addEventListener('click', ()=>this.handleClearAllFilters());
+    document.getElementById('show-sold-toggle').addEventListener('change', (e)=>this.toggleShowSoldOut(e.target.checked));
     document.addEventListener('keydown', e=>{
       const mod = e.ctrlKey || e.metaKey;
       if(!mod || e.key.toLowerCase()!=='z') return;
@@ -2982,7 +2991,29 @@ class Dashboard {
   }
 
   _deleteCell(table, row){
-    return `<td class="row-actions"><button class="row-del" data-delete data-table="${table}" data-id="${row._id}" title="Delete row">&#10005;</button></td>`;
+    // Sales rows get a "return to inventory" action that reverses a mistaken sale (deletes it and
+    // puts the item's quantity back in stock).
+    const ret = table==='sales'
+      ? `<button class="row-return" data-return-sale data-id="${row._id}" title="Return item to inventory (undo this sale)">&#8617;</button>`
+      : '';
+    return `<td class="row-actions">${ret}<button class="row-del" data-delete data-table="${table}" data-id="${row._id}" title="Delete row">&#10005;</button></td>`;
+  }
+
+  returnSaleToInventory(id){
+    const sale = this.data.sales.find(s=>s._id===id);
+    if(!sale) return;
+    const name = sale['Item Name (auto)'] || sale['Item ID'] || 'item';
+    this._confirmDelete(
+      `Move <strong>${this._esc(name)}</strong> back to inventory? This removes the sale${sale['Sale ID'] ? ` (${this._esc(sale['Sale ID'])})` : ''} and returns the item to stock.`,
+      ()=>{
+        this._pushUndoSnapshot();
+        this.data.sales = this.data.sales.filter(s=>s._id!==id);
+        this.recalcAll();
+        this.renderAll();
+        this.markDirty();
+        this.showToast(`Returned "${name}" to inventory.`);
+      }
+    );
   }
 
   // ---------------- column schema for every editable table ----------------
@@ -3628,9 +3659,18 @@ class Dashboard {
   renderInventory(skipHead){
     const cols = this._visibleColumns('inventory');
     if(!skipHead) this._renderHead('inv-head', cols, 'inv', 'sortInventory', true, 'inventory');
-    const filtered = this._applyTableFilter('inventory', cols, this.data.inventory);
+    // Sold-out items (nothing left in stock) drop off the Inventory tab by default — they live on
+    // in the Sales tab. The "Show sold-out" toggle brings them back into view. The rows still exist
+    // in the data (sales reference them); this is purely a view filter.
+    const inStock = this.showSoldOut
+      ? this.data.inventory
+      : this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
+    const filtered = this._applyTableFilter('inventory', cols, inStock);
     const data = this._sortData(filtered, this.sortStates.inv);
-    document.getElementById('inv-count').textContent = this._countLabel(data.length, this.data.inventory.length, 'item');
+    const soldOutCount = this.data.inventory.length - this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0).length;
+    document.getElementById('inv-count').textContent =
+      this._countLabel(data.length, this.showSoldOut ? this.data.inventory.length : inStock.length, 'item')
+      + (!this.showSoldOut && soldOutCount>0 ? ` · ${soldOutCount} sold-out hidden` : '');
     // data-row-id is a stable hook for SKU Quick Lookup to find a specific row even when every
     // editable column (which is what data-edit cells key off) is hidden via column visibility.
     document.getElementById('inv-body').innerHTML = data.map(row=>
@@ -3638,6 +3678,7 @@ class Dashboard {
     ).join('');
   }
   sortInventory(field){ this._sortBy('inv', field, 'asc'); this.renderInventory(); }
+  toggleShowSoldOut(checked){ this.showSoldOut = !!checked; this.renderInventory(); }
 
   renderSales(skipHead){
     const cols = this._visibleColumns('sales');
