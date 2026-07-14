@@ -1517,6 +1517,22 @@ class Dashboard {
     this.renderKPIs();
   }
 
+  // New stock is assumed to be bought with the cash you're carrying: adding an inventory
+  // row that has a cost pulls that money straight out of the manual Cash on Hand figure
+  // (Cost per card × Qty Purchased). Only fires on ADD — editing a row's cost later, or
+  // deleting the row, does not adjust Cash on Hand (adjust it in Settings if needed).
+  deductInventoryCostFromCash(row){
+    const total = (Number(row['Cost'])||0) * (Number(row['Qty Purchased'])||0);
+    if(total <= 0) return '';
+    const current = Number(this.data.settings.baseCashOnHand)||0;
+    const next = Math.round((current - total)*100)/100;
+    this.data.settings.baseCashOnHand = next;
+    const cashInput = document.getElementById('pref-cash-float');
+    if(cashInput) cashInput.value = next;
+    // Returned so callers can fold it into their "added" toast (there's only one toast slot).
+    return ` — Cash on Hand −${fmtMoney(total)} → ${fmtMoney(next)}`;
+  }
+
   getBuyRatePct(){
     const v = Number(this.data.settings.buyRatePct);
     return Number.isFinite(v) ? v : 80;
@@ -3410,10 +3426,11 @@ class Dashboard {
     this._pushUndoSnapshot();
     row._id = this.nextId++;
     this.data[table].push(row);
+    const cashNote = table==='inventory' ? this.deductInventoryCostFromCash(row) : '';
     this.recalcAll();
     this.renderAll();
     this.markDirty();
-    this.showToast(`${this.addModalTitle(table).replace(/^Add /,'')} added.`);
+    this.showToast(`${this.addModalTitle(table).replace(/^Add /,'')} added.${cashNote}`);
     if(addAnother){
       this._addModalDraft = this.blankRow(table);
       this._renderAddModalBody();
@@ -3554,12 +3571,13 @@ class Dashboard {
     }
     row._id = this.nextId++;
     this.data[table].push(row);
+    const cashNote = table==='inventory' ? this.deductInventoryCostFromCash(row) : '';
     this.recalcAll();
     this.renderAll();
     this.markDirty();
     this.closeQuickAdd();
     const labelMap = {inventory:'Item', sales:'Sale', trades:'Trade', expenses:'Expense'};
-    this.showToast(`${labelMap[table]||'Row'} added`);
+    this.showToast(`${labelMap[table]||'Row'} added${cashNote}`);
   }
 
   // ---------------- Buy & Trade Calculator (FAB → scratchpad modal) ----------------
