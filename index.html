@@ -3181,8 +3181,15 @@ class Dashboard {
       const existing = this.findInventoryItemBySku(parsed.sku);
       const msg = document.querySelector('[data-qa-sku-msg]');
       if(existing){
-        if(msg) msg.textContent = `Heads up: ${parsed.sku} is already in inventory (${existing['Item Name']||'unnamed item'}). Adding this will create a second item with the same SKU.`;
-        this.showToast(`SKU ${parsed.sku} already exists in inventory`);
+        // The SKU is already in inventory — prefill the form from the existing item wherever
+        // the QR itself didn't supply a value, so a bare-SKU label still prepopulates details.
+        if(form){
+          if(!parsed.name && form.elements['Item Name']) form.elements['Item Name'].value = existing['Item Name'] || '';
+          if(!Number.isFinite(parsed.cost) && form.elements['Cost']) form.elements['Cost'].value = Number(existing['Cost'])||0;
+          if(!Number.isFinite(parsed.retail) && form.elements['Retail Price']) form.elements['Retail Price'].value = Number(existing['Retail Price'])||0;
+        }
+        if(msg) msg.textContent = `Heads up: ${parsed.sku} is already in inventory (${existing['Item Name']||'unnamed item'}) — details filled from that item. Adding will create a second item with the same SKU; if you're restocking, edit Qty Purchased on the existing item instead.`;
+        this.showToast(`SKU ${parsed.sku} already exists — details filled in`);
       } else {
         if(msg) msg.textContent = '';
         this.showToast(parsed.labeled && parsed.name
@@ -3398,13 +3405,14 @@ class Dashboard {
   firstItemId(){ return this.data.inventory[0] ? this.data.inventory[0]['Item ID'] : ''; }
 
   // ---------------- SKU Quick Lookup — shared matching logic ----------------
-  // Exact, case-sensitive match against each item's SKU field; first match wins on duplicates.
-  // Every SKU lookup location (Quick Add Sale/Trade, the generic Add Sale/Trade modals, and the
-  // Inventory tab toolbar) calls this same function — none re-implement matching themselves.
+  // Exact match against each item's SKU field, ignoring upper/lower case and surrounding
+  // whitespace ("op09-119" finds "OP09-119"); first match wins on duplicates. Every SKU lookup
+  // location (Quick Add Sale/Trade, the generic Add Sale/Trade modals, the Inventory tab
+  // toolbar, and the camera scanner) calls this same function — none re-implement matching.
   findInventoryItemBySku(sku){
-    const trimmed = (sku==null ? '' : String(sku)).trim();
+    const trimmed = (sku==null ? '' : String(sku)).trim().toLowerCase();
     if(!trimmed) return undefined;
-    return this.data.inventory.find(item => item['SKU'] === trimmed);
+    return this.data.inventory.find(item => String(item['SKU']||'').trim().toLowerCase() === trimmed);
   }
 
   // ---------------- SKU Quick Lookup — live partial matching ----------------
