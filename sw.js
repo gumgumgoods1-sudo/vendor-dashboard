@@ -4,7 +4,7 @@
 // network calls — those go straight to the network so you always get live data when
 // you have a connection; the app-shell cache below is only a fallback for when you
 // don't.
-const CACHE_NAME = 'tcg-vendor-shell-v13';
+const CACHE_NAME = 'tcg-vendor-shell-v14';
 const SHELL_FILES = [
   './',
   './home.html',
@@ -12,6 +12,7 @@ const SHELL_FILES = [
   './manifest.webmanifest',
   './js/firebase-config.js',
   './js/data-sync.js',
+  './js/jsqr.js',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/apple-touch-icon.png',

@@ -531,6 +531,28 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .sort-sheet-option:hover { border-color:var(--action); }
 .sort-sheet-option.active { border-color:var(--action); background:#eaf2fc; font-weight:700; }
 .sort-sheet-dir { font-size:12px; color:var(--text-secondary); flex-shrink:0; }
+
+/* ---------------- QR camera scanning ----------------
+   The camera button lives inside every SKU lookup box (decoded QR feeds the same
+   handleSkuLookupEnter() pipeline as typing + Enter) and on the Quick Add Inventory SKU field
+   (decoded QR fills the SKU for a brand-new item — labels are printed on the NIIMBOT app first,
+   then scanned here). The label is only a pointer: price/stock always come from live data. */
+.sku-scan-btn { flex-shrink:0; border:1.5px solid var(--border-subtle); background:#fff; border-radius:9px; padding:6px 9px; font-size:14px; line-height:1; cursor:pointer; }
+.sku-scan-btn:hover { border-color:var(--action); background:#eaf2fc; }
+.scan-overlay { position:fixed; inset:0; background:rgba(10,12,24,.92); z-index:340; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:18px; }
+.scan-overlay.hidden { display:none; }
+.scan-video-wrap { position:relative; width:min(92vw, 480px); aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#000; }
+.scan-video-wrap video { width:100%; height:100%; object-fit:cover; }
+.scan-frame { position:absolute; inset:14%; border:3px solid rgba(255,255,255,.85); border-radius:16px; pointer-events:none;
+  box-shadow:0 0 0 999px rgba(0,0,0,.28); }
+.scan-title { color:#fff; font-size:16px; font-weight:700; margin:0; }
+.scan-status { color:#d6dbee; font-size:13px; margin:0; text-align:center; max-width:480px; }
+.scan-cancel { border:1.5px solid rgba(255,255,255,.5); background:transparent; color:#fff; border-radius:11px; padding:10px 22px; font-size:14px; font-family:inherit; cursor:pointer; }
+.scan-cancel:hover { background:rgba(255,255,255,.12); }
+.qa-sku-scan-row { display:flex; align-items:center; gap:6px; }
+.qa-sku-scan-row input { flex:1; min-width:0; }
+.qa-sku-msg { font-size:12px; color:var(--negative); margin-top:4px; }
+.qa-sku-msg:empty { display:none; }
 </style>
 </head>
 <body>
@@ -611,7 +633,13 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="qa-row">
           <div class="qa-field"><label>Qty Purchased</label><input type="number" name="Qty Purchased" min="0" step="1" value="1" required></div>
-          <div class="qa-field"><label>SKU <span class="req-mark">*</span></label><input type="text" name="SKU" required></div>
+          <div class="qa-field"><label>SKU <span class="req-mark">*</span></label>
+            <div class="qa-sku-scan-row">
+              <input type="text" name="SKU" required>
+              <button type="button" class="sku-scan-btn" data-scan-fill title="Scan the item's printed QR label to fill in the SKU">&#128247;</button>
+            </div>
+            <div class="qa-sku-msg" data-qa-sku-msg></div>
+          </div>
         </div>
         <div class="qa-field"><label>Set / Expansion (optional)</label><input type="text" name="Set / Expansion"></div>
         <button type="submit" class="qa-submit">Add Item</button>
@@ -709,6 +737,19 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <div class="edit-note" style="margin:0 0 10px">Tap a field to sort. Tap the highlighted one again to flip the order.</div>
       <div class="sort-sheet-list" id="sort-sheet-list"></div>
     </div>
+  </div>
+
+  <!-- QR camera scanner — opened by the camera button inside any SKU lookup box. A decoded QR
+       code is treated exactly like typing that SKU + Enter in the box that launched it. -->
+  <div class="scan-overlay hidden" id="scan-overlay">
+    <h2 class="scan-title">Scan QR label</h2>
+    <div class="scan-video-wrap">
+      <video id="scan-video" playsinline muted></video>
+      <div class="scan-frame"></div>
+    </div>
+    <p class="scan-status" id="scan-status">Point the camera at the item's QR label.</p>
+    <button type="button" class="scan-cancel" id="scan-cancel">Cancel</button>
+    <canvas id="scan-canvas" style="display:none"></canvas>
   </div>
 
   <!-- ===================== DASHBOARD TAB ===================== -->
@@ -1382,6 +1423,8 @@ class Dashboard {
       if(amrm){ this.handleAddModalMultiRemove(amrm); return; }
       const skuSug = e.target.closest('[data-sku-suggestion-select]');
       if(skuSug){ this._handleSkuSuggestionClick(skuSug); return; }
+      const scanBtn = e.target.closest('[data-scan-btn]');
+      if(scanBtn){ this.openScanner(scanBtn); return; }
       if(e.target.closest('#add-modal-save')){ this.saveAddModal(false); return; }
       if(e.target.closest('#add-modal-save-another')){ this.saveAddModal(true); return; }
       if(e.target.closest('#add-modal-cancel') || e.target.closest('#add-modal-close')){ this.closeAddModal(); return; }
@@ -1413,6 +1456,8 @@ class Dashboard {
     // Mobile sort sheet close button + backdrop.
     document.getElementById('sort-sheet-close').addEventListener('click', ()=>this.closeSortSheet());
     document.getElementById('sort-sheet-overlay').addEventListener('click', (e)=>{ if(e.target.id==='sort-sheet-overlay') this.closeSortSheet(); });
+    // QR scanner cancel button.
+    document.getElementById('scan-cancel').addEventListener('click', ()=>this.closeScanner());
     document.getElementById('load-progress-btn').addEventListener('click', ()=>this.openProgressFile());
     document.getElementById('load-file-input').addEventListener('change', (e)=>this.loadProgress(e.target.files[0]));
     document.getElementById('undo-btn').addEventListener('click', ()=>this.undo());
@@ -1431,6 +1476,7 @@ class Dashboard {
     });
     document.addEventListener('keydown', e=>{
       if(e.key!=='Escape') return;
+      if(!document.getElementById('scan-overlay').classList.contains('hidden')){ this.closeScanner(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
       if(!document.getElementById('confirm-overlay').classList.contains('hidden')){ this._closeConfirm(); return; }
       if(!document.getElementById('add-modal-overlay').classList.contains('hidden')){ this.closeAddModal(); return; }
@@ -2836,6 +2882,7 @@ class Dashboard {
   _skuLookupBoxHtml(location){
     return `<span class="sku-lookup-icon" aria-hidden="true">&#128269;</span>`
       + `<input type="text" class="sku-lookup-input" data-sku-lookup="${this._esc(location)}" placeholder="Scan or type SKU" autocomplete="off">`
+      + `<button type="button" class="sku-scan-btn" data-scan-btn title="Scan a QR label with the camera">&#128247;</button>`
       + `<span class="sku-lookup-msg" data-sku-lookup-msg></span>`
       + `<div class="sku-suggestions hidden" data-sku-suggestions></div>`;
   }
@@ -3023,6 +3070,142 @@ class Dashboard {
       row.classList.add('sku-row-highlight');
       setTimeout(()=>{ row.classList.remove('sku-row-highlight'); }, 2200);
     }
+  }
+
+  // ---------------- QR camera scanning ----------------
+  // Labels are created and printed on the NIIMBOT app (QR content = the SKU); the dashboard only
+  // ever READS them. Camera decoding (jsQR) is vendored under js/ and lazy-loaded on first use,
+  // so the dashboard's initial load pays zero cost and the service worker still caches it for
+  // offline shows. A decoded QR from a lookup box is handed to the exact same
+  // handleSkuLookupEnter() pipeline as typed input — one code path for match/no-match behavior.
+  _ensureScript(src, globalName){
+    return new Promise((resolve, reject)=>{
+      if(window[globalName]) return resolve(window[globalName]);
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = ()=> window[globalName] ? resolve(window[globalName]) : reject(new Error(globalName+' missing after load'));
+      s.onerror = ()=> reject(new Error('Could not load '+src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async openScanner(btnEl){
+    // Two launch modes: from a SKU lookup box (decoded code runs the lookup pipeline), or from
+    // the Quick Add Inventory SKU field via data-scan-fill (decoded code just fills the input —
+    // the label was printed BEFORE the item exists, so there is nothing to look up yet).
+    const wrap = btnEl.closest('.sku-lookup');
+    this._scanInput = wrap ? wrap.querySelector('[data-sku-lookup]') : null;
+    this._scanFillInput = null;
+    if(!this._scanInput && btnEl.matches('[data-scan-fill]')){
+      const row = btnEl.closest('.qa-sku-scan-row');
+      this._scanFillInput = row ? row.querySelector('input') : null;
+    }
+    const status = document.getElementById('scan-status');
+    document.getElementById('scan-overlay').classList.remove('hidden');
+    status.textContent = 'Starting camera…';
+    try{
+      if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        throw new Error('This browser does not support camera access (the site must be opened over HTTPS).');
+      }
+      await this._ensureScript('js/jsqr.js', 'jsQR');
+      const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+      // If Cancel was hit while the permission prompt was up, the overlay is already gone —
+      // release the camera we just got instead of leaving its light on.
+      if(document.getElementById('scan-overlay').classList.contains('hidden')){
+        stream.getTracks().forEach(t=>t.stop());
+        return;
+      }
+      this._scanStream = stream;
+      const video = document.getElementById('scan-video');
+      video.srcObject = stream;
+      await video.play();
+      status.textContent = "Point the camera at the item's QR label.";
+      this._scanRunning = true;
+      this._scanTick();
+    }catch(err){
+      status.textContent = (err && err.name==='NotAllowedError')
+        ? 'Camera permission was denied — allow camera access for this site in your browser settings, then try again.'
+        : 'Could not start the camera: ' + ((err && err.message) || err);
+    }
+  }
+
+  _scanTick(){
+    if(!this._scanRunning) return;
+    const video = document.getElementById('scan-video');
+    if(video.readyState >= 2 && video.videoWidth){
+      const canvas = document.getElementById('scan-canvas');
+      const w = video.videoWidth, h = video.videoHeight;
+      canvas.width = w; canvas.height = h;
+      const cx = canvas.getContext('2d', { willReadFrequently:true });
+      cx.drawImage(video, 0, 0, w, h);
+      const img = cx.getImageData(0, 0, w, h);
+      const code = window.jsQR(img.data, w, h, { inversionAttempts:'dontInvert' });
+      const text = code && code.data && code.data.trim();
+      if(text){ this._handleScanResult(text); return; }
+    }
+    requestAnimationFrame(()=>this._scanTick());
+  }
+
+  // A NIIMBOT label QR may carry the whole one-column data block ("Item Name: …", "Cost: …",
+  // "Retail: …", "SKU: …" on separate lines or split by |) instead of a bare SKU. Pull the
+  // fields out when that format is detected; otherwise the entire scanned text IS the SKU.
+  _parseScannedLabel(text){
+    const out = { sku: text.trim(), name: null, cost: null, retail: null, labeled: false };
+    const mName = text.match(/item\s*name\s*:\s*([^\n|]+)/i);
+    const mCost = text.match(/(?:^|[\n|])\s*cost\s*:\s*\$?\s*(\d[\d.,]*)/i);
+    const mRetail = text.match(/retail(?:\s*price)?\s*:\s*\$?\s*(\d[\d.,]*)/i);
+    const mSku = text.match(/sku\s*:\s*([^\s|]+)/i);
+    if(mSku){ out.sku = mSku[1].trim(); out.labeled = true; }
+    if(mName){ out.name = mName[1].trim(); out.labeled = true; }
+    if(mCost) out.cost = parseFloat(mCost[1].replace(/,/g,''));
+    if(mRetail) out.retail = parseFloat(mRetail[1].replace(/,/g,''));
+    return out;
+  }
+
+  _handleScanResult(text){
+    const input = this._scanInput, fill = this._scanFillInput;
+    this.closeScanner();
+    if(navigator.vibrate) navigator.vibrate(80);
+    const parsed = this._parseScannedLabel(text);
+    if(fill){
+      // Quick Add Inventory: the scanned label carries the new item's SKU — and, when the QR
+      // holds the full label block, its name/cost/retail too. Warn (but don't block) if that
+      // SKU is already on an existing item, so an accidental double-add stands out.
+      fill.value = parsed.sku;
+      const form = fill.closest('form');
+      if(form && parsed.labeled){
+        if(parsed.name && form.elements['Item Name']) form.elements['Item Name'].value = parsed.name;
+        if(Number.isFinite(parsed.cost) && form.elements['Cost']) form.elements['Cost'].value = parsed.cost;
+        if(Number.isFinite(parsed.retail) && form.elements['Retail Price']) form.elements['Retail Price'].value = parsed.retail;
+      }
+      const existing = this.findInventoryItemBySku(parsed.sku);
+      const msg = document.querySelector('[data-qa-sku-msg]');
+      if(existing){
+        if(msg) msg.textContent = `Heads up: ${parsed.sku} is already in inventory (${existing['Item Name']||'unnamed item'}). Adding this will create a second item with the same SKU.`;
+        this.showToast(`SKU ${parsed.sku} already exists in inventory`);
+      } else {
+        if(msg) msg.textContent = '';
+        this.showToast(parsed.labeled && parsed.name
+          ? `Label scanned — SKU + item details filled in`
+          : `SKU ${parsed.sku} scanned — fill in the item details`);
+        if(form && form.elements['Item Name'] && !form.elements['Item Name'].value) form.elements['Item Name'].focus();
+      }
+      return;
+    }
+    const item = this.findInventoryItemBySku(parsed.sku);
+    if(item) this.showToast(`Scanned ${item['SKU']} — ${item['Item Name']}`);
+    else this.showToast(`No inventory item found for scanned code “${parsed.sku}”`);
+    if(!input) return;
+    input.value = parsed.sku;
+    this.handleSkuLookupEnter(input);
+  }
+
+  closeScanner(){
+    this._scanRunning = false;
+    if(this._scanStream){ this._scanStream.getTracks().forEach(t=>t.stop()); this._scanStream = null; }
+    const video = document.getElementById('scan-video');
+    if(video) video.srcObject = null;
+    document.getElementById('scan-overlay').classList.add('hidden');
   }
 
   // Renders one <td> for a column definition against a given row + table key.
@@ -3575,6 +3758,8 @@ class Dashboard {
     inventoryForm.elements['Qty Purchased'].value = 1;
     inventoryForm.elements['SKU'].value = '';
     inventoryForm.elements['Set / Expansion'].value = '';
+    const skuMsg = inventoryForm.querySelector('[data-qa-sku-msg]');
+    if(skuMsg) skuMsg.textContent = '';
 
     const salesForm = document.getElementById('qa-form-sales');
     salesForm.elements['Date'].value = today;
