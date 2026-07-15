@@ -539,7 +539,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
    then scanned here). The label is only a pointer: price/stock always come from live data. */
 .sku-scan-btn { flex-shrink:0; border:1.5px solid var(--border-subtle); background:#fff; border-radius:9px; padding:6px 9px; font-size:14px; line-height:1; cursor:pointer; }
 .sku-scan-btn:hover { border-color:var(--action); background:#eaf2fc; }
-.scan-overlay { position:fixed; inset:0; background:rgba(10,12,24,.92); z-index:340; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:18px; }
+/* Must stack above .qa-overlay (z-index:1500) — the scanner is launched from inside the
+   Quick Add modal, and would otherwise open invisibly behind it. */
+.scan-overlay { position:fixed; inset:0; background:rgba(10,12,24,.92); z-index:2000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:18px; }
 .scan-overlay.hidden { display:none; }
 .scan-video-wrap { position:relative; width:min(92vw, 480px); aspect-ratio:1/1; border-radius:18px; overflow:hidden; background:#000; }
 .scan-video-wrap video { width:100%; height:100%; object-fit:cover; }
@@ -1423,7 +1425,7 @@ class Dashboard {
       if(amrm){ this.handleAddModalMultiRemove(amrm); return; }
       const skuSug = e.target.closest('[data-sku-suggestion-select]');
       if(skuSug){ this._handleSkuSuggestionClick(skuSug); return; }
-      const scanBtn = e.target.closest('[data-scan-btn]');
+      const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill]');
       if(scanBtn){ this.openScanner(scanBtn); return; }
       if(e.target.closest('#add-modal-save')){ this.saveAddModal(false); return; }
       if(e.target.closest('#add-modal-save-another')){ this.saveAddModal(true); return; }
