@@ -457,7 +457,8 @@ body {
 
   /* ---------- Mobile "Filters" toggle + "Sort by" dropdown, shown per table-toolbar ---------- */
   .mobile-table-controls { display:flex; gap:8px; width:100%; }
-  .mobile-table-controls select.mobile-sort-select { flex:1; min-width:0; border:1px solid var(--border-subtle); border-radius:9px; padding:7px 8px; font-size:12px; font-family:inherit; color:var(--text-primary); background:#fff; }
+  /* Two equal-width buttons: 🔍 Filters and ⇅ Sort — sorting no longer lives in a dropdown. */
+  .mobile-table-controls .btn-sm { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 }
 @media print {
   body { background:#fff; }
@@ -523,6 +524,13 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .sku-suggestion:last-child { border-bottom:none; }
 .sku-suggestion:hover, .sku-suggestion:focus { background:#eaf2fc; outline:none; }
 .sku-suggestions-more { padding:6px 10px; font-size:11px; color:var(--text-secondary); font-style:italic; }
+
+/* Mobile sort sheet — big touch targets, active field highlighted with its direction. */
+.sort-sheet-list { display:flex; flex-direction:column; gap:6px; max-height:60vh; overflow-y:auto; }
+.sort-sheet-option { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 14px; border:1.5px solid var(--border-subtle); border-radius:11px; background:#fff; font-size:14px; font-family:inherit; color:var(--text-primary); cursor:pointer; text-align:left; }
+.sort-sheet-option:hover { border-color:var(--action); }
+.sort-sheet-option.active { border-color:var(--action); background:#eaf2fc; font-weight:700; }
+.sort-sheet-dir { font-size:12px; color:var(--text-secondary); flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -690,6 +698,19 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </div>
   </div>
 
+  <!-- Mobile sort sheet — the ⇅ Sort button on each tab opens this clean tap-to-sort list,
+       replacing the old cramped dropdown. Desktop still sorts by clicking column headers. -->
+  <div class="qa-overlay hidden" id="sort-sheet-overlay">
+    <div class="qa-modal">
+      <div class="qa-modal-head">
+        <h2 id="sort-sheet-title">Sort by</h2>
+        <button type="button" class="qa-close" id="sort-sheet-close" title="Close">&times;</button>
+      </div>
+      <div class="edit-note" style="margin:0 0 10px">Tap a field to sort. Tap the highlighted one again to flip the order.</div>
+      <div class="sort-sheet-list" id="sort-sheet-list"></div>
+    </div>
+  </div>
+
   <!-- ===================== DASHBOARD TAB ===================== -->
   <section class="tab-panel active" id="tab-dashboard">
     <div id="low-stock-alert" class="alert-banner hidden"></div>
@@ -805,7 +826,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="mobile-table-controls">
           <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
-          <select class="mobile-sort-select" id="mobile-sort-cashflow" data-mobile-sort data-table="cashflow"></select>
+          <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-cashflow" data-mobile-sort-open data-table="cashflow">&#8645; Sort</button>
         </div>
       </div>
       <table class="data-table table-cards">
@@ -870,7 +891,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="mobile-table-controls">
           <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
-          <select class="mobile-sort-select" id="mobile-sort-inventory" data-mobile-sort data-table="inventory"></select>
+          <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-inventory" data-mobile-sort-open data-table="inventory">&#8645; Sort</button>
         </div>
       </div>
       <table class="data-table table-cards">
@@ -897,7 +918,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="mobile-table-controls">
           <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
-          <select class="mobile-sort-select" id="mobile-sort-sales" data-mobile-sort data-table="sales"></select>
+          <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-sales" data-mobile-sort-open data-table="sales">&#8645; Sort</button>
         </div>
         <div class="pager">
           <span id="sales-page-info"></span>
@@ -947,7 +968,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="mobile-table-controls">
           <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
-          <select class="mobile-sort-select" id="mobile-sort-trades" data-mobile-sort data-table="trades"></select>
+          <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-trades" data-mobile-sort-open data-table="trades">&#8645; Sort</button>
         </div>
       </div>
       <table class="data-table table-cards">
@@ -1001,7 +1022,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="mobile-table-controls">
           <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
-          <select class="mobile-sort-select" id="mobile-sort-expenses" data-mobile-sort data-table="expenses"></select>
+          <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-expenses" data-mobile-sort-open data-table="expenses">&#8645; Sort</button>
         </div>
       </div>
       <table class="data-table table-cards">
@@ -1325,7 +1346,6 @@ class Dashboard {
       if(e.target.matches('[data-pref-num]')){ this.handlePrefNumChange(e.target); return; }
       if(e.target.matches('[data-pref-cash]')){ this.handlePrefCashChange(e.target); return; }
       if(e.target.matches('[data-col-visibility]')){ this.handleColumnVisibility(e.target); return; }
-      if(e.target.matches('[data-mobile-sort]')){ this.handleMobileSort(e.target); return; }
       if(e.target.matches('[data-addfield]')){ this.handleAddModalFieldChange(e.target); return; }
       if(e.target.matches('[data-addmulti-add]')){ this.handleAddModalMultiAdd(e.target); return; }
     });
@@ -1354,6 +1374,10 @@ class Dashboard {
       if(ct){ this.toggleColumnPanel(ct.dataset.table); return; }
       const mft = e.target.closest('[data-mobile-filter-toggle]');
       if(mft){ mft.closest('.table-section').classList.toggle('mobile-filters-open'); return; }
+      const mso = e.target.closest('[data-mobile-sort-open]');
+      if(mso){ this.openSortSheet(mso.dataset.table); return; }
+      const ssf = e.target.closest('[data-sort-sheet-field]');
+      if(ssf){ this.handleSortSheetPick(ssf); return; }
       const amrm = e.target.closest('[data-addmulti-remove]');
       if(amrm){ this.handleAddModalMultiRemove(amrm); return; }
       const skuSug = e.target.closest('[data-sku-suggestion-select]');
@@ -1386,6 +1410,9 @@ class Dashboard {
     document.getElementById('confirm-cancel').addEventListener('click', ()=>this._closeConfirm());
     document.getElementById('confirm-x').addEventListener('click', ()=>this._closeConfirm());
     document.getElementById('confirm-overlay').addEventListener('click', (e)=>{ if(e.target.id==='confirm-overlay') this._closeConfirm(); });
+    // Mobile sort sheet close button + backdrop.
+    document.getElementById('sort-sheet-close').addEventListener('click', ()=>this.closeSortSheet());
+    document.getElementById('sort-sheet-overlay').addEventListener('click', (e)=>{ if(e.target.id==='sort-sheet-overlay') this.closeSortSheet(); });
     document.getElementById('load-progress-btn').addEventListener('click', ()=>this.openProgressFile());
     document.getElementById('load-file-input').addEventListener('change', (e)=>this.loadProgress(e.target.files[0]));
     document.getElementById('undo-btn').addEventListener('click', ()=>this.undo());
@@ -1404,6 +1431,7 @@ class Dashboard {
     });
     document.addEventListener('keydown', e=>{
       if(e.key!=='Escape') return;
+      if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
       if(!document.getElementById('confirm-overlay').classList.contains('hidden')){ this._closeConfirm(); return; }
       if(!document.getElementById('add-modal-overlay').classList.contains('hidden')){ this.closeAddModal(); return; }
       if(!document.getElementById('calc-overlay').classList.contains('hidden')){ this.closeCalculator(); return; }
@@ -1435,15 +1463,6 @@ class Dashboard {
     // the way _filterCell's inputs are. Harmless to also (re-)set the header input to the same
     // value here; _syncSkuFilterBoxes is idempotent.
     this._syncSkuFilterBoxes(this.tableFilters.inventory['SKU'] || '', null);
-  }
-
-  // ---------------- mobile "Sort by" dropdown (mirrors clicking a column header) ----------------
-  handleMobileSort(el){
-    const table = el.dataset.table;
-    const field = el.value;
-    const sortFns = { inventory:'sortInventory', sales:'sortSales', trades:'sortTrades', expenses:'sortExpenses', cashflow:'sortCashflow' };
-    const fn = sortFns[table];
-    if(fn && typeof this[fn]==='function') this[fn](field);
   }
 
   // ---------------- column resize drag handling ----------------
@@ -2696,16 +2715,67 @@ class Dashboard {
     const filterRow = '<tr class="filter-row">' + cols.map(c=>this._filterCell(table, c)).join('') +
       (withActions ? `<th><button type="button" class="btn-sm filter-clear-btn" data-filter-clear data-table="${table}" title="Clear all filters on this table">Clear</button></th>` : '') + '</tr>';
     head.innerHTML = sortRow + filterRow;
-    // Mirror the same sort state into the mobile-only "Sort by" dropdown (see the table-toolbar
-    // markup) so narrow screens get a plain native picker instead of clickable column headers,
-    // which disappear on mobile once the table becomes a card list.
+    // Mirror the same sort state onto the mobile-only "⇅ Sort" button's label (the button opens
+    // the sort sheet — see openSortSheet), so the active sort is visible without opening it.
     const mobileSortEl = document.getElementById('mobile-sort-'+table);
     if(mobileSortEl){
-      mobileSortEl.innerHTML = cols.map(c=>{
-        const suffix = state.field===c.field ? (state.dir==='asc' ? ' (A→Z)' : ' (Z→A)') : '';
-        return `<option value="${this._esc(c.field)}" ${state.field===c.field?'selected':''}>${this._esc(c.label)}${suffix}</option>`;
-      }).join('');
+      const active = cols.find(c=>c.field===state.field);
+      mobileSortEl.innerHTML = active
+        ? `&#8645; ${this._esc(active.label)} ${state.dir==='asc'?'&#9650;':'&#9660;'}`
+        : '&#8645; Sort';
     }
+    // If the sort sheet is open for this table (tap-to-flip flow), refresh its arrows too.
+    if(this._sortSheetTable===table && !document.getElementById('sort-sheet-overlay').classList.contains('hidden')){
+      this._renderSortSheetList();
+    }
+  }
+
+  // ---------------- mobile sort sheet (replaces the old cramped Sort dropdown) ----------------
+  // One shared modal for all five tables: tapping a field applies that sort immediately (same
+  // code path as clicking the column header on desktop); tapping the already-active field flips
+  // ascending/descending. The sheet stays open so flipping is one extra tap, not a reopen.
+  _sortSheetMeta(table){
+    return {
+      inventory:{ key:'inv', fn:'sortInventory', title:'Sort Inventory' },
+      sales:{ key:'sales', fn:'sortSales', title:'Sort Sales' },
+      trades:{ key:'trades', fn:'sortTrades', title:'Sort Trades' },
+      expenses:{ key:'expenses', fn:'sortExpenses', title:'Sort Expenses' },
+      cashflow:{ key:'cashflow', fn:'sortCashflow', title:'Sort Shows' },
+    }[table];
+  }
+
+  openSortSheet(table){
+    this._sortSheetTable = table;
+    document.getElementById('sort-sheet-title').textContent = this._sortSheetMeta(table).title;
+    this._renderSortSheetList();
+    document.getElementById('sort-sheet-overlay').classList.remove('hidden');
+  }
+
+  _renderSortSheetList(){
+    const table = this._sortSheetTable;
+    if(!table) return;
+    const meta = this._sortSheetMeta(table);
+    const state = this.sortStates[meta.key] || {};
+    const cols = this._visibleColumns(table);
+    document.getElementById('sort-sheet-list').innerHTML = cols.map(c=>{
+      const isActive = state.field===c.field;
+      const dir = isActive ? (state.dir==='asc' ? '&#9650; ascending — tap to flip' : '&#9660; descending — tap to flip') : '';
+      return `<button type="button" class="sort-sheet-option${isActive?' active':''}" data-sort-sheet-field="${this._esc(c.field)}">`
+        + `<span>${this._esc(c.label)}</span><span class="sort-sheet-dir">${dir}</span></button>`;
+    }).join('');
+  }
+
+  handleSortSheetPick(el){
+    const table = this._sortSheetTable;
+    if(!table) return;
+    const meta = this._sortSheetMeta(table);
+    this[meta.fn](el.dataset.sortSheetField);
+    this._renderSortSheetList();
+  }
+
+  closeSortSheet(){
+    document.getElementById('sort-sheet-overlay').classList.add('hidden');
+    this._sortSheetTable = null;
   }
 
   // ---------------- resizable columns ----------------
