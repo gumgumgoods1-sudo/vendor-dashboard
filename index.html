@@ -525,6 +525,15 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .sku-suggestion:hover, .sku-suggestion:focus { background:#eaf2fc; outline:none; }
 .sku-suggestions-more { padding:6px 10px; font-size:11px; color:var(--text-secondary); font-style:italic; }
 
+/* Show Mode banner — dark accent strip above the tabs while a show is active. */
+.show-mode-banner { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; background:linear-gradient(90deg, #14172b, #2c3158); color:#fff; border-radius:12px; padding:10px 14px; margin:10px 0 0; font-size:13px; }
+.show-mode-banner.hidden { display:none; }
+.show-mode-name { font-weight:800; letter-spacing:.01em; }
+.show-mode-stat { color:#c3c9e8; }
+.show-mode-stat b { color:#fff; font-weight:700; margin-left:4px; }
+.show-mode-end { margin-left:auto; border:1px solid rgba(255,255,255,.45); background:transparent; color:#fff; border-radius:9px; padding:5px 12px; cursor:pointer; font-family:inherit; font-size:12px; }
+.show-mode-end:hover { background:rgba(255,255,255,.12); }
+
 /* Mobile sort sheet — big touch targets, active field highlighted with its direction. */
 .sort-sheet-list { display:flex; flex-direction:column; gap:6px; max-height:60vh; overflow-y:auto; }
 .sort-sheet-option { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 14px; border:1.5px solid var(--border-subtle); border-radius:11px; background:#fff; font-size:14px; font-family:inherit; color:var(--text-primary); cursor:pointer; text-align:left; }
@@ -578,11 +587,16 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <button class="btn-sm" id="redo-btn" title="Redo (Ctrl+Shift+Z)" disabled>&#8618; Redo</button>
       <button class="btn-sm" id="clear-all-filters-btn" title="Clear every table's filters at once">&#129529; Clear Filters</button>
       <button class="btn-sm" id="refresh-btn" title="Pull the latest data from the cloud (e.g. changes another person made on their device)">&#128260; Refresh</button>
+      <button class="btn-sm" id="show-mode-btn" title="Pick the show you're working — new sales, trades, and expenses will default to it">&#127914; Show Mode</button>
       <button class="btn-sm" id="load-progress-btn">&#128193; Load Progress</button>
       <button class="btn-sm btn-add" id="save-progress-btn">&#128190; Save a Copy</button>
     </div>
   </div>
   <div id="toast" class="toast hidden"></div>
+
+  <!-- Show Mode banner — visible on every tab while a show is active; content rebuilt by
+       renderShowModeBanner() whenever KPIs re-render. -->
+  <div id="show-mode-banner" class="show-mode-banner hidden"></div>
 
   <nav class="tab-bar">
     <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Dashboard</button>
@@ -738,6 +752,20 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       </div>
       <div class="edit-note" style="margin:0 0 10px">Tap a field to sort. Tap the highlighted one again to flip the order.</div>
       <div class="sort-sheet-list" id="sort-sheet-list"></div>
+    </div>
+  </div>
+
+  <!-- Show Mode picker — choose an existing show (most recent first) or start a brand-new one. -->
+  <div class="qa-overlay hidden" id="show-mode-overlay">
+    <div class="qa-modal">
+      <div class="qa-modal-head">
+        <h2>Start Show Mode</h2>
+        <button type="button" class="qa-close" id="show-mode-close" title="Close">&times;</button>
+      </div>
+      <div class="edit-note" style="margin:0 0 10px">While Show Mode is on, new sales, trades, and expenses default to this show, and the banner above the tabs tracks its sales, expenses, and your cash live.</div>
+      <div class="qa-field"><label>Pick a show</label><select id="show-mode-select"></select></div>
+      <div class="qa-field"><label>Or start a brand-new show</label><input type="text" id="show-mode-new" placeholder="e.g. Card Syndicate Orlando — Aug"></div>
+      <button type="button" class="qa-submit" id="show-mode-start">Start Show Mode</button>
     </div>
   </div>
 
@@ -1240,6 +1268,10 @@ class Dashboard {
     this.salesPageIndex = 0;
     this.salesPageSize = 10;
     this.showSoldOut = false;   // Inventory tab hides sold-out items until this is toggled on
+    // Show Mode: the show currently being worked. New sales/trades/expenses default to it and
+    // the banner above the tabs tracks it live. Deliberately device-local (localStorage, not
+    // cloud settings) so turning it on at the booth never flips the other person's device.
+    try { this.activeShow = localStorage.getItem('tcgvd-active-show') || ''; } catch(e){ this.activeShow = ''; }
     this.nextId = 1;
     // Buy & Trade Calculator scratchpad: in-memory only, deliberately never part of `this.data`
     // and never touched by undo/autosave/cloud sync — a throwaway running list for pricing
@@ -1458,6 +1490,13 @@ class Dashboard {
     // Mobile sort sheet close button + backdrop.
     document.getElementById('sort-sheet-close').addEventListener('click', ()=>this.closeSortSheet());
     document.getElementById('sort-sheet-overlay').addEventListener('click', (e)=>{ if(e.target.id==='sort-sheet-overlay') this.closeSortSheet(); });
+    // Show Mode: toolbar button, picker modal, and the banner's End button (delegated — the
+    // banner is rebuilt on every render).
+    document.getElementById('show-mode-btn').addEventListener('click', ()=>this.openShowMode());
+    document.getElementById('show-mode-close').addEventListener('click', ()=>this.closeShowMode());
+    document.getElementById('show-mode-start').addEventListener('click', ()=>this.startShowModeFromModal());
+    document.getElementById('show-mode-overlay').addEventListener('click', (e)=>{ if(e.target.id==='show-mode-overlay') this.closeShowMode(); });
+    document.getElementById('show-mode-banner').addEventListener('click', (e)=>{ if(e.target.closest('[data-show-mode-end]')) this.endShowMode(); });
     // QR scanner cancel button.
     document.getElementById('scan-cancel').addEventListener('click', ()=>this.closeScanner());
     document.getElementById('load-progress-btn').addEventListener('click', ()=>this.openProgressFile());
@@ -1480,6 +1519,7 @@ class Dashboard {
       if(e.key!=='Escape') return;
       if(!document.getElementById('scan-overlay').classList.contains('hidden')){ this.closeScanner(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
+      if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
       if(!document.getElementById('confirm-overlay').classList.contains('hidden')){ this._closeConfirm(); return; }
       if(!document.getElementById('add-modal-overlay').classList.contains('hidden')){ this.closeAddModal(); return; }
       if(!document.getElementById('calc-overlay').classList.contains('hidden')){ this.closeCalculator(); return; }
@@ -1511,6 +1551,90 @@ class Dashboard {
     // the way _filterCell's inputs are. Harmless to also (re-)set the header input to the same
     // value here; _syncSkuFilterBoxes is idempotent.
     this._syncSkuFilterBoxes(this.tableFilters.inventory['SKU'] || '', null);
+  }
+
+  // ---------------- Show Mode ----------------
+  // The show every new sale/trade/expense should default to while working a booth. Falls back
+  // to firstShow() (the old behavior) whenever Show Mode is off or its show no longer exists.
+  _defaultShow(){
+    return (this.activeShow && this.data.cashflow.some(c=>c['Show Name']===this.activeShow))
+      ? this.activeShow
+      : this.firstShow();
+  }
+
+  openShowMode(){
+    const sel = document.getElementById('show-mode-select');
+    const byDate = {};
+    this.data.cashflow.forEach(c=>{ if(c['Show Name']) byDate[c['Show Name']] = String(c['Date']||''); });
+    const shows = [...new Set(this.data.cashflow.map(c=>c['Show Name']).filter(Boolean))]
+      .sort((a,b)=> byDate[b].localeCompare(byDate[a]));   // most recent first — tonight's show on top
+    sel.innerHTML = shows.length
+      ? shows.map(s=>`<option value="${this._esc(s)}" ${s===this.activeShow?'selected':''}>${this._esc(s)}</option>`).join('')
+      : '<option value="">— no shows yet — type one below —</option>';
+    document.getElementById('show-mode-new').value = '';
+    document.getElementById('show-mode-overlay').classList.remove('hidden');
+  }
+
+  closeShowMode(){ document.getElementById('show-mode-overlay').classList.add('hidden'); }
+
+  startShowModeFromModal(){
+    const typed = document.getElementById('show-mode-new').value.trim();
+    let name = typed || document.getElementById('show-mode-select').value;
+    if(!name){ this.showToast('Pick a show or type a new one.'); return; }
+    if(typed){
+      // Reuse the existing row (canonical casing) if the typed name matches one; otherwise
+      // create the show on the Card Show tab through the same pipeline as "+ Add Show".
+      const existing = this.data.cashflow.find(c=>String(c['Show Name']||'').trim().toLowerCase()===typed.toLowerCase());
+      if(existing){
+        name = existing['Show Name'];
+      } else {
+        this._pushUndoSnapshot();
+        const row = this.blankRow('cashflow');
+        row['Show Name'] = typed;
+        row._id = this.nextId++;
+        this.data.cashflow.push(row);
+        this.recalcAll();
+        this.markDirty();
+      }
+    }
+    this.activeShow = name;
+    try{ localStorage.setItem('tcgvd-active-show', name); }catch(e){}
+    this.closeShowMode();
+    this.renderAll();
+    this.showToast(`Show Mode on — ${name}`);
+  }
+
+  endShowMode(){
+    this.activeShow = '';
+    try{ localStorage.removeItem('tcgvd-active-show'); }catch(e){}
+    this.renderAll();
+    this.showToast('Show Mode ended.');
+  }
+
+  renderShowModeBanner(){
+    const el = document.getElementById('show-mode-banner');
+    const btn = document.getElementById('show-mode-btn');
+    if(!el) return;
+    // A show that was renamed or deleted since Show Mode started silently ends the mode —
+    // better than defaulting records to a name that no longer exists.
+    if(this.activeShow && !this.data.cashflow.some(c=>c['Show Name']===this.activeShow)){
+      this.activeShow = '';
+      try{ localStorage.removeItem('tcgvd-active-show'); }catch(e){}
+    }
+    if(btn) btn.innerHTML = this.activeShow ? `&#127914; ${this._esc(this.activeShow)}` : '&#127914; Show Mode';
+    if(!this.activeShow){ el.classList.add('hidden'); el.innerHTML = ''; return; }
+    const show = this.activeShow;
+    const sales = this.data.sales.filter(s=>s['Show Name']===show).reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
+    const expenses = this.data.expenses.filter(e=>e['Show Name']===show).reduce((a,e)=>a+(Number(e['Amount'])||0),0);
+    const tradeCash = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+    const cash = Number(this.data.settings.baseCashOnHand)||0;
+    el.innerHTML = `<span aria-hidden="true">&#127914;</span><span class="show-mode-name">${this._esc(show)}</span>`
+      + `<span class="show-mode-stat">Sales<b>${fmtMoney(sales)}</b></span>`
+      + `<span class="show-mode-stat">Expenses<b>${fmtMoney(expenses)}</b></span>`
+      + `<span class="show-mode-stat">Trade Cash<b>${fmtMoney(tradeCash)}</b></span>`
+      + `<span class="show-mode-stat">Cash on Hand<b>${fmtMoney(cash)}</b></span>`
+      + `<button type="button" class="show-mode-end" data-show-mode-end title="Turn off Show Mode (records stay — only the default show and this banner go away)">End</button>`;
+    el.classList.remove('hidden');
   }
 
   // ---------------- column resize drag handling ----------------
@@ -2282,6 +2406,9 @@ class Dashboard {
     document.getElementById('kpi-asp').textContent = fmtMoney(k.avgSalePrice);
     document.getElementById('kpi-margin').textContent = k.avgMarginPct.toFixed(1)+'%';
     document.getElementById('kpi-sellthrough').textContent = k.sellThroughPct.toFixed(1)+'%';
+    // The Show Mode banner shows live per-show figures — keep it in lockstep with every KPI
+    // refresh (renderAll, Cash on Hand edits, etc.).
+    this.renderShowModeBanner();
   }
 
   // Bookkeeping buckets ("General Expense", "Start up cost") hold overhead that isn't tied to an
@@ -3433,9 +3560,9 @@ class Dashboard {
   blankRow(table){
     switch(table){
       case 'inventory': return {'Item ID':this.nextItemId(), 'Item Name':'New Item', 'Category':(this.data.lists['Inventory Categories']||[])[0]||'', 'SKU':'', 'Set / Expansion':'', 'Condition / Grade':(this.data.lists['Card Condition / Grade']||[])[0]||'', 'Cost':0, 'Retail Price':0, 'Qty Purchased':0, 'Reorder Level':0};
-      case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Item ID':this.firstItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
-      case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Value of Trade':0, 'Cash Received':0, 'Cash Paid Out':0};
-      case 'expenses': return {'Date':this.todayStr(), 'Show Name':this.firstShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0};
+      case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
+      case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Value of Trade':0, 'Cash Received':0, 'Cash Paid Out':0};
+      case 'expenses': return {'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0};
       case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Notes':''};
     }
   }
@@ -3792,6 +3919,15 @@ class Dashboard {
     expensesForm.elements['Category'].innerHTML = expCatOpts.map(c=>`<option value="${this._esc(c)}">${this._esc(c)}</option>`).join('');
     expensesForm.elements['Description'].value = '';
     expensesForm.elements['Amount'].value = 0;
+
+    // Show Mode: preselect the active show in all three Show dropdowns (selects otherwise
+    // default to their first option). No-op when Show Mode is off or the show vanished.
+    const defShow = this._defaultShow();
+    if(defShow){
+      salesForm.elements['Show Name'].value = defShow;
+      tradesForm.elements['Show Name'].value = defShow;
+      expensesForm.elements['Show Name'].value = defShow;
+    }
   }
 
   handleQuickAddSubmit(table, formEl){
@@ -3809,14 +3945,14 @@ class Dashboard {
       row['Set / Expansion'] = fd.get('Set / Expansion') || '';
     } else if(table==='sales'){
       row['Date'] = fd.get('Date') || this.todayStr();
-      row['Show Name'] = fd.get('Show Name') || this.firstShow();
+      row['Show Name'] = fd.get('Show Name') || this._defaultShow();
       row['Item ID'] = fd.get('Item ID') || this.firstItemId();
       row['Quantity Sold'] = parseFloat(fd.get('Quantity Sold'))||1;
       row['Sale Price'] = parseFloat(fd.get('Sale Price'))||0;
       row['Payment Method'] = fd.get('Payment Method') || '';
     } else if(table==='trades'){
       row['Date'] = fd.get('Date') || this.todayStr();
-      row['Show Name'] = fd.get('Show Name') || this.firstShow();
+      row['Show Name'] = fd.get('Show Name') || this._defaultShow();
       const itemOut = fd.get('Items Traded Out');
       row['Items Traded Out'] = itemOut ? [itemOut] : [];
       row['Value of Trade'] = parseFloat(fd.get('Value of Trade'))||0;
@@ -3829,7 +3965,7 @@ class Dashboard {
       row['Cash Paid Out'] = netCash<0 ? Math.abs(netCash) : 0;
     } else if(table==='expenses'){
       row['Date'] = fd.get('Date') || this.todayStr();
-      row['Show Name'] = fd.get('Show Name') || this.firstShow();
+      row['Show Name'] = fd.get('Show Name') || this._defaultShow();
       row['Category'] = fd.get('Category') || '';
       row['Description'] = fd.get('Description') || '';
       row['Amount'] = parseFloat(fd.get('Amount'))||0;
