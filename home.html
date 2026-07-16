@@ -94,8 +94,15 @@
   .home-footer { text-align:center; font-size:11.5px; color:var(--text-muted); padding:24px 0 6px; }
 
   /* ---- Sign-in card (shown until Firebase Auth confirms a user) ---- */
-  .home-login { background:var(--bg-card); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); margin-bottom:20px; }
+  /* Banner-styled sign-in: navy-to-ember gradient with the maroon + gold frame, matching the
+     dashboard's full-screen login. Text/fields sit on the inner white panel for readability. */
+  .home-login { background:
+      radial-gradient(ellipse 120% 70% at 50% 40%, rgba(176,106,30,0.5), rgba(176,106,30,0) 72%),
+      linear-gradient(180deg, #0c1a33 0%, #11234b 50%, #241708 100%);
+    border-radius:var(--radius); padding:22px 18px 18px; box-shadow:var(--shadow-sm), inset 0 0 0 6px #7c1f16, inset 0 0 0 8px #d9a94e; border:none; margin-bottom:20px; }
   .home-login.hidden { display:none; }
+  .home-login-panel { background:var(--bg-card); border:1px solid rgba(217,169,78,0.65); border-radius:14px; padding:16px; }
+  .home-login-tagline { text-align:center; font-size:12px; font-weight:800; letter-spacing:.38em; text-indent:.38em; text-transform:uppercase; color:#b9862e; margin:-2px 0 10px; }
   .home-login-logo { height:120px; width:auto; max-width:100%; border-radius:16px; display:block; margin:0 auto 12px; box-shadow:0 4px 14px rgba(24,27,40,0.2); }
   .home-login h3 { font-size:15px; font-weight:800; letter-spacing:-0.01em; }
   .home-login > p { font-size:12px; color:var(--text-secondary); margin:3px 0 14px; }
@@ -126,7 +133,9 @@
     <!-- Sign-in card — hidden the moment Firebase Auth reports a signed-in user, which on a
          "keep me signed in" device is immediately, every visit after the first. -->
     <div class="home-login hidden" id="home-login">
+      <div class="home-login-panel">
       <img class="home-login-logo" src="assets/icons/logo-v2.png" alt="GumGumGoods logo">
+      <div class="home-login-tagline">Buy &bull; Sell &bull; Trade</div>
       <h3>Sign in</h3>
       <p>Your live totals are protected — sign in once and this device stays signed in.</p>
       <form id="home-login-form" autocomplete="on">
@@ -140,6 +149,7 @@
         <div class="login-error" id="home-login-error"></div>
         <button type="submit" id="home-login-submit">Sign In</button>
       </form>
+      </div>
     </div>
 
     <div class="quick-stats" id="quick-stats">
