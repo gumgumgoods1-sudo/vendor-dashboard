@@ -651,7 +651,6 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <div class="qa-tabs">
         <button type="button" class="qa-tab-btn active" data-qa-tab="inventory" onclick="dash.switchQuickAddTab('inventory')">Inventory</button>
         <button type="button" class="qa-tab-btn" data-qa-tab="sales" onclick="dash.switchQuickAddTab('sales')">Sale</button>
-        <button type="button" class="qa-tab-btn" data-qa-tab="trades" onclick="dash.switchQuickAddTab('trades')">Trade</button>
         <button type="button" class="qa-tab-btn" data-qa-tab="expenses" onclick="dash.switchQuickAddTab('expenses')">Expense</button>
         <button type="button" class="qa-tab-btn" data-qa-tab="checkout" onclick="dash.switchQuickAddTab('checkout')">&#128722; Checkout</button>
       </div>
@@ -693,21 +692,6 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div class="qa-field"><label>Payment Method</label><select name="Payment Method"></select></div>
         <button type="submit" class="qa-submit">Add Sale</button>
-      </form>
-
-      <form class="qa-form" id="qa-form-trades" data-qa-form="trades">
-        <div class="qa-row">
-          <div class="qa-field"><label>Date</label><input type="date" name="Date" required></div>
-          <div class="qa-field"><label>Show</label><select name="Show Name"></select></div>
-        </div>
-        <div data-sku-lookup-slot="qa-trades"></div>
-        <div class="qa-field"><label>Item Traded Out</label><select name="Items Traded Out"></select></div>
-        <div class="qa-row">
-          <div class="qa-field"><label>Trade Value</label><input type="number" name="Value of Trade" min="0" step="0.01" value="0" required></div>
-          <div class="qa-field"><label>Cash In / Out</label><input type="number" name="Net Cash" step="0.01" value="0"></div>
-        </div>
-        <div class="edit-note" style="margin:-6px 0 0">Positive = cash you received, negative = cash you paid out. Add more items traded, an item received back, or edit further from the full Trades tab.</div>
-        <button type="submit" class="qa-submit">Add Trade</button>
       </form>
 
       <form class="qa-form" id="qa-form-expenses" data-qa-form="expenses">
@@ -3212,7 +3196,6 @@ class Dashboard {
   // per-location apply logic, never duplicated.
   _dispatchSkuApply(location, item){
     if(location==='qa-sales') this._skuApplyQaSales(item);
-    else if(location==='qa-trades') this._skuApplyQaTrades(item);
     else if(location==='modal-sales') this._skuApplyModalSales(item);
     else if(location==='modal-trades') this._skuApplyModalTrades(item);
     else if(location==='inventory') this._skuApplyInventory(item);
@@ -3261,7 +3244,7 @@ class Dashboard {
   }
 
   // Fills every static SKU lookup slot in the page — see the HTML comments near
-  // #qa-form-sales/#qa-form-trades/the Inventory toolbar (added in Tasks 2–4) for what
+  // #qa-form-sales/#qa-form-checkout/the Inventory toolbar for what
   // data-sku-lookup-slot marks. The generic Add Sale/Add Trade modal's own lookup box is
   // rendered separately, inline inside _renderAddModalBody() (Tasks 2–3), since that modal's
   // whole body is rebuilt from scratch on every field change.
@@ -3307,14 +3290,10 @@ class Dashboard {
     if(qtyEl) qtyEl.focus();
   }
 
-  // ---------------- SKU Quick Lookup — Quick Add Trade / generic Add Trade modal ----------------
+  // ---------------- SKU Quick Lookup — generic Add Trade modal ----------------
   // "Items Traded Out" only — "Items Received" is explicitly out of scope (those are typically
-  // new-to-inventory cards with no existing SKU to look up yet).
-  _skuApplyQaTrades(item){
-    const form = document.getElementById('qa-form-trades');
-    form.elements['Items Traded Out'].value = item['Item ID'];
-  }
-
+  // new-to-inventory cards with no existing SKU to look up yet). Quick Add no longer has a
+  // Trade tab; trades are entered from the Trades tab's + Add Trade button.
   _skuApplyModalTrades(item){
     const field = 'Items Traded Out';
     if(!Array.isArray(this._addModalDraft[field])) this._addModalDraft[field] = [];
@@ -4074,13 +4053,6 @@ class Dashboard {
     salesForm.elements['Sale Price'].value = 0;
     salesForm.elements['Payment Method'].innerHTML = paymentOpts.map(p=>`<option value="${this._esc(p)}">${this._esc(p)}</option>`).join('');
 
-    const tradesForm = document.getElementById('qa-form-trades');
-    tradesForm.elements['Date'].value = today;
-    tradesForm.elements['Show Name'].innerHTML = showOptHtml;
-    tradesForm.elements['Items Traded Out'].innerHTML = invOptHtml;
-    tradesForm.elements['Value of Trade'].value = 0;
-    tradesForm.elements['Net Cash'].value = 0;
-
     const expensesForm = document.getElementById('qa-form-expenses');
     expensesForm.elements['Date'].value = today;
     expensesForm.elements['Show Name'].innerHTML = showOptHtml;
@@ -4100,7 +4072,6 @@ class Dashboard {
     const defShow = this._defaultShow();
     if(defShow){
       salesForm.elements['Show Name'].value = defShow;
-      tradesForm.elements['Show Name'].value = defShow;
       expensesForm.elements['Show Name'].value = defShow;
       checkoutForm.elements['Show Name'].value = defShow;
     }
@@ -4126,19 +4097,6 @@ class Dashboard {
       row['Quantity Sold'] = parseFloat(fd.get('Quantity Sold'))||1;
       row['Sale Price'] = parseFloat(fd.get('Sale Price'))||0;
       row['Payment Method'] = fd.get('Payment Method') || '';
-    } else if(table==='trades'){
-      row['Date'] = fd.get('Date') || this.todayStr();
-      row['Show Name'] = fd.get('Show Name') || this._defaultShow();
-      const itemOut = fd.get('Items Traded Out');
-      row['Items Traded Out'] = itemOut ? [itemOut] : [];
-      row['Value of Trade'] = parseFloat(fd.get('Value of Trade'))||0;
-      // A single "Cash In / Out" field is friendlier for a quick on-the-fly entry than two
-      // separate fields — positive means cash you received, negative means cash you paid out,
-      // matching the same "net cash" language used elsewhere (e.g. the Sales tab's trade-linked
-      // price formula). It maps straight onto the two real columns the full Trades tab uses.
-      const netCash = parseFloat(fd.get('Net Cash'))||0;
-      row['Cash Received'] = netCash>0 ? netCash : 0;
-      row['Cash Paid Out'] = netCash<0 ? Math.abs(netCash) : 0;
     } else if(table==='expenses'){
       row['Date'] = fd.get('Date') || this.todayStr();
       row['Show Name'] = fd.get('Show Name') || this._defaultShow();
