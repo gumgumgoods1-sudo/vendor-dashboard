@@ -525,6 +525,24 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .sku-suggestion:hover, .sku-suggestion:focus { background:#eaf2fc; outline:none; }
 .sku-suggestions-more { padding:6px 10px; font-size:11px; color:var(--text-secondary); font-style:italic; }
 
+/* Multi-item checkout basket (Quick Add → Checkout tab). */
+.qa-tab-btn { min-width:0; white-space:nowrap; }
+.checkout-pick-row { align-items:flex-end; }
+.checkout-pick-row .qa-field { flex:1; min-width:0; }
+.checkout-pick-row .btn-sm { margin-bottom:2px; flex-shrink:0; }
+.checkout-line { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border-subtle); border-radius:11px; margin-bottom:6px; background:#fff; }
+.checkout-line-info { flex:1; min-width:0; }
+.checkout-line-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.checkout-line-meta { font-size:11px; color:var(--text-secondary); }
+.checkout-line input { width:58px; padding:6px 6px; border:1.5px solid var(--border-subtle); border-radius:8px; font-size:13px; font-family:inherit; text-align:right; }
+.checkout-line input[data-checkout-price] { width:74px; }
+.checkout-line-x { color:var(--text-secondary); font-size:12px; }
+.checkout-line-total { font-size:13px; font-weight:700; min-width:58px; text-align:right; }
+.checkout-summary { display:flex; justify-content:space-between; align-items:center; font-size:14px; font-weight:700; padding:10px 4px 4px; }
+.checkout-empty { font-size:12.5px; color:var(--text-secondary); font-style:italic; padding:10px 4px; }
+.checkout-stock-warn { color:var(--negative); font-weight:700; }
+@media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
+
 /* Show Mode banner — dark accent strip above the tabs while a show is active. */
 .show-mode-banner { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; background:linear-gradient(90deg, #14172b, #2c3158); color:#fff; border-radius:12px; padding:10px 14px; margin:10px 0 0; font-size:13px; }
 .show-mode-banner.hidden { display:none; }
@@ -635,6 +653,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <button type="button" class="qa-tab-btn" data-qa-tab="sales" onclick="dash.switchQuickAddTab('sales')">Sale</button>
         <button type="button" class="qa-tab-btn" data-qa-tab="trades" onclick="dash.switchQuickAddTab('trades')">Trade</button>
         <button type="button" class="qa-tab-btn" data-qa-tab="expenses" onclick="dash.switchQuickAddTab('expenses')">Expense</button>
+        <button type="button" class="qa-tab-btn" data-qa-tab="checkout" onclick="dash.switchQuickAddTab('checkout')">&#128722; Checkout</button>
       </div>
 
       <form class="qa-form active" id="qa-form-inventory" data-qa-form="inventory">
@@ -700,6 +719,23 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <div class="qa-field"><label>Description</label><input type="text" name="Description" required></div>
         <div class="qa-field"><label>Amount</label><input type="number" name="Amount" min="0" step="0.01" value="0" required></div>
         <button type="submit" class="qa-submit">Add Expense</button>
+      </form>
+
+      <!-- Multi-item checkout: scan or pick several cards into a basket, one payment method,
+           one tap to record — creates one Sales row per line through the normal pipeline. -->
+      <form class="qa-form" id="qa-form-checkout" data-qa-form="checkout">
+        <div class="qa-row">
+          <div class="qa-field"><label>Date</label><input type="date" name="Date" required></div>
+          <div class="qa-field"><label>Show</label><select name="Show Name"></select></div>
+        </div>
+        <div class="qa-field"><label>Payment Method</label><select name="Payment Method"></select></div>
+        <div data-sku-lookup-slot="qa-checkout"></div>
+        <div class="qa-row checkout-pick-row">
+          <div class="qa-field"><label>Or pick an item</label><select id="checkout-item-select"></select></div>
+          <button type="button" class="btn-sm btn-add" id="checkout-add-btn">+ Add</button>
+        </div>
+        <div id="checkout-basket"></div>
+        <button type="button" class="qa-submit" id="checkout-complete" disabled>Complete Sale</button>
       </form>
     </div>
   </div>
@@ -1278,6 +1314,12 @@ class Dashboard {
     // conversations at a show, not a persisted record. Cleared on a full page reload by design.
     this.calcItems = [];
     this.calcNextId = 1;
+    // Multi-item checkout basket (Quick Add → Checkout tab): in-memory lines a customer is
+    // buying right now, each {id, itemId, qty, price}. Survives closing/reopening the Quick Add
+    // modal mid-transaction, but is deliberately never persisted — completing the checkout turns
+    // the lines into real Sales rows, and a page reload abandons the basket.
+    this.checkoutItems = [];
+    this.checkoutNextId = 1;
     // Which table/field each editable settings list feeds — used to cascade renames
     // and to warn (without deleting data) when a value in use gets removed.
     this.listFieldMap = {
@@ -1551,6 +1593,116 @@ class Dashboard {
     // the way _filterCell's inputs are. Harmless to also (re-)set the header input to the same
     // value here; _syncSkuFilterBoxes is idempotent.
     this._syncSkuFilterBoxes(this.tableFilters.inventory['SKU'] || '', null);
+  }
+
+  // ---------------- Multi-item checkout (Quick Add → Checkout tab) ----------------
+  // Scanning a label (the qa-checkout SKU lookup box) or picking from the dropdown adds a line;
+  // scanning the same item again bumps its qty. Completing turns each line into a normal Sales
+  // row — same blankRow/recalc/markDirty pipeline as a single Quick Add sale, one undo step.
+  addToCheckout(item){
+    const itemId = item['Item ID'];
+    const remaining = Number(item['Remaining Inventory (auto)'])||0;
+    const line = this.checkoutItems.find(l=>l.itemId===itemId);
+    if(line){
+      line.qty += 1;
+      if(line.qty > remaining) this.showToast(`Heads up: only ${remaining} of ${item['Item Name']||itemId} in stock`);
+    } else {
+      this.checkoutItems.push({ id:this.checkoutNextId++, itemId, qty:1, price:Number(item['Retail Price'])||0 });
+      if(remaining <= 0) this.showToast(`Heads up: ${item['Item Name']||itemId} shows 0 in stock`);
+    }
+    this.renderCheckout();
+  }
+
+  handleCheckoutPick(){
+    const sel = document.getElementById('checkout-item-select');
+    const item = this.data.inventory.find(i=>i['Item ID']===sel.value);
+    if(item) this.addToCheckout(item);
+  }
+
+  handleCheckoutLineChange(el){
+    const line = this.checkoutItems.find(l=>l.id===Number(el.dataset.line));
+    if(!line) return;
+    if(el.matches('[data-checkout-qty]')){
+      let q = parseInt(el.value, 10);
+      if(!Number.isFinite(q) || q < 1) q = 1;
+      line.qty = q;
+    } else if(el.matches('[data-checkout-price]')){
+      let p = parseFloat(el.value);
+      if(!Number.isFinite(p) || p < 0) p = 0;
+      line.price = p;
+    }
+    this.renderCheckout();
+  }
+
+  removeCheckoutLine(el){
+    this.checkoutItems = this.checkoutItems.filter(l=>l.id!==Number(el.dataset.line));
+    this.renderCheckout();
+  }
+
+  renderCheckout(){
+    const box = document.getElementById('checkout-basket');
+    const btn = document.getElementById('checkout-complete');
+    if(!box || !btn) return;
+    if(this.checkoutItems.length===0){
+      box.innerHTML = '<div class="checkout-empty">Basket is empty — scan a label or pick an item above. Scanning the same card again adds another copy.</div>';
+      btn.disabled = true;
+      btn.textContent = 'Complete Sale';
+      return;
+    }
+    const byId = {};
+    this.data.inventory.forEach(i=>{ byId[i['Item ID']] = i; });
+    let total = 0, count = 0;
+    box.innerHTML = this.checkoutItems.map(l=>{
+      const item = byId[l.itemId] || {};
+      const remaining = Number(item['Remaining Inventory (auto)'])||0;
+      const over = l.qty > remaining;
+      total += l.qty * l.price;
+      count += l.qty;
+      return `<div class="checkout-line">
+        <div class="checkout-line-info">
+          <div class="checkout-line-name">${this._esc(item['Item Name']||l.itemId)}</div>
+          <div class="checkout-line-meta">${this._esc(l.itemId)} · <span class="${over?'checkout-stock-warn':''}">${remaining} left${over?' — not enough stock!':''}</span></div>
+        </div>
+        <input type="number" min="1" step="1" value="${l.qty}" data-checkout-qty data-line="${l.id}" aria-label="Quantity">
+        <span class="checkout-line-x">&times;</span>
+        <input type="number" min="0" step="0.01" value="${l.price}" data-checkout-price data-line="${l.id}" aria-label="Price each">
+        <div class="checkout-line-total">${fmtMoney(l.qty*l.price)}</div>
+        <button type="button" class="row-del" data-checkout-remove data-line="${l.id}" title="Remove from basket">&#10005;</button>
+      </div>`;
+    }).join('') + `<div class="checkout-summary"><span>${count} item${count===1?'':'s'}</span><span>${fmtMoney(total)}</span></div>`;
+    btn.disabled = false;
+    btn.textContent = `Complete Sale — ${count} item${count===1?'':'s'} · ${fmtMoney(total)}`;
+  }
+
+  completeCheckout(){
+    if(this.checkoutItems.length===0) return;
+    const form = document.getElementById('qa-form-checkout');
+    const date = form.elements['Date'].value || this.todayStr();
+    const show = form.elements['Show Name'].value || this._defaultShow();
+    const payment = form.elements['Payment Method'].value || '';
+    this._pushUndoSnapshot();
+    let total = 0, count = 0;
+    // Push sequentially so each blankRow('sales') sees the previous line and Sale IDs increment.
+    this.checkoutItems.forEach(l=>{
+      const row = this.blankRow('sales');
+      row['Date'] = date;
+      row['Show Name'] = show;
+      row['Item ID'] = l.itemId;
+      row['Quantity Sold'] = l.qty;
+      row['Sale Price'] = l.price;
+      row['Payment Method'] = payment;
+      row._id = this.nextId++;
+      this.data.sales.push(row);
+      total += l.qty * l.price;
+      count += l.qty;
+    });
+    const lines = this.checkoutItems.length;
+    this.checkoutItems = [];
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.closeQuickAdd();
+    this.showToast(`Checkout complete — ${count} item${count===1?'':'s'} across ${lines} sale${lines===1?'':'s'}, ${fmtMoney(total)}`);
   }
 
   // ---------------- Show Mode ----------------
@@ -3064,6 +3216,7 @@ class Dashboard {
     else if(location==='modal-sales') this._skuApplyModalSales(item);
     else if(location==='modal-trades') this._skuApplyModalTrades(item);
     else if(location==='inventory') this._skuApplyInventory(item);
+    else if(location==='qa-checkout') this.addToCheckout(item);
   }
 
   // ---------------- SKU Quick Lookup — live suggestion dropdown ----------------
@@ -3848,8 +4001,23 @@ class Dashboard {
     document.querySelectorAll('.qa-form[data-qa-form]').forEach(form=>{
       form.addEventListener('submit', (e)=>{
         e.preventDefault();
+        // Checkout has no single-submit — its Add/Complete buttons are explicit (type=button),
+        // so an Enter keypress in a qty/price field must never fire a phantom submit.
+        if(form.dataset.qaForm==='checkout') return;
         this.handleQuickAddSubmit(form.dataset.qaForm, form);
       });
+    });
+    // Checkout basket controls: static buttons wired once; the dynamic basket lines are
+    // delegated through their container (rebuilt on every renderCheckout).
+    document.getElementById('checkout-add-btn').addEventListener('click', ()=>this.handleCheckoutPick());
+    document.getElementById('checkout-complete').addEventListener('click', ()=>this.completeCheckout());
+    const basket = document.getElementById('checkout-basket');
+    basket.addEventListener('change', (e)=>{
+      if(e.target.matches('[data-checkout-qty], [data-checkout-price]')) this.handleCheckoutLineChange(e.target);
+    });
+    basket.addEventListener('click', (e)=>{
+      const rm = e.target.closest('[data-checkout-remove]');
+      if(rm) this.removeCheckoutLine(rm);
     });
   }
 
@@ -3920,13 +4088,21 @@ class Dashboard {
     expensesForm.elements['Description'].value = '';
     expensesForm.elements['Amount'].value = 0;
 
-    // Show Mode: preselect the active show in all three Show dropdowns (selects otherwise
+    const checkoutForm = document.getElementById('qa-form-checkout');
+    checkoutForm.elements['Date'].value = today;
+    checkoutForm.elements['Show Name'].innerHTML = showOptHtml;
+    checkoutForm.elements['Payment Method'].innerHTML = paymentOpts.map(p=>`<option value="${this._esc(p)}">${this._esc(p)}</option>`).join('');
+    document.getElementById('checkout-item-select').innerHTML = invOptHtml;
+    this.renderCheckout();
+
+    // Show Mode: preselect the active show in every Show dropdown (selects otherwise
     // default to their first option). No-op when Show Mode is off or the show vanished.
     const defShow = this._defaultShow();
     if(defShow){
       salesForm.elements['Show Name'].value = defShow;
       tradesForm.elements['Show Name'].value = defShow;
       expensesForm.elements['Show Name'].value = defShow;
+      checkoutForm.elements['Show Name'].value = defShow;
     }
   }
 
