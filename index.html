@@ -252,6 +252,7 @@ body {
 .cal-book-form input { padding:9px 11px; border:1.5px solid var(--border-subtle); border-radius:9px; font-size:14px; font-family:inherit; color:var(--text-primary); background:#fff; }
 .cal-book-form input[type=text] { flex:1; min-width:140px; }
 .cal-book-form input:focus { outline:none; border-color:var(--action); box-shadow:var(--ring); }
+.cal-book-form select { padding:9px 11px; border:1.5px solid var(--border-subtle); border-radius:9px; font-size:14px; font-family:inherit; color:var(--text-primary); background:#fff; }
 .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
 .cal-dow { text-align:center; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); padding:2px 0 6px; }
 .cal-cell { background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; min-height:92px; padding:7px 7px 6px; overflow:hidden; }
@@ -260,19 +261,25 @@ body {
 .cal-daynum { font-size:11px; font-weight:800; color:var(--text-muted); font-variant-numeric:tabular-nums; }
 .cal-cell.today .cal-daynum { color:var(--action); }
 .cal-chip { display:block; margin-top:4px; font-size:10.5px; font-weight:700; line-height:1.35; padding:3px 7px; border-radius:6px; background:#eaf2fc; color:#1c5cab; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:default; }
+/* Status colors: green = going (confirmed), amber = maybe. Past dates go grey regardless. */
+.cal-chip.confirmed { background:#dff2e4; color:#1e7c45; }
+.cal-chip.maybe { background:#fdf0d2; color:#93690a; }
 .cal-chip.past { background:#eef0f6; color:var(--text-secondary); }
-.cal-chip.today { background:var(--positive-tint); color:var(--positive); }
 .cal-legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary); }
 .cal-legend-item { display:inline-flex; align-items:center; gap:6px; }
 .cal-swatch { width:10px; height:10px; border-radius:3px; }
-.cal-swatch.upcoming { background:#2a78d6; }
-.cal-swatch.today { background:#188038; }
+.cal-swatch.confirmed { background:#2e9e5b; }
+.cal-swatch.maybe { background:#e6ac2c; }
+.cal-swatch.today { background:#2a78d6; }
 .cal-swatch.past { background:#c1c4d2; }
 .upcoming-row { display:flex; align-items:center; gap:14px; padding:11px 2px; border-bottom:1px solid #f1f2f7; }
 .upcoming-row:last-child { border-bottom:none; }
-.upcoming-datebox { flex-shrink:0; width:52px; text-align:center; background:#eaf2fc; border-radius:10px; padding:6px 0 7px; }
-.upcoming-datebox .mon { display:block; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:#1c5cab; }
-.upcoming-datebox .day { display:block; font-size:18px; font-weight:800; color:#1c5cab; line-height:1.1; font-variant-numeric:tabular-nums; }
+.upcoming-datebox { flex-shrink:0; width:52px; text-align:center; background:#dff2e4; border-radius:10px; padding:6px 0 7px; }
+.upcoming-datebox .mon { display:block; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:#1e7c45; }
+.upcoming-datebox .day { display:block; font-size:18px; font-weight:800; color:#1e7c45; line-height:1.1; font-variant-numeric:tabular-nums; }
+.upcoming-datebox.maybe { background:#fdf0d2; }
+.upcoming-datebox.maybe .mon, .upcoming-datebox.maybe .day { color:#93690a; }
+.upcoming-status-pill { display:inline-block; margin-left:8px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; padding:2px 8px; border-radius:99px; background:#fdf0d2; color:#93690a; vertical-align:2px; }
 .upcoming-main { flex:1; min-width:0; }
 .upcoming-name { font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .upcoming-notes { font-size:11.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -954,12 +961,17 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <input type="text" id="cal-book-name" placeholder="Show name" required>
         <input type="text" id="cal-book-location" placeholder="Location (optional)">
         <input type="date" id="cal-book-date" required>
+        <select id="cal-book-status" title="Locked in, or still deciding?">
+          <option value="confirmed">Going (confirmed)</option>
+          <option value="maybe">Maybe</option>
+        </select>
         <button type="submit" class="btn-sm btn-add" id="cal-book-submit">Add</button>
         <button type="button" class="btn-sm" onclick="dash.toggleBookForm(false)">Cancel</button>
       </form>
       <div class="cal-grid" id="cal-grid"></div>
       <div class="cal-legend">
-        <span class="cal-legend-item"><span class="cal-swatch upcoming"></span>Booked / upcoming</span>
+        <span class="cal-legend-item"><span class="cal-swatch confirmed"></span>Going (confirmed)</span>
+        <span class="cal-legend-item"><span class="cal-swatch maybe"></span>Maybe</span>
         <span class="cal-legend-item"><span class="cal-swatch today"></span>Today</span>
         <span class="cal-legend-item"><span class="cal-swatch past"></span>Past date</span>
       </div>
@@ -1166,7 +1178,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v23</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v24</strong>
   </footer>
 </div>
 
@@ -1394,7 +1406,7 @@ class Dashboard {
   // Show ledger; older saved data has no calendar array, so this defaults to empty.
   normalizeCalendar(arr){
     return (Array.isArray(arr) ? arr : [])
-      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), _id:this.nextId++ }))
+      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), status:((e&&e.status)==='maybe' ? 'maybe' : 'confirmed'), _id:this.nextId++ }))
       .filter(e => e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
   }
 
@@ -2833,6 +2845,7 @@ class Dashboard {
       document.getElementById('cal-book-name').value = '';
       document.getElementById('cal-book-location').value = '';
       document.getElementById('cal-book-date').value = this.todayStr();
+      document.getElementById('cal-book-status').value = 'confirmed';
       document.getElementById('cal-book-name').focus();
     }
   }
@@ -2847,6 +2860,7 @@ class Dashboard {
     document.getElementById('cal-book-name').value = b.name || '';
     document.getElementById('cal-book-location').value = b.location || '';
     document.getElementById('cal-book-date').value = b.date || this.todayStr();
+    document.getElementById('cal-book-status').value = b.status === 'maybe' ? 'maybe' : 'confirmed';
     document.getElementById('cal-book-submit').textContent = 'Save';
     document.getElementById('cal-book-name').focus();
     form.scrollIntoView({block:'nearest'});
@@ -2860,6 +2874,7 @@ class Dashboard {
     const name = (nameEl.value||'').trim();
     const location = (locEl.value||'').trim();
     const date = (dateEl.value||'').slice(0,10);
+    const status = document.getElementById('cal-book-status').value === 'maybe' ? 'maybe' : 'confirmed';
     if(!name || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
       this.showToast('Enter a show name and a date.');
       return;
@@ -2868,9 +2883,9 @@ class Dashboard {
     const editing = this._editingBookingId != null
       ? this.data.calendar.find(b=>b._id===this._editingBookingId) : null;
     if(editing){
-      editing.name = name; editing.location = location; editing.date = date;
+      editing.name = name; editing.location = location; editing.date = date; editing.status = status;
     } else {
-      this.data.calendar.push({ name, location, date, _id:this.nextId++ });
+      this.data.calendar.push({ name, location, date, status, _id:this.nextId++ });
     }
     this.toggleBookForm(false);  // also clears edit state + fields
     this.renderCalendar();
@@ -2918,9 +2933,11 @@ class Dashboard {
       const out = d.getMonth() !== mo;
       const isToday = ds === today;
       const chips = (byDate[ds]||[]).map(b=>{
-        const cls = ds === today ? 'today' : (ds < today ? 'past' : '');
-        const tip = b.name + (b.location ? ' @ '+b.location : '') + ' — ' + ds;
-        return `<span class="cal-chip ${cls}" title="${this._esc(tip)}"><span class="cal-chip-label">${this._esc(b.name)}</span></span>`;
+        // Color by booking status (green = going, amber = maybe); past dates grey out either way.
+        const status = b.status === 'maybe' ? 'maybe' : 'confirmed';
+        const cls = ds < today ? 'past' : status;
+        const tip = b.name + (b.location ? ' @ '+b.location : '') + ' — ' + ds + (status==='maybe' ? ' (maybe)' : '');
+        return `<span class="cal-chip ${cls}" title="${this._esc(tip)}"><span class="cal-chip-label">${status==='maybe' ? '? ' : ''}${this._esc(b.name)}</span></span>`;
       }).join('');
       html += `<div class="cal-cell${out?' out':''}${isToday?' today':''}"><div class="cal-daynum">${d.getDate()}</div>${chips}</div>`;
     }
@@ -2942,10 +2959,11 @@ class Dashboard {
       const count = days === 0 ? 'Today!' : days === 1 ? 'Tomorrow' : `in ${days} days`;
       const dt = new Date(toUTC(b.date));
       const mon = dt.toLocaleString(undefined, {month:'short', timeZone:'UTC'});
+      const status = b.status === 'maybe' ? 'maybe' : 'confirmed';
       return `<div class="upcoming-row">
-        <div class="upcoming-datebox"><span class="mon">${mon}</span><span class="day">${dt.getUTCDate()}</span></div>
+        <div class="upcoming-datebox ${status}"><span class="mon">${mon}</span><span class="day">${dt.getUTCDate()}</span></div>
         <div class="upcoming-main">
-          <div class="upcoming-name">${this._esc(b.name)}</div>
+          <div class="upcoming-name">${this._esc(b.name)}${status==='maybe' ? '<span class="upcoming-status-pill">Maybe</span>' : ''}</div>
           ${b.location ? `<div class="upcoming-notes">&#128205; ${this._esc(b.location)}</div>` : ''}
         </div>
         <div class="upcoming-count${days<=7?' soon':''}">${count}</div>
