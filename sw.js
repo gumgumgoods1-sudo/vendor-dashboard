@@ -4,7 +4,7 @@
 // network calls — those go straight to the network so you always get live data when
 // you have a connection; the app-shell cache below is only a fallback for when you
 // don't.
-const CACHE_NAME = 'tcg-vendor-shell-v22';
+const CACHE_NAME = 'tcg-vendor-shell-v23';
 const SHELL_FILES = [
   './',
   './home.html',
