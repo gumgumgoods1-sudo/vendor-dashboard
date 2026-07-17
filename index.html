@@ -1651,10 +1651,12 @@ class Dashboard {
       const over = l.qty > remaining;
       total += l.qty * l.price;
       count += l.qty;
+      const cost = Number(item['Cost'])||0;
+      const retail = Number(item['Retail Price'])||0;
       return `<div class="checkout-line">
         <div class="checkout-line-info">
           <div class="checkout-line-name">${this._esc(item['Item Name']||l.itemId)}</div>
-          <div class="checkout-line-meta">${this._esc(l.itemId)} · <span class="${over?'checkout-stock-warn':''}">${remaining} left${over?' — not enough stock!':''}</span></div>
+          <div class="checkout-line-meta">${this._esc(l.itemId)} · Cost ${fmtMoney(cost)} · Retail ${fmtMoney(retail)} · <span class="${over?'checkout-stock-warn':''}">${remaining} left${over?' — not enough stock!':''}</span></div>
         </div>
         <input type="number" min="1" step="1" value="${l.qty}" data-checkout-qty data-line="${l.id}" aria-label="Quantity">
         <span class="checkout-line-x">&times;</span>
