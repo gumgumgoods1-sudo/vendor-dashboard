@@ -804,6 +804,20 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </div>
   </div>
 
+  <!-- SKU disambiguation picker — shown when a scanned/typed SKU matches MORE THAN ONE
+       inventory item (e.g. two printings sharing a card number), instead of silently taking
+       the first match. Reuses the sort-sheet option styling for big touch targets. -->
+  <div class="qa-overlay hidden" id="sku-pick-overlay">
+    <div class="qa-modal">
+      <div class="qa-modal-head">
+        <h2 id="sku-pick-title">Which item?</h2>
+        <button type="button" class="qa-close" id="sku-pick-close" title="Close">&times;</button>
+      </div>
+      <div class="edit-note" style="margin:0 0 10px">More than one inventory item uses this SKU — tap the one you mean.</div>
+      <div class="sort-sheet-list" id="sku-pick-list"></div>
+    </div>
+  </div>
+
   <!-- QR camera scanner — opened by the camera button inside any SKU lookup box. A decoded QR
        code is treated exactly like typing that SKU + Enter in the box that launched it. -->
   <div class="scan-overlay hidden" id="scan-overlay">
@@ -1178,7 +1192,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v24</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v25</strong>
   </footer>
 </div>
 
@@ -1506,6 +1520,8 @@ class Dashboard {
       if(amrm){ this.handleAddModalMultiRemove(amrm); return; }
       const skuSug = e.target.closest('[data-sku-suggestion-select]');
       if(skuSug){ this._handleSkuSuggestionClick(skuSug); return; }
+      const skuPick = e.target.closest('[data-sku-pick-id]');
+      if(skuPick){ this.handleSkuPick(skuPick); return; }
       const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill]');
       if(scanBtn){ this.openScanner(scanBtn); return; }
       if(e.target.closest('#add-modal-save')){ this.saveAddModal(false); return; }
@@ -1548,6 +1564,9 @@ class Dashboard {
     document.getElementById('show-mode-banner').addEventListener('click', (e)=>{ if(e.target.closest('[data-show-mode-end]')) this.endShowMode(); });
     // QR scanner cancel button.
     document.getElementById('scan-cancel').addEventListener('click', ()=>this.closeScanner());
+    // SKU disambiguation picker close button + backdrop.
+    document.getElementById('sku-pick-close').addEventListener('click', ()=>this.closeSkuPicker());
+    document.getElementById('sku-pick-overlay').addEventListener('click', (e)=>{ if(e.target.id==='sku-pick-overlay') this.closeSkuPicker(); });
     document.getElementById('load-progress-btn').addEventListener('click', ()=>this.openProgressFile());
     document.getElementById('load-file-input').addEventListener('change', (e)=>this.loadProgress(e.target.files[0]));
     document.getElementById('undo-btn').addEventListener('click', ()=>this.undo());
@@ -1567,6 +1586,7 @@ class Dashboard {
     document.addEventListener('keydown', e=>{
       if(e.key!=='Escape') return;
       if(!document.getElementById('scan-overlay').classList.contains('hidden')){ this.closeScanner(); return; }
+      if(!document.getElementById('sku-pick-overlay').classList.contains('hidden')){ this.closeSkuPicker(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
       if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
       if(!document.getElementById('confirm-overlay').classList.contains('hidden')){ this._closeConfirm(); return; }
@@ -3205,8 +3225,8 @@ class Dashboard {
   handleSkuLookupEnter(el){
     const trimmed = el.value.trim();
     if(!trimmed) return;
-    const item = this.findInventoryItemBySku(el.value);
-    if(!item){
+    const matches = this.findInventoryItemsBySkuExact(trimmed);
+    if(!matches.length){
       this._showSkuLookupMessage(el, `No item found for SKU ${trimmed}`);
       // A no-match on Enter can still follow a keystroke that had partial matches (e.g. typing
       // "EB02", which partially matches two SKUs, then pressing Enter without completing the
@@ -3219,7 +3239,36 @@ class Dashboard {
     const location = el.dataset.skuLookup;
     el.value = '';
     this._clearSkuSuggestions(el);
+    if(matches.length === 1){ this._dispatchSkuApply(location, matches[0]); return; }
+    // Several items share this SKU — never guess; let the vendor tap the right one.
+    this.openSkuPicker(location, matches, trimmed);
+  }
+
+  // ---------------- SKU disambiguation picker ----------------
+  openSkuPicker(location, matches, sku){
+    this._skuPickLocation = location;
+    document.getElementById('sku-pick-title').textContent = `${matches.length} items use SKU ${sku}`;
+    document.getElementById('sku-pick-list').innerHTML = matches.map(m=>{
+      const remaining = Number(m['Remaining Inventory (auto)'])||0;
+      const meta = `${this._esc(m['Item ID'])} · Retail ${fmtMoney(Number(m['Retail Price'])||0)} · ${remaining} left`;
+      return `<button type="button" class="sort-sheet-option" data-sku-pick-id="${m._id}">`
+        + `<span>${this._esc(m['Item Name']||m['Item ID'])}</span><span class="sort-sheet-dir">${meta}</span></button>`;
+    }).join('');
+    document.getElementById('sku-pick-overlay').classList.remove('hidden');
+  }
+
+  handleSkuPick(el){
+    const item = this.data.inventory.find(i=>i._id===Number(el.dataset.skuPickId));
+    // Capture the location BEFORE closing — closeSkuPicker() clears it.
+    const location = this._skuPickLocation;
+    this.closeSkuPicker();
+    if(!item) return;
     this._dispatchSkuApply(location, item);
+  }
+
+  closeSkuPicker(){
+    document.getElementById('sku-pick-overlay').classList.add('hidden');
+    this._skuPickLocation = null;
   }
 
   // Shared by both the Enter-key path above and clicking a live suggestion (see
@@ -3470,9 +3519,16 @@ class Dashboard {
         if(Number.isFinite(parsed.cost) && form.elements['Cost']) form.elements['Cost'].value = parsed.cost;
         if(Number.isFinite(parsed.retail) && form.elements['Retail Price']) form.elements['Retail Price'].value = parsed.retail;
       }
-      const existing = this.findInventoryItemBySku(parsed.sku);
+      const dupes = this.findInventoryItemsBySkuExact(parsed.sku);
+      const existing = dupes[0];
       const msg = document.querySelector('[data-qa-sku-msg]');
-      if(existing){
+      if(dupes.length > 1){
+        // Several items already share this SKU — prefilling from any one of them would be a
+        // guess, so just warn and leave the details for the vendor to type.
+        const names = dupes.map(d=>d['Item Name']||d['Item ID']).join('; ');
+        if(msg) msg.textContent = `Heads up: ${dupes.length} items already use SKU ${parsed.sku} (${names}). Adding this will create another one — details were not auto-filled.`;
+        this.showToast(`${dupes.length} items already use SKU ${parsed.sku}`);
+      } else if(existing){
         // The SKU is already in inventory — prefill the form from the existing item wherever
         // the QR itself didn't supply a value, so a bare-SKU label still prepopulates details.
         if(form){
@@ -3491,12 +3547,13 @@ class Dashboard {
       }
       return;
     }
-    const item = this.findInventoryItemBySku(parsed.sku);
-    if(item) this.showToast(`Scanned ${item['SKU']} — ${item['Item Name']}`);
+    const matches = this.findInventoryItemsBySkuExact(parsed.sku);
+    if(matches.length > 1) this.showToast(`${matches.length} items use SKU ${parsed.sku} — pick the right one`);
+    else if(matches.length === 1) this.showToast(`Scanned ${matches[0]['SKU']} — ${matches[0]['Item Name']}`);
     else this.showToast(`No inventory item found for scanned code “${parsed.sku}”`);
     if(!input) return;
     input.value = parsed.sku;
-    this.handleSkuLookupEnter(input);
+    this.handleSkuLookupEnter(input);   // 1 match applies directly; several open the picker
   }
 
   closeScanner(){
@@ -3702,9 +3759,15 @@ class Dashboard {
   // location (Quick Add Sale/Trade, the generic Add Sale/Trade modals, the Inventory tab
   // toolbar, and the camera scanner) calls this same function — none re-implement matching.
   findInventoryItemBySku(sku){
+    return this.findInventoryItemsBySkuExact(sku)[0];
+  }
+
+  // ALL exact matches for a SKU — duplicates are real in this data (two printings of the same
+  // card number), and the scan/Enter flow shows a picker when there's more than one.
+  findInventoryItemsBySkuExact(sku){
     const trimmed = (sku==null ? '' : String(sku)).trim().toLowerCase();
-    if(!trimmed) return undefined;
-    return this.data.inventory.find(item => String(item['SKU']||'').trim().toLowerCase() === trimmed);
+    if(!trimmed) return [];
+    return this.data.inventory.filter(item => String(item['SKU']||'').trim().toLowerCase() === trimmed);
   }
 
   // ---------------- SKU Quick Lookup — live partial matching ----------------
