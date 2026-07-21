@@ -1192,7 +1192,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v25</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v26</strong>
   </footer>
 </div>
 
@@ -3491,11 +3491,15 @@ class Dashboard {
   // "Retail: …", "SKU: …" on separate lines or split by |) instead of a bare SKU. Pull the
   // fields out when that format is detected; otherwise the entire scanned text IS the SKU.
   _parseScannedLabel(text){
+    // Label/value separator may be a colon ("SKU: OP01-047") or a dash ("SKU - OP01-047") —
+    // the printed NIIMBOT labels use a dash so no colon shows on the sticker. The field label
+    // may be "Item" or "Item Name". Card SKUs contain dashes, so the SKU value is captured up
+    // to the next space or | (its internal dashes are kept).
     const out = { sku: text.trim(), name: null, cost: null, retail: null, labeled: false };
-    const mName = text.match(/item\s*name\s*:\s*([^\n|]+)/i);
-    const mCost = text.match(/(?:^|[\n|])\s*cost\s*:\s*\$?\s*(\d[\d.,]*)/i);
-    const mRetail = text.match(/retail(?:\s*price)?\s*:\s*\$?\s*(\d[\d.,]*)/i);
-    const mSku = text.match(/sku\s*:\s*([^\s|]+)/i);
+    const mName = text.match(/item(?:\s*name)?\s*[:\-]\s*([^\n|]+)/i);
+    const mCost = text.match(/(?:^|[\n|])\s*cost\s*[:\-]\s*\$?\s*(\d[\d.,]*)/i);
+    const mRetail = text.match(/retail(?:\s*price)?\s*[:\-]\s*\$?\s*(\d[\d.,]*)/i);
+    const mSku = text.match(/sku\s*[:\-]\s*([^\s|]+)/i);
     if(mSku){ out.sku = mSku[1].trim(); out.labeled = true; }
     if(mName){ out.name = mName[1].trim(); out.labeled = true; }
     if(mCost) out.cost = parseFloat(mCost[1].replace(/,/g,''));
