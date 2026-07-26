@@ -1192,7 +1192,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v27</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v28</strong>
   </footer>
 </div>
 
@@ -1341,6 +1341,10 @@ class Dashboard {
     // the lines into real Sales rows, and a page reload abandons the basket.
     this.checkoutItems = [];
     this.checkoutNextId = 1;
+    // Merge-on-save support: deletions made on THIS device, keyed by the same stable record key
+    // used for merging, so a delete still propagates instead of the record being resurrected from
+    // the cloud copy on the next merge. Persisted in the payload as `deletedKeys`.
+    this._tombstones = { inventory:new Set(), sales:new Set(), trades:new Set(), expenses:new Set(), cashflow:new Set(), calendar:new Set() };
     // Which table/field each editable settings list feeds — used to cascade renames
     // and to warn (without deleting data) when a value in use gets removed.
     this.listFieldMap = {
@@ -1361,7 +1365,7 @@ class Dashboard {
       inventory: raw.inventory.map(r=>({...r, _id:this.nextId++})),
       sales: this.normalizeSales(raw.sales),
       trades: this.normalizeTrades(raw.trades),
-      expenses: raw.expenses.map(r=>({...r, _id:this.nextId++})),
+      expenses: raw.expenses.map(r=>({...r, uid:r.uid||this._uid(), _id:this.nextId++})),
       cashflow: raw.cashflow.map(r=>({...r, _id:this.nextId++})),
       calendar: this.normalizeCalendar(raw.calendar),
       lists: this.normalizeLists(raw.lists),
@@ -1420,7 +1424,7 @@ class Dashboard {
   // Show ledger; older saved data has no calendar array, so this defaults to empty.
   normalizeCalendar(arr){
     return (Array.isArray(arr) ? arr : [])
-      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), status:((e&&e.status)==='maybe' ? 'maybe' : 'confirmed'), _id:this.nextId++ }))
+      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), status:((e&&e.status)==='maybe' ? 'maybe' : 'confirmed'), uid:(e&&e.uid)||this._uid(), _id:this.nextId++ }))
       .filter(e => e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
   }
 
@@ -2184,7 +2188,81 @@ class Dashboard {
       snapshots: this.data.snapshots,
       lists: this.data.lists,
       settings: this.data.settings,
+      // Deletions made on this device, so merge-on-save doesn't resurrect them from the cloud.
+      deletedKeys: this._tombstonesToObject(),
     };
+  }
+
+  // ---------------- Merge-on-save (multi-device safety) ----------------
+  // A short random id — used only for records that have no natural business key (expenses,
+  // calendar), so they can be merged/deduped across devices without a card number or Sale ID.
+  _uid(){ return 'u'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+
+  // The stable identity of a record, consistent across devices, used as the merge key. Records
+  // with a real business ID key off that; expenses/calendar key off their persistent uid.
+  _recordKey(table, rec){
+    if(!rec) return null;
+    if(table==='inventory') return rec['Item ID']!=null && rec['Item ID']!=='' ? 'i:'+rec['Item ID'] : null;
+    if(table==='sales')     return rec['Sale ID']!=null && rec['Sale ID']!=='' ? 's:'+rec['Sale ID'] : null;
+    if(table==='trades')    return rec['Trade ID']!=null && rec['Trade ID']!=='' ? 't:'+rec['Trade ID'] : null;
+    if(table==='cashflow')  return rec['Show Name']!=null && rec['Show Name']!=='' ? 'c:'+rec['Show Name'] : null;
+    if(table==='expenses' || table==='calendar') return rec.uid ? 'k:'+rec.uid : null;
+    return null;
+  }
+
+  // Record a deletion so the next merge-save removes it from the cloud too (instead of the
+  // cloud copy silently re-adding it). Call BEFORE the row is spliced out of this.data.
+  _tombstone(table, rec){
+    const k = this._recordKey(table, rec);
+    if(k && this._tombstones[table]) this._tombstones[table].add(k);
+  }
+
+  _tombstonesToObject(){
+    const o = {};
+    for(const t in this._tombstones) o[t] = Array.from(this._tombstones[t]);
+    return o;
+  }
+
+  // Pull tombstones recorded by OTHER devices (from the cloud doc) into this device's set, so a
+  // deletion made elsewhere is honored here too and not resurrected by our save.
+  _absorbTombstones(deletedKeys){
+    if(!deletedKeys) return;
+    for(const t in this._tombstones){
+      (deletedKeys[t]||[]).forEach(k=>this._tombstones[t].add(k));
+    }
+  }
+
+  // Union-merge one table's local rows with the cloud's rows by stable key: keep every record
+  // either side has (so a stale device can never DELETE another device's rows), local wins on a
+  // key collision (most recent edit from whoever is saving), and anything tombstoned is dropped.
+  // Rows with no derivable key fall back to a content signature so they're still never lost.
+  _mergeTable(table, localRows, cloudRows){
+    const tomb = this._tombstones[table] || new Set();
+    const keyOf = (r)=> this._recordKey(table, r) || ('raw:'+JSON.stringify(r));
+    const map = new Map();
+    (cloudRows||[]).forEach(r=>{ map.set(keyOf(r), r); });
+    (localRows||[]).forEach(r=>{ map.set(keyOf(r), r); });   // local overrides cloud on same key
+    for(const k of tomb) map.delete(k);
+    return Array.from(map.values());
+  }
+
+  // Build the payload to WRITE, merged on top of whatever is currently in the cloud. Record
+  // arrays are union-merged (no loss); settings/lists/snapshots are last-write-wins (small,
+  // low-churn singletons). deletedKeys carries the combined tombstones forward.
+  mergeCloudPayload(cloudData){
+    const local = this._buildSavePayload();
+    if(!cloudData) return local;                 // first ever write — nothing to merge against
+    this._absorbTombstones(cloudData.deletedKeys);
+    const merged = { ...local };
+    ['inventory','sales','trades','expenses','cashflow','calendar'].forEach(t=>{
+      merged[t] = this._mergeTable(t, local[t], cloudData[t]);
+    });
+    merged.deletedKeys = this._tombstonesToObject();   // includes any just-absorbed cloud tombstones
+    // Cap tombstone growth so the doc doesn't balloon over years of deletions.
+    for(const t in merged.deletedKeys){
+      if(merged.deletedKeys[t].length > 2000) merged.deletedKeys[t] = merged.deletedKeys[t].slice(-2000);
+    }
+    return merged;
   }
 
   saveProgress(){
@@ -2218,7 +2296,7 @@ class Dashboard {
       inventory: parsed.inventory.map(r=>({...r, _id:this.nextId++})),
       sales: this.normalizeSales(parsed.sales),
       trades: this.normalizeTrades(parsed.trades),
-      expenses: parsed.expenses.map(r=>({...r, _id:this.nextId++})),
+      expenses: parsed.expenses.map(r=>({...r, uid:r.uid||this._uid(), _id:this.nextId++})),
       cashflow: parsed.cashflow.map(r=>({...r, _id:this.nextId++})),
       calendar: this.normalizeCalendar(parsed.calendar),
       lists: this.normalizeLists(Array.isArray(parsed.lists) ? {} : (parsed.lists || this.raw.lists)),
@@ -2905,7 +2983,7 @@ class Dashboard {
     if(editing){
       editing.name = name; editing.location = location; editing.date = date; editing.status = status;
     } else {
-      this.data.calendar.push({ name, location, date, status, _id:this.nextId++ });
+      this.data.calendar.push({ name, location, date, status, uid:this._uid(), _id:this.nextId++ });
     }
     this.toggleBookForm(false);  // also clears edit state + fields
     this.renderCalendar();
@@ -2923,6 +3001,7 @@ class Dashboard {
         const i = this.data.calendar.findIndex(b=>b._id===id);
         if(i<0) return;
         this._pushUndoSnapshot();
+        this._tombstone('calendar', this.data.calendar[i]);
         this.data.calendar.splice(i,1);
         this.renderCalendar();
         this.markDirty();
@@ -3640,6 +3719,7 @@ class Dashboard {
       `Move <strong>${this._esc(name)}</strong> back to inventory? This removes the sale${sale['Sale ID'] ? ` (${this._esc(sale['Sale ID'])})` : ''} and returns the item to stock.`,
       ()=>{
         this._pushUndoSnapshot();
+        if(sale) this._tombstone('sales', sale);
         this.data.sales = this.data.sales.filter(s=>s._id!==id);
         this.recalcAll();
         this.renderAll();
@@ -3793,7 +3873,7 @@ class Dashboard {
       case 'inventory': return {'Item ID':this.nextItemId(), 'Item Name':'New Item', 'Category':(this.data.lists['Inventory Categories']||[])[0]||'', 'SKU':'', 'Set / Expansion':'', 'Condition / Grade':(this.data.lists['Card Condition / Grade']||[])[0]||'', 'Cost':0, 'Retail Price':0, 'Qty Purchased':0, 'Reorder Level':0};
       case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
       case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Value of Trade':0, 'Cash Received':0, 'Cash Paid Out':0};
-      case 'expenses': return {'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0};
+      case 'expenses': return {'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0, 'uid':this._uid()};
       case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Notes':''};
     }
   }
@@ -3877,6 +3957,8 @@ class Dashboard {
       `Permanently delete this ${noun}${label ? `: <strong>${this._esc(label)}</strong>` : ''}?`,
       ()=>{
         this._pushUndoSnapshot();
+        const gone = this.data[table].find(r=>r._id===id);
+        if(gone) this._tombstone(table, gone);
         this.data[table] = this.data[table].filter(r=>r._id!==id);
         this.recalcAll();
         this.renderAll();
@@ -4540,8 +4622,16 @@ window.scheduleCloudSave = function scheduleCloudSave(){
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(async () => {
     try{
-      const payload = dash._buildSavePayload();
-      await cloudDocRef().set(payload);
+      // Merge-on-save: instead of blindly overwriting the whole cloud document (which let a
+      // stale device wipe sales entered on another device), read the current cloud copy inside
+      // a transaction and union-merge our records onto it. A device can only ADD/UPDATE its own
+      // rows and apply its own deletions — it can never erase rows it never saw.
+      const ref = cloudDocRef();
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const cloud = snap.exists ? snap.data() : null;
+        tx.set(ref, dash.mergeCloudPayload(cloud));
+      });
       dash.dirty = false;
       dash.setSessionStatus(`Saved to the cloud at ${new Date().toLocaleTimeString()}.`, 'saved');
     } catch(err){
@@ -4571,6 +4661,7 @@ window.refreshFromCloud = async function refreshFromCloud(){
     if(snap.exists){
       // _applyLoadedPayload pushes an undo snapshot first, so an accidental refresh is undoable.
       dash._applyLoadedPayload(snap.data(), 'the cloud');
+      dash._absorbTombstones(snap.data().deletedKeys);
       dash.showToast('Data refreshed from the cloud.');
     } else {
       dash.showToast('No cloud data found yet.');
@@ -4596,6 +4687,7 @@ async function loadCloudData(){
     const snap = await ref.get();
     if(snap.exists){
       dash._applyLoadedPayload(snap.data(), 'the cloud');
+      dash._absorbTombstones(snap.data().deletedKeys);
       dash.undoStack = [];
       dash.redoStack = [];
       dash._updateUndoRedoButtons();
