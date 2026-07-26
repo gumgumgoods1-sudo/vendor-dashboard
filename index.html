@@ -1192,7 +1192,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v28</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v29</strong>
   </footer>
 </div>
 
@@ -2206,7 +2206,12 @@ class Dashboard {
     if(table==='sales')     return rec['Sale ID']!=null && rec['Sale ID']!=='' ? 's:'+rec['Sale ID'] : null;
     if(table==='trades')    return rec['Trade ID']!=null && rec['Trade ID']!=='' ? 't:'+rec['Trade ID'] : null;
     if(table==='cashflow')  return rec['Show Name']!=null && rec['Show Name']!=='' ? 'c:'+rec['Show Name'] : null;
-    if(table==='expenses' || table==='calendar') return rec.uid ? 'k:'+rec.uid : null;
+    // Expenses & calendar have no business ID. Key them by their CONTENT (not a per-device random
+    // uid) so the same record entered/loaded on two devices produces the same key and merges to
+    // one row instead of duplicating. Two genuinely identical expenses are rare; give them
+    // different descriptions if you need both.
+    if(table==='expenses') return 'e:'+[rec['Date'],rec['Show Name'],rec['Category'],rec['Description'],rec['Amount']].map(x=>String(x==null?'':x)).join('|');
+    if(table==='calendar') return 'l:'+[rec['name'],rec['date'],rec['location'],rec['status']].map(x=>String(x==null?'':x)).join('|');
     return null;
   }
 
