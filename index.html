@@ -1066,6 +1066,14 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <section class="tab-panel" id="tab-sales">
     <div class="table-section">
       <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
+      <!-- Universal search: filters the sales log as you type, across item name, SKU, show,
+           payment method, date and IDs at once. Multiple words all have to match. -->
+      <div class="inv-search-wrap">
+        <span class="inv-search-icon" aria-hidden="true">&#128269;</span>
+        <input type="search" id="sales-search" class="inv-search-input" autocomplete="off"
+               placeholder="Search sales — item, SKU, show, payment, date…">
+        <button type="button" class="inv-search-clear hidden" id="sales-search-clear" title="Clear search">&times;</button>
+      </div>
       <div class="table-toolbar">
         <h3 style="margin:0">Sales Log</h3>
         <div class="toolbar-actions">
@@ -1227,7 +1235,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v34</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v35</strong>
   </footer>
 </div>
 
@@ -1361,6 +1369,7 @@ class Dashboard {
     this.salesPageSize = 10;
     this.showSoldOut = false;   // Inventory tab hides sold-out items until this is toggled on
     this.inventorySearch = '';  // universal search box text (matches name/SKU/set/category/…)
+    this.salesSearch = '';      // universal search box text for the Sales tab
     // Show Mode: the show currently being worked. New sales/trades/expenses default to it and
     // the banner above the tabs tracks it live. Deliberately device-local (localStorage, not
     // cloud settings) so turning it on at the booth never flips the other person's device.
@@ -1635,6 +1644,23 @@ class Dashboard {
         invSearch.value = ''; this.inventorySearch = '';
         invSearchClear.classList.add('hidden');
         this.renderInventory(); invSearch.focus();
+      });
+    }
+    // Universal sales search — filters the sales log live as you type.
+    const salesSearch = document.getElementById('sales-search');
+    const salesSearchClear = document.getElementById('sales-search-clear');
+    if(salesSearch){
+      salesSearch.addEventListener('input', ()=>{
+        this.salesSearch = salesSearch.value;
+        salesSearchClear.classList.toggle('hidden', !salesSearch.value);
+        this.salesPageIndex = 0;
+        this.renderSales();
+      });
+      salesSearchClear.addEventListener('click', ()=>{
+        salesSearch.value = ''; this.salesSearch = '';
+        salesSearchClear.classList.add('hidden');
+        this.salesPageIndex = 0;
+        this.renderSales(); salesSearch.focus();
       });
     }
     document.addEventListener('keydown', e=>{
@@ -4603,7 +4629,8 @@ class Dashboard {
   renderSales(skipHead){
     const cols = this._visibleColumns('sales');
     if(!skipHead) this._renderHead('sales-head', cols, 'sales', 'sortSales', true, 'sales');
-    const filtered = this._applyTableFilter('sales', cols, this.data.sales);
+    const searched = this._applySalesSearch(this.data.sales);
+    const filtered = this._applyTableFilter('sales', cols, searched);
     const data = this._sortData(filtered, this.sortStates.sales);
     const start = this.salesPageIndex*this.salesPageSize;
     const pageData = data.slice(start, start+this.salesPageSize);
@@ -4614,6 +4641,24 @@ class Dashboard {
     document.getElementById('sales-body').innerHTML = pageData.map(row=>
       '<tr>' + cols.map(c=>this._cell('sales', row, c)).join('') + this._deleteCell('sales', row) + '</tr>'
     ).join('');
+  }
+  // Free-text search across the most useful sale fields at once, plus the linked item's SKU,
+  // set and name (looked up from inventory, since a sale row itself only stores the Item ID).
+  // Every whitespace-separated word must appear somewhere in the row (AND). Case-insensitive.
+  _applySalesSearch(rows){
+    const q = this.salesSearch.trim().toLowerCase();
+    if(!q) return rows;
+    const terms = q.split(/\s+/);
+    const invById = {};
+    this.data.inventory.forEach(i=>{ invById[i['Item ID']] = i; });
+    const fields = ['Sale ID','Date','Show Name','Item ID','Item Name (auto)','Payment Method','Linked Trade'];
+    return rows.filter(r=>{
+      const it = invById[r['Item ID']];
+      const extra = it ? [it['SKU'], it['Set / Expansion'], it['Item Name']] : [];
+      const hay = fields.map(f=>String(r[f]==null?'':r[f]))
+        .concat(extra.map(x=>String(x==null?'':x))).join(' ').toLowerCase();
+      return terms.every(t=>hay.includes(t));
+    });
   }
   sortSales(field){ this._sortBy('sales', field, 'desc'); this.renderSales(); }
   salesPage(delta){ this.salesPageIndex = Math.max(0, this.salesPageIndex+delta); this.renderSales(); }
