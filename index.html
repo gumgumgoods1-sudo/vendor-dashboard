@@ -558,6 +558,13 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .checkout-stock-warn { color:var(--negative); font-weight:700; }
 @media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
 
+/* Live cost/margin readout in the Quick Add Sale form. */
+.qa-sale-info { font-size:12.5px; color:var(--text-secondary); background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:9px; padding:8px 11px; margin:-4px 0 2px; line-height:1.5; }
+.qa-sale-info[hidden] { display:none; }
+.qa-sale-info b { color:var(--text-primary); font-weight:700; }
+.qa-margin-pos { color:var(--positive); font-weight:800; }
+.qa-margin-neg { color:var(--negative); font-weight:800; }
+
 /* Inventory quick quantity stepper (−/+ on the Qty Left cell). */
 .qty-stepper { display:inline-flex; align-items:center; gap:6px; }
 .qty-btn { width:26px; height:26px; border:1.5px solid var(--border-subtle); background:#fff; border-radius:8px; font-size:16px; line-height:1; cursor:pointer; color:var(--text-primary); padding:0; flex-shrink:0; }
@@ -718,6 +725,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         </div>
         <div data-sku-lookup-slot="qa-sales"></div>
         <div class="qa-field"><label>Item</label><select name="Item ID"></select></div>
+        <!-- Live cost/margin readout for the selected item — updates as you pick an item and
+             type the sale price, so you can see your profit before recording the sale. -->
+        <div class="qa-sale-info" id="qa-sale-info" hidden></div>
         <div class="qa-row">
           <div class="qa-field"><label>Qty Sold</label><input type="number" name="Quantity Sold" min="1" step="1" value="1" required></div>
           <div class="qa-field"><label>Sale Price</label><input type="number" name="Sale Price" min="0" step="0.01" value="0" required></div>
@@ -1217,7 +1227,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v31</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v32</strong>
   </footer>
 </div>
 
@@ -1605,6 +1615,13 @@ class Dashboard {
     document.getElementById('redo-btn').addEventListener('click', ()=>this.redo());
     document.getElementById('clear-all-filters-btn').addEventListener('click', ()=>this.handleClearAllFilters());
     document.getElementById('show-sold-toggle').addEventListener('change', (e)=>this.toggleShowSoldOut(e.target.checked));
+    // Quick Add Sale — live cost/margin readout as item/qty/price change.
+    const salesForm = document.getElementById('qa-form-sales');
+    if(salesForm){
+      salesForm.elements['Item ID'].addEventListener('change', ()=>this.updateSaleInfo({itemChanged:true}));
+      salesForm.elements['Sale Price'].addEventListener('input', ()=>this.updateSaleInfo());
+      salesForm.elements['Quantity Sold'].addEventListener('input', ()=>this.updateSaleInfo());
+    }
     // Universal inventory search — filters the list live as you type.
     const invSearch = document.getElementById('inv-search');
     const invSearchClear = document.getElementById('inv-search-clear');
@@ -3487,7 +3504,32 @@ class Dashboard {
   _skuApplyQaSales(item){
     const form = document.getElementById('qa-form-sales');
     form.elements['Item ID'].value = item['Item ID'];
+    this.updateSaleInfo({itemChanged:true});
     form.elements['Quantity Sold'].focus();
+  }
+
+  // Live cost/retail/stock/margin readout under the Item picker in Quick Add Sale. On an item
+  // change it also prefills Sale Price with the item's retail (only when no price typed yet), so
+  // the common case is one tap and the margin is visible immediately.
+  updateSaleInfo(opts){
+    const form = document.getElementById('qa-form-sales');
+    const info = document.getElementById('qa-sale-info');
+    if(!form || !info) return;
+    const it = this.data.inventory.find(i=>i['Item ID']===form.elements['Item ID'].value);
+    if(!it){ info.hidden = true; info.innerHTML = ''; return; }
+    const cost = Number(it['Cost'])||0, retail = Number(it['Retail Price'])||0, stock = Number(it['Remaining Inventory (auto)'])||0;
+    // Picking (or scanning) an item sets the sale price to that item's retail as the natural
+    // starting point — you then adjust down to haggle. Typing in the price/qty fields never
+    // triggers this, so a custom price is preserved until you switch items.
+    if(opts && opts.itemChanged) form.elements['Sale Price'].value = retail;
+    const qty = Math.max(1, parseInt(form.elements['Quantity Sold'].value,10)||1);
+    const price = parseFloat(form.elements['Sale Price'].value)||0;
+    const margin = (price - cost) * qty;
+    const cls = margin < 0 ? 'qa-margin-neg' : 'qa-margin-pos';
+    info.hidden = false;
+    info.innerHTML = `Cost <b>${fmtMoney(cost)}</b> &middot; Retail <b>${fmtMoney(retail)}</b> &middot; <b>${stock}</b> in stock`
+      + `<br>Margin on this sale: <span class="${cls}">${fmtMoney(margin)}</span>`
+      + (qty>1 ? ` <span style="color:var(--text-muted)">(${qty} × ${fmtMoney(price-cost)})</span>` : '');
   }
 
   _skuApplyModalSales(item){
@@ -4315,6 +4357,9 @@ class Dashboard {
       expensesForm.elements['Show Name'].value = defShow;
       checkoutForm.elements['Show Name'].value = defShow;
     }
+    // Show the cost/margin readout for the default-selected item (and seed the sale price with
+    // its retail) so opening the Sale tab already shows a meaningful margin.
+    this.updateSaleInfo({itemChanged:true});
   }
 
   handleQuickAddSubmit(table, formEl){
