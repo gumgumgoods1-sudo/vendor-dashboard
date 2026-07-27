@@ -558,6 +558,13 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .checkout-stock-warn { color:var(--negative); font-weight:700; }
 @media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
 
+/* Inventory quick quantity stepper (−/+ on the Qty Left cell). */
+.qty-stepper { display:inline-flex; align-items:center; gap:6px; }
+.qty-btn { width:26px; height:26px; border:1.5px solid var(--border-subtle); background:#fff; border-radius:8px; font-size:16px; line-height:1; cursor:pointer; color:var(--text-primary); padding:0; flex-shrink:0; }
+.qty-btn:hover { border-color:var(--action); background:#eaf2fc; color:var(--action); }
+.qty-btn:active { transform:scale(0.92); }
+.qty-val { min-width:22px; text-align:center; font-variant-numeric:tabular-nums; font-weight:800; }
+
 /* Universal inventory search bar. */
 .inv-search-wrap { display:flex; align-items:center; gap:9px; background:#fff; border:1.5px solid var(--border-subtle); border-radius:12px; padding:9px 13px; margin:0 0 12px; }
 .inv-search-wrap:focus-within { border-color:var(--action); box-shadow:var(--ring); }
@@ -1210,7 +1217,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v30</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v31</strong>
   </footer>
 </div>
 
@@ -1511,6 +1518,8 @@ class Dashboard {
       if(e.target.matches('[data-addmulti-add]')){ this.handleAddModalMultiAdd(e.target); return; }
     });
     document.addEventListener('click', e=>{
+      const qa = e.target.closest('[data-qty-adjust]');
+      if(qa){ this.adjustQty(Number(qa.dataset.id), Number(qa.dataset.delta)); return; }
       const ret = e.target.closest('[data-return-sale]');
       if(ret){ this.returnSaleToInventory(Number(ret.dataset.id)); return; }
       const del = e.target.closest('[data-delete]');
@@ -3702,6 +3711,17 @@ class Dashboard {
         const badge = status==='LOW STOCK' ? '<span class="badge low">Sold</span>' : '<span class="badge ok">In Stock</span>';
         return `<td class="${cardCls}" data-label="${label}">${badge}</td>`;
       }
+      // Quick stock adjuster: −/+ buttons bump the on-hand count by changing Qty Purchased, so
+      // you can correct a miscount or add restock in one tap without opening the row.
+      if(col.qtyStepper){
+        const rem = Number(row[col.field])||0;
+        return `<td class="auto-field ${cardCls} qty-stepper-cell" data-label="${label}">`
+          + `<span class="qty-stepper">`
+          + `<button type="button" class="qty-btn" data-qty-adjust data-id="${row._id}" data-delta="-1" title="Remove one from stock">&minus;</button>`
+          + `<span class="qty-val">${rem}</span>`
+          + `<button type="button" class="qty-btn" data-qty-adjust data-id="${row._id}" data-delta="1" title="Add one to stock">+</button>`
+          + `</span></td>`;
+      }
       const raw = row[col.field];
       let v = raw;
       v = col.money ? fmtMoney(v) : this._esc(v);
@@ -3800,7 +3820,7 @@ class Dashboard {
         {field:'Qty Purchased', label:'Qty Purch.', editable:true, type:'number'},
         {field:'Card Potential Profit (auto)', label:'Potential Profit', editable:false, money:true},
         {field:'Qty Sold (auto)', label:'Sold', editable:false},
-        {field:'Remaining Inventory (auto)', label:'Qty Left', editable:false},
+        {field:'Remaining Inventory (auto)', label:'Qty Left', editable:false, qtyStepper:true},
         {field:'Total Inventory Value (auto)', label:'Value', editable:false, money:true},
         {field:'Stock Status (auto)', label:'Status', editable:false, badge:true, primary:true},
       ],
@@ -4468,6 +4488,24 @@ class Dashboard {
       const hay = fields.map(f=>String(r[f]==null?'':r[f])).join(' ').toLowerCase();
       return terms.every(t=>hay.includes(t));
     });
+  }
+
+  // Bump an item's on-hand quantity by ±1. "Qty Left" is auto (Purchased − Sold − Traded +
+  // Received), so we adjust Qty Purchased — the only editable lever — which moves Qty Left the
+  // same amount. Never let a decrement push stock below zero.
+  adjustQty(id, delta){
+    const it = this.data.inventory.find(i=>i._id===id);
+    if(!it) return;
+    const rem = Number(it['Remaining Inventory (auto)'])||0;
+    if(delta < 0 && rem <= 0){ this.showToast('Already at 0 in stock.'); return; }
+    this._pushUndoSnapshot();
+    it['Qty Purchased'] = Math.max(0, (Number(it['Qty Purchased'])||0) + delta);
+    this.recalcAll();
+    this.renderInventory();
+    this.renderKPIs();
+    this.markDirty();
+    const name = it['Item Name'] || it['Item ID'] || 'item';
+    this.showToast(`${name}: ${delta>0?'+1':'−1'} → ${Number(it['Remaining Inventory (auto)'])||0} in stock`);
   }
 
   sortInventory(field){ this._sortBy('inv', field, 'asc'); this.renderInventory(); }
