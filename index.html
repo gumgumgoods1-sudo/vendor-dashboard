@@ -1227,7 +1227,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v32</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v33</strong>
   </footer>
 </div>
 
@@ -3534,6 +3534,7 @@ class Dashboard {
 
   _skuApplyModalSales(item){
     this._addModalDraft['Item ID'] = item['Item ID'];
+    this._addModalDraft['Sale Price'] = Number(item['Retail Price'])||0;
     this._renderAddModalBody();
     const qtyEl = document.querySelector('#add-modal-body [data-addfield][data-field="Quantity Sold"]');
     if(qtyEl) qtyEl.focus();
@@ -4141,9 +4142,33 @@ class Dashboard {
         : this._addModalControlHtml(col, draft);
       const lookup = this._addModalSkuLookupHtml(table, col.field);
       const req = (col.required && mode==='edit') ? ' <span class="req-mark">*</span>' : '';
-      return `${lookup}<div class="modal-field"><label>${this._esc(col.label)}${req}</label>${fieldHtml}</div>`;
+      const info = (table==='sales' && col.field==='Item ID') ? this._addModalSaleInfoHtml() : '';
+      return `${lookup}<div class="modal-field"><label>${this._esc(col.label)}${req}</label>${fieldHtml}</div>${info}`;
     }).join('');
     document.getElementById('add-modal-body').innerHTML = html;
+  }
+
+  // Cost/margin readout for the generic Add Sale modal — same content and styling as the
+  // Quick Add version (updateSaleInfo). Injected right after the Item ID field in
+  // _renderAddModalBody(); since that modal fully re-renders on every field change, this
+  // recomputes automatically without needing separate live listeners. Returns '' until a
+  // real inventory item is picked. When a Linked Trade is set the Sale Price is derived from
+  // the trade (mirroring _addModalPreviewValue / recalcAll), so margin uses that price too.
+  _addModalSaleInfoHtml(){
+    if(this._addModalTable!=='sales') return '';
+    const draft = this._addModalDraft;
+    const it = this.data.inventory.find(i=>i['Item ID']===draft['Item ID']);
+    if(!it) return '';
+    const cost = Number(it['Cost'])||0, retail = Number(it['Retail Price'])||0, stock = Number(it['Remaining Inventory (auto)'])||0;
+    const qty = Math.max(1, parseInt(draft['Quantity Sold'],10)||1);
+    const trade = draft['Linked Trade'] ? this.data.trades.find(t=>t['Trade ID']===draft['Linked Trade']) : null;
+    const price = trade ? (Number(trade['Value of Trade'])||0) + (Number(trade['Net Cash (auto)'])||0) : (parseFloat(draft['Sale Price'])||0);
+    const margin = (price - cost) * qty;
+    const cls = margin < 0 ? 'qa-margin-neg' : 'qa-margin-pos';
+    return `<div class="qa-sale-info">Cost <b>${fmtMoney(cost)}</b> &middot; Retail <b>${fmtMoney(retail)}</b> &middot; <b>${stock}</b> in stock`
+      + `<br>Margin on this sale: <span class="${cls}">${fmtMoney(margin)}</span>`
+      + (qty>1 ? ` <span style="color:var(--text-muted)">(${qty} &times; ${fmtMoney(price-cost)})</span>` : '')
+      + `</div>`;
   }
 
   // Returns the SKU lookup box's wrapper HTML immediately before the given field, for the
@@ -4197,6 +4222,12 @@ class Dashboard {
     let val = el.value;
     if(type==='number' || type==='money'){ val = val===''? 0 : parseFloat(val); if(Number.isNaN(val)) val=0; }
     this._addModalDraft[field] = val;
+    // Picking an item on the Add Sale modal seeds Sale Price with its retail, matching the
+    // Quick Add flow (updateSaleInfo) so the margin readout starts from a sensible number.
+    if(this._addModalTable==='sales' && field==='Item ID'){
+      const it = this.data.inventory.find(i=>i['Item ID']===val);
+      if(it) this._addModalDraft['Sale Price'] = Number(it['Retail Price'])||0;
+    }
     this._renderAddModalBody();
   }
 
