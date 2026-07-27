@@ -558,6 +558,16 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .checkout-stock-warn { color:var(--negative); font-weight:700; }
 @media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
 
+/* Universal inventory search bar. */
+.inv-search-wrap { display:flex; align-items:center; gap:9px; background:#fff; border:1.5px solid var(--border-subtle); border-radius:12px; padding:9px 13px; margin:0 0 12px; }
+.inv-search-wrap:focus-within { border-color:var(--action); box-shadow:var(--ring); }
+.inv-search-icon { color:var(--text-secondary); font-size:15px; flex-shrink:0; }
+.inv-search-input { flex:1; min-width:0; border:none; outline:none; font-size:15px; font-family:inherit; color:var(--text-primary); background:transparent; }
+.inv-search-input::-webkit-search-cancel-button { display:none; }
+.inv-search-clear { border:none; background:transparent; color:var(--text-muted); font-size:22px; line-height:1; cursor:pointer; padding:0 2px; flex-shrink:0; }
+.inv-search-clear:hover { color:var(--negative); }
+.inv-search-clear.hidden { display:none; }
+
 /* Show Mode banner — dark accent strip above the tabs while a show is active. */
 .show-mode-banner { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; background:linear-gradient(90deg, #14172b, #2c3158); color:#fff; border-radius:12px; padding:10px 14px; margin:10px 0 0; font-size:13px; }
 .show-mode-banner.hidden { display:none; }
@@ -1001,6 +1011,14 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <section class="tab-panel" id="tab-inventory">
     <div class="table-section">
       <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
+      <!-- Universal search: filters the inventory list as you type, across name, SKU, set,
+           category, condition and Item ID at once. Multiple words all have to match. -->
+      <div class="inv-search-wrap">
+        <span class="inv-search-icon" aria-hidden="true">&#128269;</span>
+        <input type="search" id="inv-search" class="inv-search-input" autocomplete="off"
+               placeholder="Search inventory — name, SKU, set, category…">
+        <button type="button" class="inv-search-clear hidden" id="inv-search-clear" title="Clear search">&times;</button>
+      </div>
       <div class="table-toolbar">
         <h3 style="margin:0">Inventory (click column headers to sort)</h3>
         <div class="toolbar-actions">
@@ -1192,7 +1210,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v29</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v30</strong>
   </footer>
 </div>
 
@@ -1325,6 +1343,7 @@ class Dashboard {
     this.salesPageIndex = 0;
     this.salesPageSize = 10;
     this.showSoldOut = false;   // Inventory tab hides sold-out items until this is toggled on
+    this.inventorySearch = '';  // universal search box text (matches name/SKU/set/category/…)
     // Show Mode: the show currently being worked. New sales/trades/expenses default to it and
     // the banner above the tabs tracks it live. Deliberately device-local (localStorage, not
     // cloud settings) so turning it on at the booth never flips the other person's device.
@@ -1577,6 +1596,21 @@ class Dashboard {
     document.getElementById('redo-btn').addEventListener('click', ()=>this.redo());
     document.getElementById('clear-all-filters-btn').addEventListener('click', ()=>this.handleClearAllFilters());
     document.getElementById('show-sold-toggle').addEventListener('change', (e)=>this.toggleShowSoldOut(e.target.checked));
+    // Universal inventory search — filters the list live as you type.
+    const invSearch = document.getElementById('inv-search');
+    const invSearchClear = document.getElementById('inv-search-clear');
+    if(invSearch){
+      invSearch.addEventListener('input', ()=>{
+        this.inventorySearch = invSearch.value;
+        invSearchClear.classList.toggle('hidden', !invSearch.value);
+        this.renderInventory();
+      });
+      invSearchClear.addEventListener('click', ()=>{
+        invSearch.value = ''; this.inventorySearch = '';
+        invSearchClear.classList.add('hidden');
+        this.renderInventory(); invSearch.focus();
+      });
+    }
     document.addEventListener('keydown', e=>{
       const mod = e.ctrlKey || e.metaKey;
       if(!mod || e.key.toLowerCase()!=='z') return;
@@ -4407,11 +4441,14 @@ class Dashboard {
     const inStock = this.showSoldOut
       ? this.data.inventory
       : this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
-    const filtered = this._applyTableFilter('inventory', cols, inStock);
+    const searched = this._applyInventorySearch(inStock);
+    const filtered = this._applyTableFilter('inventory', cols, searched);
     const data = this._sortData(filtered, this.sortStates.inv);
     const soldOutCount = this.data.inventory.length - this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0).length;
+    const q = this.inventorySearch.trim();
     document.getElementById('inv-count').textContent =
       this._countLabel(data.length, this.showSoldOut ? this.data.inventory.length : inStock.length, 'item')
+      + (q ? ` · matching “${q}”` : '')
       + (!this.showSoldOut && soldOutCount>0 ? ` · ${soldOutCount} sold-out hidden` : '');
     // data-row-id is a stable hook for SKU Quick Lookup to find a specific row even when every
     // editable column (which is what data-edit cells key off) is hidden via column visibility.
@@ -4419,6 +4456,20 @@ class Dashboard {
       `<tr data-row-id="${row._id}">` + cols.map(c=>this._cell('inventory', row, c)).join('') + this._deleteCell('inventory', row) + '</tr>'
     ).join('');
   }
+  // Free-text search across the most useful inventory fields at once. Every whitespace-separated
+  // word must appear somewhere in the row (AND), so "shanks wanted" finds the Wanted Poster Shanks
+  // and "op09 parallel" narrows to OP09 parallels. Case-insensitive.
+  _applyInventorySearch(rows){
+    const q = this.inventorySearch.trim().toLowerCase();
+    if(!q) return rows;
+    const terms = q.split(/\s+/);
+    const fields = ['Item Name','SKU','Set / Expansion','Category','Condition / Grade','Item ID'];
+    return rows.filter(r=>{
+      const hay = fields.map(f=>String(r[f]==null?'':r[f])).join(' ').toLowerCase();
+      return terms.every(t=>hay.includes(t));
+    });
+  }
+
   sortInventory(field){ this._sortBy('inv', field, 'asc'); this.renderInventory(); }
   toggleShowSoldOut(checked){ this.showSoldOut = !!checked; this.renderInventory(); }
 
