@@ -582,7 +582,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .inv-search-clear:hover { color:var(--negative); }
 .inv-search-clear.hidden { display:none; }
 .inv-total { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;
-  background:var(--bg-inset); border:1.5px solid var(--border-subtle); border-radius:12px; padding:11px 15px; margin:10px 0 0; }
+  background:var(--bg-inset); border:1.5px solid var(--border-subtle); border-radius:12px; padding:11px 15px; margin:0 0 12px; }
 .inv-total .inv-total-label { font-size:12.5px; font-weight:700; color:var(--text-secondary); }
 .inv-total .inv-total-label span { font-weight:600; color:var(--text-muted); }
 .inv-total .inv-total-value { font-size:19px; font-weight:800; color:var(--positive); }
@@ -1059,12 +1059,12 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-inventory" data-mobile-sort-open data-table="inventory">&#8645; Sort</button>
         </div>
       </div>
+      <div class="inv-total" id="inv-total"></div>
       <table class="data-table table-cards">
         <colgroup id="inv-colgroup"></colgroup>
         <thead id="inv-head"></thead>
         <tbody id="inv-body"></tbody>
       </table>
-      <div class="inv-total" id="inv-total"></div>
     </div>
   </section>
 
@@ -1241,7 +1241,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v36</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v37</strong>
   </footer>
 </div>
 
