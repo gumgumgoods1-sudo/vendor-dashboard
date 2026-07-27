@@ -1227,7 +1227,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v33</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v34</strong>
   </footer>
 </div>
 
@@ -3834,6 +3834,10 @@ class Dashboard {
   // ---------------- column schema for every editable table ----------------
   defineColumns(){
     const invIds = () => this.data.inventory.map(i=>i['Item ID']);
+    // Only items with remaining stock — used when picking an item to *sell* so sold-out
+    // items don't clutter the list. The editable Sales table still uses the full invIds so
+    // existing sale rows that reference a now-sold-out item keep their label.
+    const invIdsInStock = () => this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0)>0).map(i=>i['Item ID']);
     const invIdLabel = (id) => { const n=this.itemCat && this.data.inventory.find(i=>i['Item ID']===id); const nm=n?n['Item Name']:''; return nm?`${id} — ${nm}`:id; };
     const showNames = () => [...new Set(this.data.cashflow.map(c=>c['Show Name']).filter(Boolean))];
     const tradeIds = () => this.data.trades.map(t=>t['Trade ID']);
@@ -3871,7 +3875,7 @@ class Dashboard {
         {field:'Sale ID', label:'Sale ID', editable:false},
         {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
-        {field:'Item ID', label:'Item', editable:true, type:'select', options:invIds, optionLabel:invIdLabel},
+        {field:'Item ID', label:'Item', editable:true, type:'select', options:invIds, addOptions:invIdsInStock, optionLabel:invIdLabel},
         {field:'Item Name (auto)', label:'Item Name', editable:false, primary:true},
         {field:'Cost (auto)', label:'Unit Cost', editable:false, money:true},
         {field:'Quantity Sold', label:'Qty', editable:true, type:'number'},
@@ -3939,6 +3943,8 @@ class Dashboard {
   }
   firstShow(){ return this.data.cashflow[0] ? this.data.cashflow[0]['Show Name'] : ''; }
   firstItemId(){ return this.data.inventory[0] ? this.data.inventory[0]['Item ID'] : ''; }
+  // First item that still has stock — the sensible default when creating a new sale.
+  firstInStockItemId(){ const it = this.data.inventory.find(i=>(Number(i['Remaining Inventory (auto)'])||0)>0); return it ? it['Item ID'] : this.firstItemId(); }
 
   // ---------------- SKU Quick Lookup — shared matching logic ----------------
   // Exact match against each item's SKU field, ignoring upper/lower case and surrounding
@@ -3973,7 +3979,7 @@ class Dashboard {
   blankRow(table){
     switch(table){
       case 'inventory': return {'Item ID':this.nextItemId(), 'Item Name':'New Item', 'Category':(this.data.lists['Inventory Categories']||[])[0]||'', 'SKU':'', 'Set / Expansion':'', 'Condition / Grade':(this.data.lists['Card Condition / Grade']||[])[0]||'', 'Cost':0, 'Retail Price':0, 'Qty Purchased':0, 'Reorder Level':0};
-      case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
+      case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstInStockItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
       case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Value of Trade':0, 'Cash Received':0, 'Cash Paid Out':0};
       case 'expenses': return {'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0, 'uid':this._uid()};
       case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Notes':''};
@@ -4203,7 +4209,10 @@ class Dashboard {
       return `<div class="modal-multiselect multiselect-cell">${chips}${addSelect}</div>`;
     }
     if(col.type==='select'){
-      const opts = typeof col.options==='function' ? col.options() : (col.options||[]);
+      // addOptions (in-stock-only for Sale items) takes precedence in the Add modal; the
+      // editable table keeps using the full options list.
+      const src = col.addOptions || col.options;
+      const opts = typeof src==='function' ? src() : (src||[]);
       const blank = col.allowBlank ? `<option value="" ${!draft[field]?'selected':''}>—</option>` : '';
       const optHtml = opts.map(o=>{
         const label = col.optionLabel ? col.optionLabel(o) : o;
@@ -4333,7 +4342,11 @@ class Dashboard {
 
   populateQuickAddForms(){
     const showOpts = [...new Set(this.data.cashflow.map(c=>c['Show Name']).filter(Boolean))];
-    const invOpts = this.data.inventory.map(i=>({value:i['Item ID'], label:`${i['Item ID']} — ${i['Item Name']}`}));
+    // Only in-stock items are sellable, so the Quick Add sale + checkout pickers exclude
+    // anything with 0 remaining inventory.
+    const invOpts = this.data.inventory
+      .filter(i=>(Number(i['Remaining Inventory (auto)'])||0)>0)
+      .map(i=>({value:i['Item ID'], label:`${i['Item ID']} — ${i['Item Name']}`}));
     const paymentOpts = this.data.lists['Payment Methods']||[];
     const expCatOpts = this.data.lists['Expense Categories']||[];
     const invCatOpts = this.data.lists['Inventory Categories']||[];
@@ -4344,7 +4357,7 @@ class Dashboard {
       : `<option value="">— add a show on the Card Show tab first —</option>`;
     const invOptHtml = invOpts.length
       ? invOpts.map(o=>`<option value="${this._esc(o.value)}">${this._esc(o.label)}</option>`).join('')
-      : `<option value="">— add an item on the Inventory tab first —</option>`;
+      : `<option value="">— no items in stock —</option>`;
 
     const inventoryForm = document.getElementById('qa-form-inventory');
     inventoryForm.elements['Item Name'].value = '';
