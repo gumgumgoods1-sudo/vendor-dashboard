@@ -581,6 +581,11 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .inv-search-clear { border:none; background:transparent; color:var(--text-muted); font-size:22px; line-height:1; cursor:pointer; padding:0 2px; flex-shrink:0; }
 .inv-search-clear:hover { color:var(--negative); }
 .inv-search-clear.hidden { display:none; }
+.inv-total { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  background:var(--bg-inset); border:1.5px solid var(--border-subtle); border-radius:12px; padding:11px 15px; margin:10px 0 0; }
+.inv-total .inv-total-label { font-size:12.5px; font-weight:700; color:var(--text-secondary); }
+.inv-total .inv-total-label span { font-weight:600; color:var(--text-muted); }
+.inv-total .inv-total-value { font-size:19px; font-weight:800; color:var(--positive); }
 
 /* Show Mode banner — dark accent strip above the tabs while a show is active. */
 .show-mode-banner { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; background:linear-gradient(90deg, #14172b, #2c3158); color:#fff; border-radius:12px; padding:10px 14px; margin:10px 0 0; font-size:13px; }
@@ -1059,6 +1064,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <thead id="inv-head"></thead>
         <tbody id="inv-body"></tbody>
       </table>
+      <div class="inv-total" id="inv-total"></div>
     </div>
   </section>
 
@@ -1235,7 +1241,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v35</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v36</strong>
   </footer>
 </div>
 
@@ -4590,6 +4596,14 @@ class Dashboard {
     document.getElementById('inv-body').innerHTML = data.map(row=>
       `<tr data-row-id="${row._id}">` + cols.map(c=>this._cell('inventory', row, c)).join('') + this._deleteCell('inventory', row) + '</tr>'
     ).join('');
+    // Sum of the Potential Profit column across exactly the rows currently shown (so it tracks
+    // the search box and any column filters). Per-unit, matching the values in the column.
+    const totalEl = document.getElementById('inv-total');
+    if(totalEl){
+      const sum = data.reduce((a,r)=>a+(Number(r['Card Potential Profit (auto)'])||0),0);
+      const label = q ? `Potential profit <span>· ${data.length} shown</span>` : `Potential profit <span>· ${data.length} in stock</span>`;
+      totalEl.innerHTML = `<span class="inv-total-label">${label}</span><span class="inv-total-value">${fmtMoney(sum)}</span>`;
+    }
   }
   // Free-text search across the most useful inventory fields at once. Every whitespace-separated
   // word must appear somewhere in the row (AND), so "shanks wanted" finds the Wanted Poster Shanks
