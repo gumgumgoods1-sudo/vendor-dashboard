@@ -202,6 +202,36 @@ body {
 .show-picker-preview[hidden] { display:none; }
 .show-picker-preview b { color:var(--text-primary); }
 .new-show-activate { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); margin:2px 0 6px; cursor:pointer; }
+.row-detail { border:none; background:transparent; cursor:pointer; font-size:15px; line-height:1; padding:0 2px; opacity:.75; }
+.row-detail:hover { opacity:1; }
+.top-show-row { cursor:pointer; }
+.top-show-row:hover td { background:var(--bg-inset); }
+.show-detail-modal { max-width:640px; width:100%; max-height:88vh; overflow-y:auto; }
+.sd-sub { font-size:12.5px; color:var(--text-secondary); margin:-4px 0 12px; }
+.sd-net { display:flex; align-items:baseline; justify-content:space-between; gap:10px; background:linear-gradient(90deg,#14172b,#2c3158); color:#fff; border-radius:12px; padding:12px 15px; margin:0 0 12px; }
+.sd-net .sd-net-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; opacity:.85; }
+.sd-net .sd-net-value { font-size:22px; font-weight:800; }
+.sd-net .sd-net-value.neg { color:#ff9ba1; }
+.sd-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0 0 14px; }
+.sd-stat { background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; padding:9px 10px; }
+.sd-stat .sd-stat-label { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--text-muted); }
+.sd-stat .sd-stat-value { font-size:15px; font-weight:800; color:var(--text-primary); margin-top:2px; }
+.sd-stat .sd-stat-value.pos { color:var(--positive); }
+.sd-stat .sd-stat-value.neg { color:var(--negative); }
+.sd-section { margin:0 0 14px; }
+.sd-section h4 { margin:0 0 7px; font-size:13px; font-weight:800; color:var(--text-primary); display:flex; justify-content:space-between; align-items:baseline; }
+.sd-section h4 span { font-weight:600; font-size:11.5px; color:var(--text-muted); }
+.sd-list { display:flex; flex-direction:column; gap:6px; }
+.sd-item { display:flex; align-items:baseline; justify-content:space-between; gap:10px; background:#fff; border:1px solid var(--border-subtle); border-radius:9px; padding:8px 11px; font-size:13px; }
+.sd-item .sd-item-main { min-width:0; }
+.sd-item .sd-item-name { font-weight:700; color:var(--text-primary); }
+.sd-item .sd-item-sub { font-size:11.5px; color:var(--text-muted); margin-top:1px; }
+.sd-item .sd-item-amt { font-weight:800; white-space:nowrap; text-align:right; }
+.sd-item .sd-item-amt small { display:block; font-weight:700; font-size:11px; }
+.sd-item .sd-item-amt .pos { color:var(--positive); }
+.sd-item .sd-item-amt .neg { color:var(--negative); }
+.sd-empty { font-size:12.5px; color:var(--text-muted); font-style:italic; padding:2px 0 4px; }
+.sd-rank { display:inline-block; min-width:17px; height:17px; line-height:17px; text-align:center; border-radius:50%; background:var(--bg-header); color:#fff; font-size:10px; font-weight:800; margin-right:7px; }
 .calc-list { display:flex; flex-direction:column; gap:8px; margin:16px 0; max-height:38vh; overflow-y:auto; }
 .calc-empty { font-size:13px; color:var(--text-secondary); text-align:center; padding:18px 0; }
 .calc-row { display:flex; align-items:center; gap:10px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:11px; padding:9px 12px; }
@@ -866,6 +896,18 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <!-- Shared venue autocomplete source for both the Show Mode picker and the Add-a-show builder. -->
   <datalist id="venue-datalist"></datalist>
 
+  <!-- Per-show drill-down: everything for one show (sales, expenses, trades, top sellers, net)
+       on a single screen. Opened from the ledger's 📊 button or a Top-Shows row. -->
+  <div class="qa-overlay hidden" id="show-detail-overlay">
+    <div class="qa-modal show-detail-modal">
+      <div class="qa-modal-head">
+        <h2 id="show-detail-title">Show</h2>
+        <button type="button" class="qa-close" id="show-detail-close" title="Close">&times;</button>
+      </div>
+      <div id="show-detail-body"></div>
+    </div>
+  </div>
+
   <!-- SKU disambiguation picker — shown when a scanned/typed SKU matches MORE THAN ONE
        inventory item (e.g. two printings sharing a card number), instead of silently taking
        the first match. Reuses the sort-sheet option styling for big touch targets. -->
@@ -1271,7 +1313,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v38</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v39</strong>
   </footer>
 </div>
 
@@ -1578,6 +1620,8 @@ class Dashboard {
     document.addEventListener('click', e=>{
       const qa = e.target.closest('[data-qty-adjust]');
       if(qa){ this.adjustQty(Number(qa.dataset.id), Number(qa.dataset.delta)); return; }
+      const sd = e.target.closest('[data-show-detail]');
+      if(sd){ this.openShowDetail(sd.dataset.showDetail); return; }
       const ret = e.target.closest('[data-return-sale]');
       if(ret){ this.returnSaleToInventory(Number(ret.dataset.id)); return; }
       const del = e.target.closest('[data-delete]');
@@ -1657,6 +1701,9 @@ class Dashboard {
     document.getElementById('new-show-close').addEventListener('click', ()=>this.closeNewShow());
     document.getElementById('new-show-create').addEventListener('click', ()=>this.createNewShowFromModal());
     document.getElementById('new-show-overlay').addEventListener('click', (e)=>{ if(e.target.id==='new-show-overlay') this.closeNewShow(); });
+    // Per-show drill-down overlay.
+    document.getElementById('show-detail-close').addEventListener('click', ()=>this.closeShowDetail());
+    document.getElementById('show-detail-overlay').addEventListener('click', (e)=>{ if(e.target.id==='show-detail-overlay') this.closeShowDetail(); });
     ['new-show-venue','new-show-date'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input', ()=>this._updateShowPickerPreview('new-show')); } });
     document.getElementById('show-mode-banner').addEventListener('click', (e)=>{ if(e.target.closest('[data-show-mode-end]')) this.endShowMode(); });
     // QR scanner cancel button.
@@ -1726,6 +1773,7 @@ class Dashboard {
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
       if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
       if(!document.getElementById('new-show-overlay').classList.contains('hidden')){ this.closeNewShow(); return; }
+      if(!document.getElementById('show-detail-overlay').classList.contains('hidden')){ this.closeShowDetail(); return; }
       if(!document.getElementById('confirm-overlay').classList.contains('hidden')){ this._closeConfirm(); return; }
       if(!document.getElementById('add-modal-overlay').classList.contains('hidden')){ this.closeAddModal(); return; }
       if(!document.getElementById('calc-overlay').classList.contains('hidden')){ this.closeCalculator(); return; }
@@ -2018,6 +2066,100 @@ class Dashboard {
       ? `Adds to existing show: <b>${this._esc(name)}</b>`
       : `Will be saved as: <b>${this._esc(name)}</b>`;
   }
+
+  // ---------------- Per-show drill-down ----------------
+  // Everything tied to one show, pulled from the same records the ledger totals from, so the
+  // numbers here always reconcile with the Card Show ledger row.
+  openShowDetail(showName){
+    const el = document.getElementById('show-detail-overlay');
+    const body = document.getElementById('show-detail-body');
+    if(!el || !body || !showName) return;
+    const c = this.data.cashflow.find(x=>x['Show Name']===showName);
+    const sales = this.data.sales.filter(s=>s['Show Name']===showName);
+    const expenses = this.data.expenses.filter(e=>e['Show Name']===showName);
+    const trades = this.data.trades.filter(t=>t['Show Name']===showName);
+
+    const totalSales = sales.reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
+    const salesProfit = sales.reduce((a,s)=>a+(Number(s['Profit (auto)'])||0),0);
+    const totalExpenses = expenses.reduce((a,e)=>a+(Number(e['Amount'])||0),0);
+    const tradeCash = trades.reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+    const itemsSold = sales.reduce((a,s)=>a+(Number(s['Quantity Sold'])||0),0);
+    // Use the ledger's Actual Profit when start/end cash+inventory were recorded; otherwise fall
+    // back to a cash-basis estimate from the records themselves (sales margin − expenses + trade cash).
+    const ledgerBasis = c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)+(Number(c['Ending Cash'])||0)+(Number(c['Ending Inventory Value'])||0)) : 0;
+    const usingLedger = ledgerBasis!==0;
+    const net = usingLedger ? (Number(c['Actual Profit (auto)'])||0) : (salesProfit - totalExpenses + tradeCash);
+    const netNote = usingLedger
+      ? 'From your start/end cash + inventory count.'
+      : 'Estimated: sales margin − expenses + trade cash (no cash count recorded for this show).';
+    const startBasis = c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)) : 0;
+    const roi = startBasis>0 ? (net/startBasis*100) : null;
+    const date = c ? this._fmtShowDate(c['Date']) : '';
+
+    document.getElementById('show-detail-title').textContent = showName;
+
+    const byItem = {};
+    sales.forEach(s=>{
+      const k = s['Item ID'] || s['Item Name (auto)'] || '?';
+      if(!byItem[k]) byItem[k] = { name:s['Item Name (auto)']||s['Item ID']||'—', qty:0, rev:0, profit:0 };
+      byItem[k].qty += Number(s['Quantity Sold'])||0;
+      byItem[k].rev += Number(s['Total Sale Amount (auto)'])||0;
+      byItem[k].profit += Number(s['Profit (auto)'])||0;
+    });
+    const topSellers = Object.values(byItem).sort((a,b)=>b.rev-a.rev).slice(0,5);
+
+    const money = (n)=>fmtMoney(n);
+    const cls = (n)=> n<0?'neg':'pos';
+    const stat = (label,value,c2)=>`<div class="sd-stat"><div class="sd-stat-label">${label}</div><div class="sd-stat-value ${c2||''}">${value}</div></div>`;
+
+    let html = '';
+    if(date) html += `<div class="sd-sub">${this._esc(date)}</div>`;
+    html += `<div class="sd-net"><span class="sd-net-label">${usingLedger?'Net Profit':'Est. Net Profit'}</span><span class="sd-net-value ${net<0?'neg':''}">${money(net)}</span></div>`;
+    html += `<div class="sd-sub" style="margin-top:-8px">${this._esc(netNote)}</div>`;
+    html += `<div class="sd-stats">`
+      + stat('Sales', money(totalSales))
+      + stat('Sales Margin', money(salesProfit), cls(salesProfit))
+      + stat('Expenses', money(totalExpenses))
+      + stat('Trade Cash', money(tradeCash), cls(tradeCash))
+      + stat('Items Sold', String(itemsSold))
+      + stat('ROI', roi==null?'&mdash;':`${roi>=0?'+':''}${roi.toFixed(1)}%`, roi==null?'':cls(roi))
+      + `</div>`;
+
+    html += `<div class="sd-section"><h4>Top Sellers <span>${topSellers.length?'by revenue':''}</span></h4>`;
+    html += topSellers.length
+      ? `<div class="sd-list">` + topSellers.map((t,i)=>`<div class="sd-item"><div class="sd-item-main"><div class="sd-item-name"><span class="sd-rank">${i+1}</span>${this._esc(t.name)}</div><div class="sd-item-sub">${t.qty} sold &middot; margin ${money(t.profit)}</div></div><div class="sd-item-amt">${money(t.rev)}</div></div>`).join('') + `</div>`
+      : `<div class="sd-empty">No sales recorded for this show.</div>`;
+    html += `</div>`;
+
+    html += `<div class="sd-section"><h4>Sales <span>${sales.length} line${sales.length!==1?'s':''}</span></h4>`;
+    html += sales.length
+      ? `<div class="sd-list">` + sales.map(s=>{
+          const qty=Number(s['Quantity Sold'])||0, price=Number(s['Sale Price'])||0, profit=Number(s['Profit (auto)'])||0;
+          return `<div class="sd-item"><div class="sd-item-main"><div class="sd-item-name">${this._esc(s['Item Name (auto)']||s['Item ID']||'—')}</div><div class="sd-item-sub">${qty} &times; ${money(price)}${s['Payment Method']?' &middot; '+this._esc(s['Payment Method']):''}</div></div><div class="sd-item-amt">${money(Number(s['Total Sale Amount (auto)'])||0)}<small class="${cls(profit)}">${money(profit)}</small></div></div>`;
+        }).join('') + `</div>`
+      : `<div class="sd-empty">No sales.</div>`;
+    html += `</div>`;
+
+    html += `<div class="sd-section"><h4>Expenses <span>${expenses.length} item${expenses.length!==1?'s':''}</span></h4>`;
+    html += expenses.length
+      ? `<div class="sd-list">` + expenses.map(e=>`<div class="sd-item"><div class="sd-item-main"><div class="sd-item-name">${this._esc(e['Category']||'Expense')}</div><div class="sd-item-sub">${this._esc(e['Description']||'')}</div></div><div class="sd-item-amt neg">${money(Number(e['Amount'])||0)}</div></div>`).join('') + `</div>`
+      : `<div class="sd-empty">No expenses.</div>`;
+    html += `</div>`;
+
+    html += `<div class="sd-section"><h4>Trades <span>${trades.length} trade${trades.length!==1?'s':''}</span></h4>`;
+    html += trades.length
+      ? `<div class="sd-list">` + trades.map(t=>{
+          const netc=Number(t['Net Cash (auto)'])||0;
+          return `<div class="sd-item"><div class="sd-item-main"><div class="sd-item-name">${this._esc(t['Items Traded (auto)']||'—')} &rarr; ${this._esc(t['Items Received (auto)']||'—')}</div><div class="sd-item-sub">Trade value ${money(Number(t['Value of Trade'])||0)}</div></div><div class="sd-item-amt ${cls(netc)}">${money(netc)}</div></div>`;
+        }).join('') + `</div>`
+      : `<div class="sd-empty">No trades.</div>`;
+    html += `</div>`;
+
+    body.innerHTML = html;
+    body.scrollTop = 0;
+    el.classList.remove('hidden');
+  }
+  closeShowDetail(){ document.getElementById('show-detail-overlay').classList.add('hidden'); }
 
   endShowMode(){
     this.activeShow = '';
@@ -3320,7 +3462,7 @@ class Dashboard {
       return `<td><span class="badge ${roi>=0?'pos':'neg'}">${roi>=0?'+':''}${roi.toFixed(1)}%</span></td>`;
     };
     body.innerHTML = top.map((c,i)=>`
-      <tr><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}</td>${roiCell(c)}</tr>
+      <tr class="top-show-row" data-show-detail="${this._esc(c['Show Name']||'')}" title="View show details"><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}</td>${roiCell(c)}</tr>
     `).join('');
   }
 
@@ -3980,7 +4122,11 @@ class Dashboard {
     const ret = table==='sales'
       ? `<button class="row-return" data-return-sale data-id="${row._id}" title="Return item to inventory (undo this sale)">&#8617;</button>`
       : '';
-    return `<td class="row-actions">${ret}<button class="row-del" data-delete data-table="${table}" data-id="${row._id}" title="Delete row">&#10005;</button></td>`;
+    // Cashflow rows get a drill-down button — opens everything for that show on one screen.
+    const detail = table==='cashflow'
+      ? `<button class="row-detail" data-show-detail="${this._esc(row['Show Name']||'')}" title="View show details">&#128202;</button>`
+      : '';
+    return `<td class="row-actions">${detail}${ret}<button class="row-del" data-delete data-table="${table}" data-id="${row._id}" title="Delete row">&#10005;</button></td>`;
   }
 
   returnSaleToInventory(id){
