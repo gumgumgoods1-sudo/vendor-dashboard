@@ -410,7 +410,7 @@ body {
 /* ---------- Tables ---------- */
 .table-section { background:var(--bg-card); border-radius:var(--radius); padding:18px 20px; box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); overflow-x:auto; margin-bottom:var(--gap); position:relative; }
 .table-section h3 { font-size:13px; font-weight:800; margin-bottom:12px; }
-.data-table { width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed; font-variant-numeric:tabular-nums; }
+.data-table { width:100%; min-width:var(--table-min, 0px); border-collapse:collapse; font-size:12.5px; table-layout:fixed; font-variant-numeric:tabular-nums; }
 .data-table thead th { position:relative; text-align:left; padding:9px 10px; border-bottom:1px solid var(--border-subtle); color:var(--text-muted); font-weight:800; font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none; }
 .data-table thead th .th-label { cursor:pointer; }
 .data-table thead tr:first-child th:hover { color:var(--text-primary); background:var(--bg-inset); }
@@ -474,8 +474,12 @@ body {
 .show-sold-toggle { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer; user-select:none; white-space:nowrap; }
 .show-sold-toggle input { width:15px; height:15px; accent-color:var(--action); margin:0; }
 
-.multiselect-cell { min-width:150px; white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
-.chip { display:inline-flex; align-items:center; gap:4px; background:#eaf2fc; color:var(--action-deep); border:1px solid #cfe1f6; border-radius:99px; padding:2px 4px 2px 9px; font-size:11.5px; margin:2px 3px 2px 0; white-space:nowrap; }
+/* Chips wrap and clip INSIDE their own cell. This used to be overflow:visible, which let a long
+   card name run hundreds of pixels to the right, straight over the money columns beside it. */
+.multiselect-cell { min-width:150px; white-space:normal !important; overflow:hidden !important; text-overflow:clip !important; }
+/* max-width leaves room for the 3px right margin, which sits outside the box. */
+.chip { display:inline-flex; align-items:center; gap:4px; max-width:calc(100% - 3px); background:#eaf2fc; color:var(--action-deep); border:1px solid #cfe1f6; border-radius:99px; padding:2px 4px 2px 9px; font-size:11.5px; margin:2px 3px 2px 0; white-space:nowrap; }
+.chip-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .chip button { border:none; background:transparent; color:var(--action-deep); cursor:pointer; font-size:13px; line-height:1; padding:1px 4px; border-radius:50%; }
 .chip button:hover { background:#cfe1f6; color:var(--negative); }
 .multiselect-cell select.add-picker { width:auto; min-width:78px; max-width:110px; display:inline-block; margin-top:2px; font-size:11px; color:var(--text-secondary); border:1px dashed #cfd2df; }
@@ -534,7 +538,8 @@ body {
   /* ---------- Card-list view for the 5 editable data tables ---------- */
   /* Scoped to .table-cards (not every .data-table) so the small read-only summary tables
      (Top Shows, Expenses by Show/Category) keep their normal compact table layout. */
-  .table-cards { table-layout:auto; }
+  /* Rows are stacked blocks here, so the desktop width floor must not force a sideways scroll. */
+  .table-cards { table-layout:auto; min-width:0; }
   .table-cards colgroup { display:none; }
   .table-cards thead tr.sort-row { display:none; }
   .table-cards thead tr.filter-row { display:none; }
@@ -1426,7 +1431,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v48</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v49</strong>
   </footer>
 </div>
 
@@ -4027,8 +4032,10 @@ class Dashboard {
   }
   _defaultColWidth(col){
     if(col.badge) return 100;
-    if(col.type==='date') return 115;
-    if(col.type==='multiselect') return 210;
+    // Wide enough for the native date input at its own min-width plus the cell's padding —
+    // at 115 the picker was clipped mid-value.
+    if(col.type==='date') return 134;
+    if(col.type==='multiselect') return 220;
     if(col.money) return 95;
     if(col.type==='number') return 75;
     if(col.type==='select') return 140;
@@ -4038,21 +4045,30 @@ class Dashboard {
     return 120;
   }
   // Columns are sized as a share of the table's own width (percentages that always sum to
-  // 100%) rather than literal pixels, so every tab's table fills exactly the space it has —
-  // no horizontal scrolling to see the rest of the columns. The numbers from _defaultColWidth
-  // (and any custom width the user drags in) are just relative weights: a column with a bigger
-  // number gets a bigger slice of the 100%, but the whole row of columns always fits.
+  // 100%) rather than literal pixels, so a table that fits its space fills it exactly, with no
+  // horizontal scrolling. The numbers from _defaultColWidth (and any custom width the user drags
+  // in) are relative weights: a bigger number gets a bigger slice of the 100%.
+  //
+  // The table also carries a min-width of the weights added up. While there's room that floor is
+  // below the container and changes nothing. Once a tab has more columns than will comfortably
+  // fit — Trades, at ~1660px of intended width — the floor takes over and the section scrolls
+  // instead of crushing every column proportionally. Squeezing 15 columns into 1200px is what
+  // shrank a 210px card-name column to 149px and left dates clipped mid-value.
   _renderColgroup(table, cols, withActions){
     const el = document.getElementById(this._colgroupId(table));
     if(!el) return;
     const widths = this.columnWidths[table] || (this.columnWidths[table] = {});
-    const actionsWeight = 36;
+    const actionsWeight = 60;  // fits the delete button and its padding without clipping
     const weights = cols.map(c => widths[c.field] || this._defaultColWidth(c));
     const totalWeight = weights.reduce((a,w)=>a+w,0) + (withActions ? actionsWeight : 0);
     el.innerHTML = cols.map((c,i)=>{
       const pct = totalWeight ? (weights[i]/totalWeight*100) : 0;
       return `<col data-field="${this._esc(c.field)}" style="width:${pct.toFixed(3)}%">`;
     }).join('') + (withActions ? `<col style="width:${totalWeight ? (actionsWeight/totalWeight*100).toFixed(3) : 0}%">` : '');
+    // Exposed as a custom property rather than an inline min-width: the card-view media query
+    // has to be able to switch the floor off, and .table-cards is on the element at every width.
+    const tableEl = el.parentElement;
+    if(tableEl) tableEl.style.setProperty('--table-min', totalWeight+'px');
   }
   _applyColWidth(table, field, px){
     const el = document.getElementById(this._colgroupId(table));
@@ -4605,7 +4621,9 @@ class Dashboard {
       const selected = Array.isArray(row[col.field]) ? row[col.field] : [];
       const chips = selected.map(v=>{
         const label = col.optionLabel ? col.optionLabel(v) : v;
-        return `<span class="chip">${this._esc(label)}<button type="button" data-multi-remove data-table="${table}" data-id="${id}" data-field="${this._esc(col.field)}" data-value="${this._esc(v)}" title="Remove">&times;</button></span>`;
+        // Label sits in its own span so a long card name ellipsises inside the cell instead of
+        // spilling across the columns to its right; the full name stays in the tooltip.
+        return `<span class="chip" title="${this._esc(label)}"><span class="chip-text">${this._esc(label)}</span><button type="button" data-multi-remove data-table="${table}" data-id="${id}" data-field="${this._esc(col.field)}" data-value="${this._esc(v)}" title="Remove">&times;</button></span>`;
       }).join('');
       const available = opts.filter(o=>!selected.includes(o));
       const addOpts = available.map(o=>{
