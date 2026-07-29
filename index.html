@@ -368,6 +368,12 @@ body {
 .cal-chip.confirmed { background:#dff2e4; color:#1e7c45; }
 .cal-chip.maybe { background:#fdf0d2; color:#93690a; }
 .cal-chip.past { background:#eef0f6; color:var(--text-secondary); }
+/* Multi-day run: square off the inner edges and bleed to the cell wall so consecutive days
+   read as one continuous bar rather than separate chips repeated across the week. */
+.cal-chip.run { margin-left:-7px; margin-right:-7px; padding-left:7px; padding-right:7px; border-radius:0; }
+.cal-chip.run-start { margin-left:0; border-top-left-radius:6px; border-bottom-left-radius:6px; }
+.cal-chip.run-end { margin-right:0; border-top-right-radius:6px; border-bottom-right-radius:6px; }
+.cal-chip.run-mid .cal-chip-label { opacity:0; }
 .cal-legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary); }
 .cal-legend-item { display:inline-flex; align-items:center; gap:6px; }
 .cal-swatch { width:10px; height:10px; border-radius:3px; }
@@ -383,6 +389,8 @@ body {
 .upcoming-datebox.maybe { background:#fdf0d2; }
 .upcoming-datebox.maybe .mon, .upcoming-datebox.maybe .day { color:#93690a; }
 .upcoming-status-pill { display:inline-block; margin-left:8px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; padding:2px 8px; border-radius:99px; background:#fdf0d2; color:#93690a; vertical-align:2px; }
+.upcoming-span-pill { display:inline-block; margin-left:8px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; padding:2px 8px; border-radius:99px; background:#e7eefb; color:#1c5cab; vertical-align:2px; }
+.upcoming-datebox .day small { font-size:12px; font-weight:800; }
 .upcoming-main { flex:1; min-width:0; }
 .upcoming-name { font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .upcoming-notes { font-size:11.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1214,7 +1222,8 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <form class="cal-book-form hidden" id="cal-book-form" onsubmit="dash.addBooking(event)">
         <input type="text" id="cal-book-name" placeholder="Show name" required>
         <input type="text" id="cal-book-location" placeholder="Location (optional)">
-        <input type="date" id="cal-book-date" required>
+        <input type="date" id="cal-book-date" required title="First day of the show">
+        <input type="date" id="cal-book-enddate" title="Last day — only for shows that run more than one day. Leave blank for a single-day show.">
         <input type="text" id="cal-book-time" placeholder="Hours (e.g. 10am–4pm)" title="Optional — shown on the promo poster">
         <input type="text" id="cal-book-table" placeholder="Table # (optional)" title="Optional — shown on the promo poster">
         <select id="cal-book-status" title="Locked in, or still deciding?">
@@ -1457,7 +1466,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v50</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v51</strong>
   </footer>
 </div>
 
@@ -1704,9 +1713,13 @@ class Dashboard {
   normalizeCalendar(arr){
     return (Array.isArray(arr) ? arr : [])
       // `time` and `table` are optional and exist for the promo poster — they're the two details
-      // customers always ask for that a booking had no home for.
-      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), time:String((e&&e.time)||'').trim(), table:String((e&&e.table)||'').trim(), status:((e&&e.status)==='maybe' ? 'maybe' : 'confirmed'), uid:(e&&e.uid)||this._uid(), _id:this.nextId++ }))
-      .filter(e => e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
+      // customers always ask for that a booking had no home for. `endDate` is optional too: a
+      // weekend convention is one booking spanning Fri–Sun, not three separate bookings.
+      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), endDate:String((e&&e.endDate)||'').slice(0,10), time:String((e&&e.time)||'').trim(), table:String((e&&e.table)||'').trim(), status:((e&&e.status)==='maybe' ? 'maybe' : 'confirmed'), uid:(e&&e.uid)||this._uid(), _id:this.nextId++ }))
+      .filter(e => e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date))
+      // An end date that isn't a real date, or lands before the start, is dropped rather than
+      // kept — a backwards range would silently break every day-span calculation downstream.
+      .map(e => { if(!/^\d{4}-\d{2}-\d{2}$/.test(e.endDate) || e.endDate <= e.date) e.endDate=''; return e; });
   }
 
   // Migrates legacy single-item trade rows ('Item ID Traded Out' / 'Item ID Received (optional)')
@@ -3760,6 +3773,7 @@ class Dashboard {
       document.getElementById('cal-book-name').value = '';
       document.getElementById('cal-book-location').value = '';
       document.getElementById('cal-book-date').value = this.todayStr();
+      document.getElementById('cal-book-enddate').value = '';
       document.getElementById('cal-book-time').value = '';
       document.getElementById('cal-book-table').value = '';
       document.getElementById('cal-book-status').value = 'confirmed';
@@ -3777,6 +3791,7 @@ class Dashboard {
     document.getElementById('cal-book-name').value = b.name || '';
     document.getElementById('cal-book-location').value = b.location || '';
     document.getElementById('cal-book-date').value = b.date || this.todayStr();
+    document.getElementById('cal-book-enddate').value = b.endDate || '';
     document.getElementById('cal-book-time').value = b.time || '';
     document.getElementById('cal-book-table').value = b.table || '';
     document.getElementById('cal-book-status').value = b.status === 'maybe' ? 'maybe' : 'confirmed';
@@ -3802,8 +3817,9 @@ class Dashboard {
   // poster never promises a table you haven't committed to.
   _promoBookings(){
     const today = this.todayStr();
+    // Filtered on the last day so a show you're partway through still gets promoted.
     return this.data.calendar
-      .filter(b=>b.date && b.date >= today)
+      .filter(b=>b.date && this._bookingEnd(b) >= today)
       .sort((a,b)=>a.date.localeCompare(b.date));
   }
 
@@ -3977,14 +3993,22 @@ class Dashboard {
 
       const [Y,Mo,D] = b.date.split('-').map(Number);
       const dt = new Date(Y, Mo-1, D);
+      const endStr = this._bookingEnd(b);
+      const multi = endStr !== b.date;
+      const [eY,eMo,eD] = endStr.split('-').map(Number);
+      const eDt = new Date(eY, eMo-1, eD);
       const dcx = x + Math.round(W*0.115);
       g.textAlign='center';
+      // A run spanning two months needs both named; inside one month the month prints once.
       g.font=`800 ${Math.round(cardH*0.175)}px ${F}`; g.fillStyle=RED;
-      g.fillText(MONTHS[Mo-1], dcx, cy+cardH*0.30);
-      g.font=`800 ${Math.round(cardH*0.44)}px ${F}`; g.fillStyle=GOLD_LT;
-      g.fillText(String(D), dcx, cy+cardH*0.70);
+      g.fillText(multi && Mo!==eMo ? `${MONTHS[Mo-1]}–${MONTHS[eMo-1]}` : MONTHS[Mo-1], dcx, cy+cardH*0.30);
+      // The day number carries the range, shrunk a little so "19–21" still fits the column.
+      const dayTxt = multi ? `${D}–${eD}` : String(D);
+      const dayFit = fit(dayTxt, Math.round(W*0.185), Math.round(cardH*0.44), '800', Math.round(cardH*0.26));
+      g.font=`800 ${dayFit.size}px ${F}`; g.fillStyle=GOLD_LT;
+      g.fillText(dayFit.txt, dcx, cy+cardH*0.70);
       g.font=`700 ${Math.round(cardH*0.115)}px ${F}`; g.fillStyle=ROPE;
-      g.fillText(DOW[dt.getDay()], dcx, cy+cardH*0.86);
+      g.fillText(multi ? `${DOW[dt.getDay()]}–${DOW[eDt.getDay()]}` : DOW[dt.getDay()], dcx, cy+cardH*0.86);
 
       const divX = x + Math.round(W*0.205);
       g.strokeStyle='rgba(224,185,120,.34)'; g.lineWidth=2; g.setLineDash([5,5]);
@@ -4057,6 +4081,7 @@ class Dashboard {
     const name = (nameEl.value||'').trim();
     const location = (locEl.value||'').trim();
     const date = (dateEl.value||'').slice(0,10);
+    let endDate = (document.getElementById('cal-book-enddate').value||'').slice(0,10);
     const time = (document.getElementById('cal-book-time').value||'').trim();
     const table = (document.getElementById('cal-book-table').value||'').trim();
     const status = document.getElementById('cal-book-status').value === 'maybe' ? 'maybe' : 'confirmed';
@@ -4064,14 +4089,21 @@ class Dashboard {
       this.showToast('Enter a show name and a date.');
       return;
     }
+    if(endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) endDate = '';
+    if(endDate && endDate < date){
+      this.showToast('The last day can’t be before the first day.');
+      return;
+    }
+    // Same day either end just means a one-day show; store it as one rather than a 1-day range.
+    if(endDate === date) endDate = '';
     this._pushUndoSnapshot();
     const editing = this._editingBookingId != null
       ? this.data.calendar.find(b=>b._id===this._editingBookingId) : null;
     if(editing){
-      editing.name = name; editing.location = location; editing.date = date;
+      editing.name = name; editing.location = location; editing.date = date; editing.endDate = endDate;
       editing.time = time; editing.table = table; editing.status = status;
     } else {
-      this.data.calendar.push({ name, location, date, time, table, status, uid:this._uid(), _id:this.nextId++ });
+      this.data.calendar.push({ name, location, date, endDate, time, table, status, uid:this._uid(), _id:this.nextId++ });
     }
     this.toggleBookForm(false);  // also clears edit state + fields
     this.renderCalendar();
@@ -4098,6 +4130,40 @@ class Dashboard {
     );
   }
 
+  // Every calendar day a booking covers, inclusive: ['2026-09-19','2026-09-20','2026-09-21'].
+  // Single-day bookings return just their one date. Capped so a typo'd year can't spin forever.
+  _bookingDays(b){
+    const start = String(b.date||'');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(start)) return [];
+    const end = /^\d{4}-\d{2}-\d{2}$/.test(String(b.endDate||'')) && b.endDate > start ? b.endDate : start;
+    const days = [];
+    const p = start.split('-').map(Number);
+    let cur = Date.UTC(p[0], p[1]-1, p[2]);
+    const endMs = (q=>Date.UTC(q[0], q[1]-1, q[2]))(end.split('-').map(Number));
+    while(cur <= endMs && days.length < 60){
+      const d = new Date(cur);
+      days.push(d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0'));
+      cur += 86400000;
+    }
+    return days;
+  }
+  // The day a booking stops being "upcoming" — its last day, not its first. A three-day show
+  // you're standing at on day two is still current, not past.
+  _bookingEnd(b){
+    const e = String(b.endDate||'');
+    return /^\d{4}-\d{2}-\d{2}$/.test(e) && e > b.date ? e : b.date;
+  }
+  // "Sep 19–21" / "Sep 19 – Oct 1" / "Sep 19" — collapses the month when the run stays inside it.
+  _bookingDateLabel(b){
+    const fmt = (ds,withMon)=>{ const p=ds.split('-').map(Number); const d=new Date(Date.UTC(p[0],p[1]-1,p[2]));
+      const mon=d.toLocaleString(undefined,{month:'short',timeZone:'UTC'});
+      return withMon ? `${mon} ${d.getUTCDate()}` : String(d.getUTCDate()); };
+    const end = this._bookingEnd(b);
+    if(end === b.date) return fmt(b.date,true);
+    const sameMonth = b.date.slice(0,7) === end.slice(0,7);
+    return `${fmt(b.date,true)}–${fmt(end,!sameMonth)}`;
+  }
+
   renderCalendar(){
     const grid = document.getElementById('cal-grid');
     if(!grid) return;
@@ -4106,8 +4172,14 @@ class Dashboard {
     document.getElementById('cal-title').textContent = this.calMonth.toLocaleString(undefined, {month:'long', year:'numeric'});
 
     const bookings = this.data.calendar.filter(b => /^\d{4}-\d{2}-\d{2}$/.test(String(b.date||'')));
+    // A multi-day show occupies every day it runs, so it's indexed onto each of those dates —
+    // tagged with where in the run the day falls so the chips join up into one bar.
     const byDate = {};
-    bookings.forEach(b => { (byDate[b.date] = byDate[b.date]||[]).push(b); });
+    bookings.forEach(b => {
+      this._bookingDays(b).forEach((ds,i,arr) => {
+        (byDate[ds] = byDate[ds]||[]).push({ b, first:i===0, last:i===arr.length-1, span:arr.length, dayNo:i+1 });
+      });
+    });
     const today = this.todayStr();
 
     const firstDow = new Date(y, mo, 1).getDay();            // 0 = Sunday
@@ -4119,12 +4191,18 @@ class Dashboard {
       const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
       const out = d.getMonth() !== mo;
       const isToday = ds === today;
-      const chips = (byDate[ds]||[]).map(b=>{
+      const chips = (byDate[ds]||[]).map(({b,first,last,span,dayNo})=>{
         // Color by booking status (green = going, amber = maybe); past dates grey out either way.
         const status = b.status === 'maybe' ? 'maybe' : 'confirmed';
         const cls = ds < today ? 'past' : status;
-        const tip = b.name + (b.location ? ' @ '+b.location : '') + ' — ' + ds + (status==='maybe' ? ' (maybe)' : '');
-        return `<span class="cal-chip ${cls}" title="${this._esc(tip)}"><span class="cal-chip-label">${status==='maybe' ? '? ' : ''}${this._esc(b.name)}</span></span>`;
+        // Square off the inner edges of a run so consecutive days read as one continuous bar.
+        const runCls = span>1 ? ` run${first?' run-start':''}${last?' run-end':''}${!first&&!last?' run-mid':''}` : '';
+        const tip = b.name + (b.location ? ' @ '+b.location : '')
+          + ' — ' + (span>1 ? `${b.date} to ${b.endDate} (day ${dayNo} of ${span})` : ds)
+          + (status==='maybe' ? ' (maybe)' : '');
+        // Only the first day carries the name; later days keep the bar but stay uncluttered.
+        const label = first ? `${status==='maybe' ? '? ' : ''}${this._esc(b.name)}` : '&nbsp;';
+        return `<span class="cal-chip ${cls}${runCls}" title="${this._esc(tip)}"><span class="cal-chip-label">${label}</span></span>`;
       }).join('');
       html += `<div class="cal-cell${out?' out':''}${isToday?' today':''}"><div class="cal-daynum">${d.getDate()}</div>${chips}</div>`;
     }
@@ -4132,8 +4210,9 @@ class Dashboard {
 
     // Upcoming list: everything from today forward, soonest first.
     const listEl = document.getElementById('upcoming-list');
+    // Keyed off the LAST day, so a multi-day show stays listed while you're still standing at it.
     const upcoming = bookings
-      .filter(b => b.date >= today)
+      .filter(b => this._bookingEnd(b) >= today)
       .sort((a,b) => a.date.localeCompare(b.date));
     if(!upcoming.length){
       listEl.innerHTML = '<div class="upcoming-empty">No upcoming shows booked — use <strong>+ Book a Show</strong> above to add one (just a name and a date).</div>';
@@ -4142,15 +4221,19 @@ class Dashboard {
     const MS_DAY = 86400000;
     const toUTC = ds => { const p = ds.split('-').map(Number); return Date.UTC(p[0], p[1]-1, p[2]); };
     listEl.innerHTML = upcoming.map(b=>{
+      const span = this._bookingDays(b).length;
       const days = Math.round((toUTC(b.date) - toUTC(today)) / MS_DAY);
-      const count = days === 0 ? 'Today!' : days === 1 ? 'Tomorrow' : `in ${days} days`;
+      // days < 0 means it started already but hasn't finished — it's running right now.
+      const count = days < 0 ? 'On now' : days === 0 ? (span>1 ? 'Starts today!' : 'Today!')
+        : days === 1 ? 'Tomorrow' : `in ${days} days`;
       const dt = new Date(toUTC(b.date));
       const mon = dt.toLocaleString(undefined, {month:'short', timeZone:'UTC'});
+      const endD = span>1 ? new Date(toUTC(this._bookingEnd(b))).getUTCDate() : null;
       const status = b.status === 'maybe' ? 'maybe' : 'confirmed';
       return `<div class="upcoming-row">
-        <div class="upcoming-datebox ${status}"><span class="mon">${mon}</span><span class="day">${dt.getUTCDate()}</span></div>
+        <div class="upcoming-datebox ${status}"><span class="mon">${mon}</span><span class="day">${dt.getUTCDate()}${endD!=null?`<small>–${endD}</small>`:''}</span></div>
         <div class="upcoming-main">
-          <div class="upcoming-name">${this._esc(b.name)}${status==='maybe' ? '<span class="upcoming-status-pill">Maybe</span>' : ''}</div>
+          <div class="upcoming-name">${this._esc(b.name)}${status==='maybe' ? '<span class="upcoming-status-pill">Maybe</span>' : ''}${span>1 ? `<span class="upcoming-span-pill">${span} days</span>` : ''}</div>
           ${b.location ? `<div class="upcoming-notes">&#128205; ${this._esc(b.location)}</div>` : ''}
         </div>
         <div class="upcoming-count${days<=7?' soon':''}">${count}</div>
