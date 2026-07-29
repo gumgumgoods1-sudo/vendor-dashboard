@@ -718,6 +718,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .scan-title { color:#fff; font-size:16px; font-weight:700; margin:0; }
 .scan-status { color:#d6dbee; font-size:13px; margin:0; text-align:center; max-width:480px; white-space:pre-line; line-height:1.5; }
 .scan-frame.scan-hit { border-color:#37d67a; box-shadow:0 0 0 999px rgba(0,0,0,.28), 0 0 18px 3px rgba(55,214,122,.7); transition:border-color .05s, box-shadow .05s; }
+.scan-frame.scan-warn { border-color:#f0b400; box-shadow:0 0 0 999px rgba(0,0,0,.28), 0 0 18px 3px rgba(240,180,0,.65); transition:border-color .05s, box-shadow .05s; }
 .scan-frame.scan-miss { border-color:#ff7a80; box-shadow:0 0 0 999px rgba(0,0,0,.28), 0 0 18px 3px rgba(255,122,128,.6); transition:border-color .05s, box-shadow .05s; }
 .scan-cancel { border:1.5px solid rgba(255,255,255,.5); background:transparent; color:#fff; border-radius:11px; padding:10px 22px; font-size:14px; font-family:inherit; cursor:pointer; }
 .scan-cancel:hover { background:rgba(255,255,255,.12); }
@@ -1405,7 +1406,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v43</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v44</strong>
   </footer>
 </div>
 
@@ -4380,11 +4381,13 @@ class Dashboard {
     return `Basket: ${n} card${n!==1?'s':''} · ${fmtMoney(total)} — tap ✓ Done when finished.`;
   }
   _setScanStatus(main){ const el=document.getElementById('scan-status'); if(el) el.textContent = main + '\n' + this._rapidBasketLine(); }
-  _flashScanFrame(ok){
+  // state: 'hit' (green), 'warn' (amber), 'miss' (red).
+  _flashScanFrame(state){
     const f = document.querySelector('.scan-frame'); if(!f) return;
-    f.classList.remove('scan-hit','scan-miss');
+    const s = state===true ? 'hit' : (state===false ? 'miss' : state);
+    f.classList.remove('scan-hit','scan-miss','scan-warn');
     void f.offsetWidth; // restart the CSS transition
-    f.classList.add(ok?'scan-hit':'scan-miss');
+    f.classList.add('scan-'+s);
   }
 
   _handleScanResult(text){
@@ -4393,15 +4396,33 @@ class Dashboard {
       const parsed = this._parseScannedLabel(text);
       const matches = this._resolveScanToItem(parsed);
       if(matches.length===1){
-        this.addToCheckout(matches[0]);
-        if(navigator.vibrate) navigator.vibrate(60);
-        this._flashScanFrame(true);
-        this._setScanStatus(`✓ Added ${matches[0]['Item Name']||matches[0]['SKU']}`);
+        const item = matches[0];
+        this.addToCheckout(item);
+        const line = this.checkoutItems.find(l=>l.itemId===item['Item ID']);
+        const qty = line ? line.qty : 1;
+        const stock = Number(item['Remaining Inventory (auto)'])||0;
+        const name = item['Item Name']||item['SKU'];
+        if(qty > stock){
+          // More of this card in the basket than you have in stock — likely a double-scan, or
+          // you're about to oversell. Strongest alert (red + long buzz).
+          if(navigator.vibrate) navigator.vibrate([90,60,90,60,90]);
+          this._flashScanFrame('miss');
+          this._setScanStatus(`⛔ ${name} is now ×${qty} but only ${stock} in stock — remove one from the basket if this was a double scan.`);
+        } else if(qty >= 2){
+          // Same card scanned again (still within stock). Amber + double buzz so a repeat stands out.
+          if(navigator.vibrate) navigator.vibrate([70,60,70]);
+          this._flashScanFrame('warn');
+          this._setScanStatus(`⚠ Scanned again — ${name} is now ×${qty} in the basket. Same card twice?`);
+        } else {
+          if(navigator.vibrate) navigator.vibrate(60);
+          this._flashScanFrame('hit');
+          this._setScanStatus(`✓ Added ${name}`);
+        }
       } else if(matches.length===0){
-        this._flashScanFrame(false);
+        this._flashScanFrame('miss');
         this._setScanStatus(`✗ No item found for “${parsed.sku}”`);
       } else {
-        this._flashScanFrame(false);
+        this._flashScanFrame('warn');
         this._setScanStatus(`⚠ SKU ${parsed.sku} matches ${matches.length} items — add that one from the basket manually`);
       }
       // Pause briefly so one card isn't counted many times, then resume scanning.
