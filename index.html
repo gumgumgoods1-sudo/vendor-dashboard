@@ -233,6 +233,26 @@ body {
 .sd-item .sd-item-amt .neg { color:var(--negative); }
 .sd-empty { font-size:12.5px; color:var(--text-muted); font-style:italic; padding:2px 0 4px; }
 .sd-rank { display:inline-block; min-width:17px; height:17px; line-height:17px; text-align:center; border-radius:50%; background:var(--bg-header); color:#fff; font-size:10px; font-weight:800; margin-right:7px; }
+.audit-clear { text-align:center; padding:24px 8px; }
+.audit-clear .audit-clear-icon { font-size:40px; }
+.audit-clear .audit-clear-msg { font-size:15px; font-weight:700; color:var(--positive); margin-top:8px; }
+.audit-clear .audit-clear-sub { font-size:12.5px; color:var(--text-secondary); margin-top:4px; }
+.audit-summary { font-size:13px; color:var(--text-secondary); margin:0 0 12px; }
+.audit-finding { border:1px solid var(--border-subtle); border-radius:11px; padding:11px 13px; margin:0 0 10px; }
+.audit-finding.sev-error { border-left:4px solid var(--negative); }
+.audit-finding.sev-warn { border-left:4px solid #d99a00; }
+.audit-finding h4 { margin:0; font-size:13.5px; font-weight:800; color:var(--text-primary); display:flex; align-items:center; gap:7px; }
+.audit-finding h4 .audit-count { margin-left:auto; font-size:11px; font-weight:800; color:#fff; background:var(--negative); border-radius:20px; padding:1px 8px; }
+.audit-finding.sev-warn h4 .audit-count { background:#d99a00; }
+.audit-finding .audit-desc { font-size:12px; color:var(--text-secondary); margin:5px 0 8px; }
+.audit-items { display:flex; flex-direction:column; gap:5px; }
+.audit-item { display:flex; align-items:baseline; justify-content:space-between; gap:10px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:8px; padding:7px 10px; font-size:12.5px; cursor:pointer; text-align:left; width:100%; }
+.audit-item:hover { border-color:var(--action); }
+.audit-item .audit-item-name { font-weight:700; color:var(--text-primary); }
+.audit-item .audit-item-detail { color:var(--text-muted); font-size:11.5px; margin-top:1px; }
+.audit-item .audit-item-val { white-space:nowrap; font-weight:800; }
+.audit-item .audit-item-val.neg { color:var(--negative); }
+.audit-more { font-size:11.5px; color:var(--text-muted); padding:3px 2px 0; }
 .calc-list { display:flex; flex-direction:column; gap:8px; margin:16px 0; max-height:38vh; overflow-y:auto; }
 .calc-empty { font-size:13px; color:var(--text-secondary); text-align:center; padding:18px 0; }
 .calc-row { display:flex; align-items:center; gap:10px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:11px; padding:9px 12px; }
@@ -686,6 +706,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <button class="btn-sm" id="clear-all-filters-btn" title="Clear every table's filters at once">&#129529; Clear Filters</button>
       <button class="btn-sm" id="refresh-btn" title="Pull the latest data from the cloud (e.g. changes another person made on their device)">&#128260; Refresh</button>
       <button class="btn-sm" id="show-mode-btn" title="Pick the show you're working — new sales, trades, and expenses will default to it">&#127914; Show Mode</button>
+      <button class="btn-sm" id="data-health-btn" title="Scan your data for things that could throw off your numbers (bad costs, duplicates, negative stock…)">&#129658; Data Health</button>
       <button class="btn-sm" id="load-progress-btn">&#128193; Load Progress</button>
       <button class="btn-sm btn-add" id="save-progress-btn">&#128190; Save a Copy</button>
     </div>
@@ -906,6 +927,19 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <button type="button" class="qa-close" id="show-detail-close" title="Close">&times;</button>
       </div>
       <div id="show-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Data Health / Audit: scans the data for the input problems that quietly corrupt totals
+       (bad costs, below-cost sales, negative stock, duplicates, cash-count divergence…) and
+       links each finding to the row so it can be fixed. -->
+  <div class="qa-overlay hidden" id="audit-overlay">
+    <div class="qa-modal show-detail-modal">
+      <div class="qa-modal-head">
+        <h2>&#129658; Data Health</h2>
+        <button type="button" class="qa-close" id="audit-close" title="Close">&times;</button>
+      </div>
+      <div id="audit-body"></div>
     </div>
   </div>
 
@@ -1314,7 +1348,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v40</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v41</strong>
   </footer>
 </div>
 
@@ -1623,6 +1657,8 @@ class Dashboard {
       if(qa){ this.adjustQty(Number(qa.dataset.id), Number(qa.dataset.delta)); return; }
       const sd = e.target.closest('[data-show-detail]');
       if(sd){ this.openShowDetail(sd.dataset.showDetail); return; }
+      const ag = e.target.closest('[data-audit-goto]');
+      if(ag){ this._auditGoto(ag); return; }
       const ret = e.target.closest('[data-return-sale]');
       if(ret){ this.returnSaleToInventory(Number(ret.dataset.id)); return; }
       const del = e.target.closest('[data-delete]');
@@ -1705,6 +1741,10 @@ class Dashboard {
     // Per-show drill-down overlay.
     document.getElementById('show-detail-close').addEventListener('click', ()=>this.closeShowDetail());
     document.getElementById('show-detail-overlay').addEventListener('click', (e)=>{ if(e.target.id==='show-detail-overlay') this.closeShowDetail(); });
+    // Data Health / Audit overlay.
+    document.getElementById('data-health-btn').addEventListener('click', ()=>this.openDataAudit());
+    document.getElementById('audit-close').addEventListener('click', ()=>this.closeDataAudit());
+    document.getElementById('audit-overlay').addEventListener('click', (e)=>{ if(e.target.id==='audit-overlay') this.closeDataAudit(); });
     ['new-show-venue','new-show-date'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input', ()=>this._updateShowPickerPreview('new-show')); } });
     document.getElementById('show-mode-banner').addEventListener('click', (e)=>{ if(e.target.closest('[data-show-mode-end]')) this.endShowMode(); });
     // QR scanner cancel button.
@@ -1775,6 +1815,7 @@ class Dashboard {
       if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
       if(!document.getElementById('new-show-overlay').classList.contains('hidden')){ this.closeNewShow(); return; }
       if(!document.getElementById('show-detail-overlay').classList.contains('hidden')){ this.closeShowDetail(); return; }
+      if(!document.getElementById('audit-overlay').classList.contains('hidden')){ this.closeDataAudit(); return; }
       if(!document.getElementById('confirm-overlay').classList.contains('hidden')){ this._closeConfirm(); return; }
       if(!document.getElementById('add-modal-overlay').classList.contains('hidden')){ this.closeAddModal(); return; }
       if(!document.getElementById('calc-overlay').classList.contains('hidden')){ this.closeCalculator(); return; }
@@ -2161,6 +2202,123 @@ class Dashboard {
     el.classList.remove('hidden');
   }
   closeShowDetail(){ document.getElementById('show-detail-overlay').classList.add('hidden'); }
+
+  // ---------------- Data Health / Audit ----------------
+  // Scans the data for the input problems that quietly corrupt totals. Formulas are
+  // deterministic; what makes a number wrong is a bad input, so this surfaces those inputs.
+  runDataAudit(){
+    const findings = [];
+    const money = (n)=>fmtMoney(n);
+
+    // 1) Sales below cost — sold for less than the item cost (likely a cost/price typo).
+    const belowCost = this.data.sales.filter(s=>{
+      const price=Number(s['Sale Price'])||0, cost=Number(s['Cost (auto)'])||0;
+      return price>0 && cost>0 && price<cost;
+    });
+    if(belowCost.length) findings.push({ sev:'error', icon:'📉', title:'Sales below cost',
+      desc:'Sold for less than the recorded item cost — check for a cost or price typo (this drags profit negative).',
+      items: belowCost.map(s=>({ table:'sales', search:s['Item Name (auto)']||s['Item ID']||'',
+        name:s['Item Name (auto)']||s['Item ID']||'—',
+        detail:`${s['Show Name']||''} · sold ${money(Number(s['Sale Price'])||0)} vs cost ${money(Number(s['Cost (auto)'])||0)}`,
+        val:money((Number(s['Sale Price'])||0)-(Number(s['Cost (auto)'])||0)), neg:true })) });
+
+    // 2) Negative stock — oversold or a miscount.
+    const negStock = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0)<0);
+    if(negStock.length) findings.push({ sev:'error', icon:'📦', title:'Negative stock',
+      desc:'Remaining quantity is below zero — more sold/traded out than were purchased. Fix the quantity or add the missing purchase.',
+      items: negStock.map(i=>({ table:'inventory', search:i['Item ID']||i['Item Name']||'',
+        name:i['Item Name']||i['Item ID']||'—', detail:`${i['SKU']||''} · ${i['Item ID']||''}`,
+        val:String(Number(i['Remaining Inventory (auto)'])||0), neg:true })) });
+
+    // 3) Duplicate sales — same date, item, price, qty, and show entered more than once.
+    const dupeSales = this._auditDupes(this.data.sales,
+      s=>[s['Date'],s['Item ID'],s['Sale Price'],s['Quantity Sold'],s['Show Name']].join('|'));
+    if(dupeSales.length) findings.push({ sev:'error', icon:'📋', title:'Possible duplicate sales',
+      desc:'Identical sales (same date, item, price, qty, show) appear more than once — one may have been entered twice.',
+      items: dupeSales.map(g=>({ table:'sales', search:g.sample['Item Name (auto)']||g.sample['Item ID']||'',
+        name:g.sample['Item Name (auto)']||g.sample['Item ID']||'—',
+        detail:`${g.sample['Show Name']||''} · ${g.sample['Date']||''} · ${money(Number(g.sample['Sale Price'])||0)}`,
+        val:`×${g.count}`, neg:true })) });
+
+    // 4) Duplicate expenses — same date, show, category, description, amount.
+    const dupeExp = this._auditDupes(this.data.expenses,
+      e=>[e['Date'],e['Show Name'],e['Category'],e['Description'],e['Amount']].join('|'));
+    if(dupeExp.length) findings.push({ sev:'error', icon:'🧾', title:'Possible duplicate expenses',
+      desc:'Identical expenses appear more than once — these inflate your total expenses.',
+      items: dupeExp.map(g=>({ table:'expenses', search:'',
+        name:`${g.sample['Category']||'Expense'} — ${g.sample['Description']||''}`,
+        detail:`${g.sample['Show Name']||''} · ${g.sample['Date']||''}`,
+        val:`×${g.count} @ ${money(Number(g.sample['Amount'])||0)}`, neg:true })) });
+
+    // 5) Sales with $0 cost — profit shows as 100% margin. Grouped by item to cut noise.
+    const zeroCostItems = {};
+    this.data.sales.forEach(s=>{
+      const price=Number(s['Sale Price'])||0, cost=Number(s['Cost (auto)'])||0;
+      if(price>0 && cost===0 && !s['Linked Trade']){
+        const k = s['Item ID']||s['Item Name (auto)']||'?';
+        if(!zeroCostItems[k]) zeroCostItems[k]={ name:s['Item Name (auto)']||s['Item ID']||'—', id:s['Item ID']||'', n:0 };
+        zeroCostItems[k].n++;
+      }
+    });
+    const zc = Object.values(zeroCostItems);
+    if(zc.length) findings.push({ sev:'warn', icon:'💸', title:'Sales with $0 cost',
+      desc:'These items have no cost recorded, so their sales show as pure profit. Set the item’s cost if it wasn’t actually free.',
+      items: zc.map(z=>({ table:'inventory', search:z.id||z.name, name:z.name, detail:`${z.id}`, val:`${z.n} sale${z.n>1?'s':''}` })) });
+
+    // 6) In-stock items with a cost but no retail price — can’t be priced/valued correctly.
+    const noRetail = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0)>0 && (Number(i['Cost'])||0)>0 && (Number(i['Retail Price'])||0)===0);
+    if(noRetail.length) findings.push({ sev:'warn', icon:'🏷️', title:'No retail price set',
+      desc:'In stock with a cost but no retail price — these contribute $0 to potential profit and can’t be priced at a show.',
+      items: noRetail.map(i=>({ table:'inventory', search:i['Item ID']||i['Item Name']||'',
+        name:i['Item Name']||i['Item ID']||'—', detail:`cost ${money(Number(i['Cost'])||0)} · no retail`, val:'—' })) });
+
+    return findings;
+  }
+  // Groups records by a signature; returns [{count, sample}] for signatures seen more than once.
+  _auditDupes(rows, sigFn){
+    const map = {};
+    rows.forEach(r=>{ const k=sigFn(r); (map[k]=map[k]||[]).push(r); });
+    return Object.values(map).filter(g=>g.length>1).map(g=>({count:g.length, sample:g[0]}));
+  }
+
+  openDataAudit(){
+    const body = document.getElementById('audit-body');
+    const findings = this.runDataAudit();
+    const totalIssues = findings.reduce((a,f)=>a+f.items.length,0);
+    if(!findings.length){
+      body.innerHTML = `<div class="audit-clear"><div class="audit-clear-icon">✅</div>`
+        + `<div class="audit-clear-msg">All clear</div>`
+        + `<div class="audit-clear-sub">No data problems found. Your totals are built on clean inputs.</div></div>`;
+    } else {
+      const errs = findings.filter(f=>f.sev==='error').length;
+      body.innerHTML = `<div class="audit-summary">Found <b>${totalIssues}</b> thing${totalIssues!==1?'s':''} worth a look across <b>${findings.length}</b> check${findings.length!==1?'s':''}. Tap any item to jump to it.</div>`
+        + findings.map(f=>{
+          const cap = 8;
+          const shown = f.items.slice(0, cap);
+          const more = f.items.length>cap ? `<div class="audit-more">+ ${f.items.length-cap} more…</div>` : '';
+          const items = shown.map(it=>`<button type="button" class="audit-item" data-audit-goto data-table="${this._esc(it.table)}" data-search="${this._esc(it.search||'')}"><span class="audit-item-main"><span class="audit-item-name">${this._esc(it.name)}</span><span class="audit-item-detail">${this._esc(it.detail||'')}</span></span><span class="audit-item-val ${it.neg?'neg':''}">${this._esc(it.val||'')}</span></button>`).join('');
+          return `<div class="audit-finding sev-${f.sev}"><h4>${f.icon} ${this._esc(f.title)}<span class="audit-count">${f.items.length}</span></h4><div class="audit-desc">${this._esc(f.desc)}</div><div class="audit-items">${items}${more}</div></div>`;
+        }).join('');
+    }
+    body.scrollTop = 0;
+    document.getElementById('audit-overlay').classList.remove('hidden');
+  }
+  closeDataAudit(){ document.getElementById('audit-overlay').classList.add('hidden'); }
+  _auditGoto(el){
+    const table = el.dataset.table, search = el.dataset.search||'';
+    this.closeDataAudit();
+    if(table==='show'){ this.openShowDetail(search); return; }
+    this.showTab(table);
+    if(table==='inventory'){
+      this.inventorySearch = search;
+      const inp=document.getElementById('inv-search'); if(inp){ inp.value=search; document.getElementById('inv-search-clear').classList.toggle('hidden', !search); }
+      this.renderInventory();
+    } else if(table==='sales'){
+      this.salesSearch = search;
+      const inp=document.getElementById('sales-search'); if(inp){ inp.value=search; document.getElementById('sales-search-clear').classList.toggle('hidden', !search); }
+      this.salesPageIndex = 0; this.renderSales();
+    }
+  }
 
   endShowMode(){
     this.activeShow = '';
