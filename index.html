@@ -108,6 +108,9 @@ body {
 .session-status.dirty { color:var(--warning); }
 .session-status.saved { color:var(--positive); }
 .session-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.tools-toggle { display:none; align-items:center; gap:6px; border:1px solid var(--border-subtle); background:var(--bg-inset); color:var(--text-primary); font-family:inherit; font-size:13px; font-weight:700; border-radius:10px; padding:9px 13px; cursor:pointer; }
+.tools-toggle .tools-caret { transition:transform .15s; font-size:11px; color:var(--text-muted); }
+.session-bar.tools-open .tools-toggle .tools-caret { transform:rotate(180deg); }
 .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(0); background:var(--bg-header); color:#fff; padding:12px 22px; border-radius:99px; font-size:13px; box-shadow:var(--shadow-md); z-index:1000; transition:opacity .25s, transform .25s; opacity:1; border:1px solid rgba(255,255,255,0.12); }
 .toast.hidden { opacity:0; transform:translateX(-50%) translateY(10px); pointer-events:none; }
 
@@ -462,10 +465,24 @@ body {
 .dashboard-footer { text-align:center; font-size:12px; color:var(--text-muted); padding:18px 0 6px; }
 
 @media (max-width:768px) {
-  .dashboard-header { flex-direction:column; align-items:flex-start; padding:16px 18px; }
-  .header-logo { height:48px; width:auto; }
+  .dashboard-header { flex-direction:row; align-items:center; padding:12px 15px; margin-bottom:10px; }
+  .header-logo { height:44px; width:auto; }
   .header-brand { gap:11px; }
-  .dashboard-header h1 { font-size:18px; }
+  .dashboard-header h1 { font-size:16px; line-height:1.2; }
+  .dashboard-header p { font-size:11.5px; margin-top:2px; }
+
+  /* Reclaim the top of every tab: the row of tools collapses behind a compact toggle so the
+     actual data sits near the top instead of below a screenful of buttons. */
+  .tools-toggle { display:inline-flex; }
+  .session-bar { padding:10px 14px; gap:9px; }
+  .session-status { font-size:11.5px; flex:1 1 100%; order:1; }
+  .tools-toggle { order:2; }
+  .session-actions { order:3; display:none; width:100%; }
+  .session-bar.tools-open .session-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .session-actions .btn-sm { width:100%; justify-content:center; }
+  /* The legend under each table's toolbar is desktop nicety — drop it on mobile to save a row. */
+  .table-section .edit-note { display:none; }
+
   .kpi-row { grid-template-columns:repeat(2,1fr); }
   .chart-row { grid-template-columns:1fr; }
   .hero-band { grid-template-columns:1fr; padding:22px; gap:16px; }
@@ -697,8 +714,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </div>
   </header>
 
-  <div class="session-bar">
+  <div class="session-bar" id="session-bar">
     <div class="session-status" id="session-status">Working from the original snapshot &mdash; sign in and your changes save automatically to the cloud.</div>
+    <button type="button" class="tools-toggle" id="tools-toggle" aria-expanded="false" title="Show/hide tools">&#128295; Tools <span class="tools-caret">&#9662;</span></button>
     <div class="session-actions">
       <input type="file" id="load-file-input" accept="application/json" style="display:none">
       <button class="btn-sm" id="undo-btn" title="Undo (Ctrl+Z)" disabled>&#8617; Undo</button>
@@ -1348,7 +1366,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v41</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v42</strong>
   </footer>
 </div>
 
@@ -1756,6 +1774,13 @@ class Dashboard {
     document.getElementById('load-file-input').addEventListener('change', (e)=>this.loadProgress(e.target.files[0]));
     document.getElementById('undo-btn').addEventListener('click', ()=>this.undo());
     document.getElementById('redo-btn').addEventListener('click', ()=>this.redo());
+    // Mobile "Tools" toggle — expand/collapse the row of session actions.
+    const toolsToggle = document.getElementById('tools-toggle');
+    if(toolsToggle){ toolsToggle.addEventListener('click', ()=>{
+      const bar = document.getElementById('session-bar');
+      const open = bar.classList.toggle('tools-open');
+      toolsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }); }
     document.getElementById('clear-all-filters-btn').addEventListener('click', ()=>this.handleClearAllFilters());
     document.getElementById('show-sold-toggle').addEventListener('change', (e)=>this.toggleShowSoldOut(e.target.checked));
     // Quick Add Sale — live cost/margin readout as item/qty/price change.
