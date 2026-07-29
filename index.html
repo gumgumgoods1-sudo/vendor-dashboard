@@ -1466,7 +1466,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v51</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v52</strong>
   </footer>
 </div>
 
@@ -3818,9 +3818,53 @@ class Dashboard {
   _promoBookings(){
     const today = this.todayStr();
     // Filtered on the last day so a show you're partway through still gets promoted.
-    return this.data.calendar
+    const live = this.data.calendar
       .filter(b=>b.date && this._bookingEnd(b) >= today)
       .sort((a,b)=>a.date.localeCompare(b.date));
+    return this._mergeRuns(live);
+  }
+
+  // One entry per show. Bookings sharing a name whose dates run back-to-back are the same event
+  // logged a day at a time, so they collapse into a single run. The gap test is what keeps a
+  // monthly show that reuses its name from collapsing into one twelve-month block — only
+  // touching or overlapping dates merge.
+  _mergeRuns(list){
+    const out = [];
+    const dayMs = 86400000;
+    const ms = ds => { const p=ds.split('-').map(Number); return Date.UTC(p[0],p[1]-1,p[2]); };
+    list.forEach(b=>{
+      const key = String(b.name||'').trim().toLowerCase();
+      const prev = out.find(o =>
+        String(o.name||'').trim().toLowerCase()===key &&
+        ms(b.date) - ms(this._bookingEnd(o)) <= dayMs);
+      if(!prev){ out.push({...b}); return; }
+      // Extend the run, and let any detail the earlier row was missing fill in from this one.
+      if(this._bookingEnd(b) > this._bookingEnd(prev)) prev.endDate = this._bookingEnd(b);
+      prev.location = prev.location || b.location;
+      prev.time = prev.time || b.time;
+      prev.table = prev.table || b.table;
+      // A run is only fully confirmed if every day of it is.
+      if(b.status === 'maybe') prev.status = 'maybe';
+    });
+    return out;
+  }
+
+  // The days of a run, spelled out for the poster: "Fri 18 · Sat 19 · Sun 20". Long runs would
+  // overflow the card, so past four days it collapses to the endpoints and a count.
+  _promoDaysLine(days){
+    const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const part = (ds, withMon)=>{
+      const p = ds.split('-').map(Number);
+      const d = new Date(Date.UTC(p[0], p[1]-1, p[2]));
+      return `${DOW[d.getUTCDay()]} ${withMon ? MON[p[1]-1]+' ' : ''}${p[2]}`;
+    };
+    if(days.length <= 4){
+      // Name the month once up front; the rest are the same month unless the run crosses one.
+      const firstMonth = days[0].slice(0,7);
+      return days.map((d,i)=>part(d, i===0 || d.slice(0,7)!==firstMonth)).join('  ·  ');
+    }
+    return `${part(days[0],true)} – ${part(days[days.length-1], days[days.length-1].slice(0,7)!==days[0].slice(0,7))}  ·  ${days.length} days`;
   }
 
   openPromoPoster(){
@@ -3993,44 +4037,47 @@ class Dashboard {
 
       const [Y,Mo,D] = b.date.split('-').map(Number);
       const dt = new Date(Y, Mo-1, D);
-      const endStr = this._bookingEnd(b);
-      const multi = endStr !== b.date;
-      const [eY,eMo,eD] = endStr.split('-').map(Number);
-      const eDt = new Date(eY, eMo-1, eD);
+      const runDays = this._bookingDays(b);
+      const multi = runDays.length > 1;
       const dcx = x + Math.round(W*0.115);
       g.textAlign='center';
-      // A run spanning two months needs both named; inside one month the month prints once.
+      // The box always shows the opening day. For a run, the individual days are spelled out on
+      // their own line under the name instead — cramming "18–20" in here made both harder to read.
       g.font=`800 ${Math.round(cardH*0.175)}px ${F}`; g.fillStyle=RED;
-      g.fillText(multi && Mo!==eMo ? `${MONTHS[Mo-1]}–${MONTHS[eMo-1]}` : MONTHS[Mo-1], dcx, cy+cardH*0.30);
-      // The day number carries the range, shrunk a little so "19–21" still fits the column.
-      const dayTxt = multi ? `${D}–${eD}` : String(D);
-      const dayFit = fit(dayTxt, Math.round(W*0.185), Math.round(cardH*0.44), '800', Math.round(cardH*0.26));
-      g.font=`800 ${dayFit.size}px ${F}`; g.fillStyle=GOLD_LT;
-      g.fillText(dayFit.txt, dcx, cy+cardH*0.70);
+      g.fillText(MONTHS[Mo-1], dcx, cy+cardH*0.30);
+      g.font=`800 ${Math.round(cardH*0.44)}px ${F}`; g.fillStyle=GOLD_LT;
+      g.fillText(String(D), dcx, cy+cardH*0.70);
       g.font=`700 ${Math.round(cardH*0.115)}px ${F}`; g.fillStyle=ROPE;
-      g.fillText(multi ? `${DOW[dt.getDay()]}–${DOW[eDt.getDay()]}` : DOW[dt.getDay()], dcx, cy+cardH*0.86);
+      g.fillText(multi ? `${runDays.length} DAYS` : DOW[dt.getDay()], dcx, cy+cardH*0.86);
 
       const divX = x + Math.round(W*0.205);
       g.strokeStyle='rgba(224,185,120,.34)'; g.lineWidth=2; g.setLineDash([5,5]);
       g.beginPath(); g.moveTo(divX, cy+cardH*0.16); g.lineTo(divX, cy+cardH*0.84); g.stroke();
       g.setLineDash([]);
 
-      // name + the detail lines that actually exist
+      // Name, then (for a run) the days it covers, then whatever venue detail exists. Lines are
+      // positioned by how many there actually are, so a bare name still sits centred.
       const tx = divX + Math.round(W*0.028);
       const tw = x + w - tx - Math.round(W*0.03);
       g.textAlign='left';
-      const lines = [];
-      const where = [b.location, b.time && `${b.time}`, b.table && `Table ${b.table}`].filter(Boolean);
-      if(where.length) lines.push(where.join('  ·  '));
-      if(b.status==='maybe') lines.push('TBC');
-      const nameY = lines.length ? cy+cardH*0.44 : cy+cardH*0.58;
+      const daysLine = multi ? this._promoDaysLine(runDays) : '';
+      const where = [b.location, b.time, b.table && `Table ${b.table}`].filter(Boolean);
+      const detail = [where.join('  ·  '), b.status==='maybe' ? 'TBC' : ''].filter(Boolean).join('   ·   ');
+      const extras = [daysLine, detail].filter(Boolean);
+
       const nm = fit(b.name, tw, Math.round(cardH*0.235), '800', Math.round(cardH*0.175));
       g.font=`800 ${nm.size}px ${F}`; g.fillStyle='#fff';
-      g.fillText(nm.txt, tx, nameY);
-      if(lines.length){
-        const ln = fit(lines.join('   ·   '), tw, Math.round(cardH*0.145), '600');
-        g.font=`600 ${ln.size}px ${F}`; g.fillStyle=ROPE;
-        g.fillText(ln.txt, tx, cy+cardH*0.70);
+      g.fillText(nm.txt, tx, cy + cardH*(extras.length===2 ? 0.36 : extras.length===1 ? 0.44 : 0.58));
+
+      if(daysLine){
+        const dl = fit(daysLine, tw, Math.round(cardH*0.155), '700', Math.round(cardH*0.11));
+        g.font=`700 ${dl.size}px ${F}`; g.fillStyle=GOLD;
+        g.fillText(dl.txt, tx, cy + cardH*(extras.length===2 ? 0.60 : 0.70));
+      }
+      if(detail){
+        const dt2 = fit(detail, tw, Math.round(cardH*0.145), '600', Math.round(cardH*0.105));
+        g.font=`600 ${dt2.size}px ${F}`; g.fillStyle=ROPE;
+        g.fillText(dt2.txt, tx, cy + cardH*(extras.length===2 ? 0.82 : 0.70));
       }
       cy += cardH + gap;
     });
