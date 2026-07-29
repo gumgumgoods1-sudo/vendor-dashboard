@@ -1421,7 +1421,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v45</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v47</strong>
   </footer>
 </div>
 
@@ -1485,6 +1485,10 @@ const RAW = {"generated": "2026-07-02", "kpis": {"totalSales": 2606, "totalExpen
 // Categorical chart palette — CVD-validated fixed order (worst adjacent pair ΔE 24.2).
 // Mirrors the --accent* tokens in the stylesheet; assign by index, never re-sort by rank.
 const PALETTE = ['#2a78d6','#1baf7a','#eda100','#008300','#4a3aa7','#e34948','#e87ba4'];
+
+// Money rounded to whole cents — keeps derived/summed figures from drifting into
+// floating-point dust (0.1+0.2 territory) once they're added across rows.
+function round2(v){ return Math.round(((Number(v)||0) + Number.EPSILON) * 100) / 100; }
 
 function fmtMoney(v){
   const n = Number(v)||0;
@@ -3202,8 +3206,8 @@ class Dashboard {
 
   // ---------------- live recalculation engine (mirrors the workbook's formulas) ----------------
   recalcAll(){
-    const nameById = {}, catById = {}, costById = {};
-    this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; catById[i['Item ID']] = i['Category']; costById[i['Item ID']] = Number(i['Cost'])||0; });
+    const nameById = {}, catById = {}, costById = {}, retailById = {};
+    this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; catById[i['Item ID']] = i['Category']; costById[i['Item ID']] = Number(i['Cost'])||0; retailById[i['Item ID']] = Number(i['Retail Price'])||0; });
 
     // A trade is "linked" when a Sales row points at it via Trade Ref — its economics live in
     // that sale, so on its own it books $0 extra profit (avoids double counting). A standalone
@@ -3220,6 +3224,13 @@ class Dashboard {
       const inIds = Array.isArray(t['Items Received']) ? t['Items Received'] : [];
       t['Items Traded (auto)'] = outIds.map(id=>nameById[id]||id).join(', ');
       t['Items Received (auto)'] = inIds.map(id=>nameById[id]||id).join(', ');
+      // Market value of each side of the trade — the Retail Price on the inventory row, added up
+      // across every card on that side. This is the sticker value of what changed hands, before
+      // any trade-credit rate or cash settlement, so you can see at a glance whether a trade was
+      // lopsided. Cards that are no longer in inventory contribute $0.
+      t['Market Value Out (auto)'] = round2(outIds.reduce((a,id)=>a+(retailById[id]||0),0));
+      t['Market Value In (auto)'] = round2(inIds.reduce((a,id)=>a+(retailById[id]||0),0));
+      t['Market Difference (auto)'] = round2((t['Market Value In (auto)']||0) - (t['Market Value Out (auto)']||0));
       const cashIn = Number(t['Cash Received'])||0, cashOut = Number(t['Cash Paid Out'])||0;
       t['Net Cash (auto)'] = cashIn - cashOut;
       t['Trade Profit (auto)'] = linkedTradeIdSet.has(t['Trade ID']) ? 0 : (cashIn - cashOut);
@@ -4698,8 +4709,11 @@ class Dashboard {
         {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
         {field:'Items Traded Out', label:'Traded Out', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
         {field:'Items Traded (auto)', label:'Item(s) Out', editable:false},
+        {field:'Market Value Out (auto)', label:'Market Out', editable:false, money:true},
         {field:'Items Received', label:'Received', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
         {field:'Items Received (auto)', label:'Item(s) In', editable:false},
+        {field:'Market Value In (auto)', label:'Market In', editable:false, money:true},
+        {field:'Market Difference (auto)', label:'Market Diff', editable:false, money:true},
         {field:'Value of Trade', label:'Trade Value', editable:true, type:'money', money:true, primary:true},
         {field:'Cash Received', label:'Cash In', editable:true, type:'money', money:true},
         {field:'Cash Paid Out', label:'Cash Out', editable:true, type:'money', money:true},
