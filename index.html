@@ -202,6 +202,7 @@ body {
 .show-picker-preview[hidden] { display:none; }
 .show-picker-preview b { color:var(--text-primary); }
 .new-show-activate { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); margin:2px 0 6px; cursor:pointer; }
+.est-tag { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--text-muted); background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:5px; padding:1px 4px; vertical-align:middle; }
 .row-detail { border:none; background:transparent; cursor:pointer; font-size:15px; line-height:1; padding:0 2px; opacity:.75; }
 .row-detail:hover { opacity:1; }
 .top-show-row { cursor:pointer; }
@@ -1313,7 +1314,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v39</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v40</strong>
   </footer>
 </div>
 
@@ -2920,12 +2921,27 @@ class Dashboard {
       const startCash=Number(c['Starting Cash'])||0, startInv=Number(c['Starting Inventory Value'])||0;
       const endCash=Number(c['Ending Cash'])||0, endInv=Number(c['Ending Inventory Value'])||0;
       const invChg = endInv-startInv;
+      // Realized margin from cards actually sold at this show — the basis for the estimated
+      // Actual Profit used when no cash count was recorded.
+      const salesProfit = this.data.sales.filter(s=>s['Show Name']===show).reduce((a,s)=>a+(Number(s['Profit (auto)'])||0),0);
       c['Total Sales (auto)'] = totalSales;
       c['Total Expenses (auto)'] = totalExpenses;
       c['Total Trade Cash (auto)'] = totalTradeCash;
       c['Change in Inventory Value (auto)'] = invChg;
+      c['Sales Margin (auto)'] = salesProfit;
       c['Potential Profit (auto)'] = totalSales-totalExpenses+invChg;
-      c['Actual Profit (auto)'] = (endCash+endInv)-(startCash+startInv)+totalTradeCash;
+      // Actual Profit is the cash-count result (End − Start cash+inventory, plus trade cash) when
+      // any of those four figures was recorded. When none were (a show entered without a cash
+      // count), that formula collapses to $0 and understates the show — so fall back to an
+      // estimate from what the records actually show: sales margin − expenses + trade cash. The
+      // flag lets the ledger / leaderboard mark the value as estimated. Bookkeeping buckets keep
+      // the literal cash-count value (they're overhead, not shows) and are never flagged.
+      const hasCount = (startCash+startInv+endCash+endInv) !== 0;
+      const isBucket = this._isBookkeepingBucket(show);
+      const trueActual = (endCash+endInv)-(startCash+startInv)+totalTradeCash;
+      const estActual = salesProfit - totalExpenses + totalTradeCash;
+      c['Actual Profit (auto)'] = (hasCount || isBucket) ? trueActual : estActual;
+      c['Actual Profit Estimated (auto)'] = !hasCount && !isBucket;
     });
 
     this.itemCat = catById;
@@ -3066,6 +3082,7 @@ class Dashboard {
     this._barLine('chart-shows', labels, [
       {type:'bar', label:'Total Sales', data:cf.map(c=>c['Total Sales (auto)']), color:PALETTE[0]},
       {type:'bar', label:'Total Expenses', data:cf.map(c=>c['Total Expenses (auto)']), color:PALETTE[5]},
+      {type:'line', label:'Actual Profit', data:cf.map(c=>Number(c['Actual Profit (auto)'])||0), color:PALETTE[2]},
     ]);
 
     // Monthly revenue + profit trend (Dashboard tab) — grouped by the sale's YYYY-MM.
@@ -3461,9 +3478,11 @@ class Dashboard {
       const roi = (Number(c['Actual Profit (auto)'])||0)/basis*100;
       return `<td><span class="badge ${roi>=0?'pos':'neg'}">${roi>=0?'+':''}${roi.toFixed(1)}%</span></td>`;
     };
-    body.innerHTML = top.map((c,i)=>`
-      <tr class="top-show-row" data-show-detail="${this._esc(c['Show Name']||'')}" title="View show details"><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}</td>${roiCell(c)}</tr>
-    `).join('');
+    body.innerHTML = top.map((c,i)=>{
+      const est = c['Actual Profit Estimated (auto)']
+        ? ` <span class="est-tag" title="Estimated — no cash count recorded for this show.">est</span>` : '';
+      return `<tr class="top-show-row" data-show-detail="${this._esc(c['Show Name']||'')}" title="View show details"><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}${est}</td>${roiCell(c)}</tr>`;
+    }).join('');
   }
 
   // ---- generic sortable / editable table renderer ----
@@ -4080,6 +4099,12 @@ class Dashboard {
       const raw = row[col.field];
       let v = raw;
       v = col.money ? fmtMoney(v) : this._esc(v);
+      // Money field flagged as estimated (e.g. per-show Actual Profit with no cash count) gets a
+      // "≈ … est" treatment plus an explaining tooltip, so an estimated figure never masquerades
+      // as a measured one.
+      if(col.money && col.estFlag && row[col.estFlag]){
+        return `<td class="auto-field ${cardCls} est-cell" data-label="${label}" title="Estimated from sales margin − expenses + trade cash (no starting/ending cash count recorded for this show).">&asymp;&nbsp;${v} <span class="est-tag">est</span></td>`;
+      }
       const titleAttr = (!col.money && raw!=null && String(raw)!=='') ? ` title="${this._esc(raw)}"` : '';
       return `<td class="auto-field ${cardCls}" data-label="${label}"${titleAttr}>${v}</td>`;
     }
@@ -4235,7 +4260,7 @@ class Dashboard {
         {field:'Total Trade Cash (auto)', label:'Trade Cash', editable:false, money:true},
         {field:'Change in Inventory Value (auto)', label:'Inv Chg', editable:false, money:true},
         {field:'Potential Profit (auto)', label:'Potential Profit', editable:false, money:true},
-        {field:'Actual Profit (auto)', label:'Actual Profit', editable:false, money:true, primary:true},
+        {field:'Actual Profit (auto)', label:'Actual Profit', editable:false, money:true, primary:true, estFlag:'Actual Profit Estimated (auto)'},
         {field:'Notes', label:'Notes', editable:true, type:'text'},
       ],
     };
