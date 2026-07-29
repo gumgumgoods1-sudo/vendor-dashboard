@@ -280,6 +280,15 @@ body {
 .qt-settle .qt-settle-value { font-size:26px; font-weight:800; margin-top:3px; }
 .qt-settle .qt-settle-hint { font-size:11.5px; opacity:.8; margin-top:4px; }
 .qt-empty { font-size:12px; color:var(--text-muted); font-style:italic; padding:2px 0; }
+#net-by-show { display:flex; flex-direction:column; gap:6px; }
+.nbs-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; padding:9px 12px; cursor:pointer; font-family:inherit; }
+.nbs-row:hover { border-color:var(--action); }
+.nbs-main { min-width:0; }
+.nbs-name { display:block; font-size:13.5px; font-weight:700; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nbs-sub { display:block; font-size:11.5px; color:var(--text-muted); margin-top:1px; }
+.nbs-net { flex-shrink:0; font-size:15px; font-weight:800; white-space:nowrap; }
+.nbs-net.pos { color:var(--positive); }
+.nbs-net.neg { color:var(--negative); }
 .calc-list { display:flex; flex-direction:column; gap:8px; margin:16px 0; max-height:38vh; overflow-y:auto; }
 .calc-empty { font-size:13px; color:var(--text-secondary); text-align:center; padding:18px 0; }
 .calc-row { display:flex; align-items:center; gap:10px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:11px; padding:9px 12px; }
@@ -1126,6 +1135,12 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       </table>
     </div>
 
+    <div class="table-section">
+      <h3 style="margin:0 0 4px">&#128176; Net Profit by Show</h3>
+      <div class="edit-note" style="margin:0 0 12px">Every show's bottom line, newest first. Tap a show to see its full breakdown. An <span class="est-tag">est</span> tag means no cash count was recorded, so profit is estimated from sales &minus; expenses.</div>
+      <div id="net-by-show"></div>
+    </div>
+
     <div class="section-title">Per-Show Ledger</div>
     <div class="table-section">
       <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
@@ -1406,7 +1421,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v44</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v45</strong>
   </footer>
 </div>
 
@@ -3361,6 +3376,7 @@ class Dashboard {
     this.renderKPIs();
     this.renderCharts();
     this.renderTopShows();
+    this.renderNetByShow();
     this.renderCalendar();
     this.renderInventory();
     this.renderSales();
@@ -3826,6 +3842,27 @@ class Dashboard {
       const est = c['Actual Profit Estimated (auto)']
         ? ` <span class="est-tag" title="Estimated — no cash count recorded for this show.">est</span>` : '';
       return `<tr class="top-show-row" data-show-detail="${this._esc(c['Show Name']||'')}" title="View show details"><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}${est}</td>${roiCell(c)}</tr>`;
+    }).join('');
+  }
+
+  // Every real show's net profit at a glance, newest first — the ledger's Actual Profit per row,
+  // surfaced as a compact tappable list so you don't have to scan the wide table.
+  renderNetByShow(){
+    const el = document.getElementById('net-by-show');
+    if(!el) return;
+    const shows = this.data.cashflow
+      .filter(c=>!this._isBookkeepingBucket(c['Show Name']))
+      .sort((a,b)=>String(b['Date']||'').localeCompare(String(a['Date']||'')));
+    if(!shows.length){ el.innerHTML = `<div class="qt-empty">No shows yet — add one from the ledger below.</div>`; return; }
+    el.innerHTML = shows.map(c=>{
+      const net = Number(c['Actual Profit (auto)'])||0;
+      const est = c['Actual Profit Estimated (auto)']
+        ? ` <span class="est-tag" title="Estimated — no cash count recorded for this show.">est</span>` : '';
+      const date = c['Date'] ? this._fmtShowDate(c['Date']) : '';
+      return `<button type="button" class="nbs-row" data-show-detail="${this._esc(c['Show Name']||'')}" title="View show details">`
+        + `<span class="nbs-main"><span class="nbs-name">${this._esc(c['Show Name']||'—')}</span>`
+        + `<span class="nbs-sub">${this._esc(date)} &middot; ${fmtMoney(c['Total Sales (auto)'])} sales</span></span>`
+        + `<span class="nbs-net ${net<0?'neg':'pos'}">${fmtMoney(net)}${est}</span></button>`;
     }).join('');
   }
 
