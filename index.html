@@ -1050,7 +1050,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       </div>
       <div class="hero-side">
         <div class="hero-stat"><div class="hero-stat-label">Total Sales</div><div class="hero-stat-value" id="kpi-sales">$0</div></div>
-        <div class="hero-stat" title="Profit from Sales (Sale Price − Cost, summed across every sale) + Cash In − Cash Out from Trades that are NOT linked to a sale (a linked trade's cash is already inside that sale's profit instead). Value of Trade is never added directly."><div class="hero-stat-label">Actual Profit</div><div class="hero-stat-value" id="kpi-profit">$0</div></div>
+        <div class="hero-stat" title="Every card you sold, however the customer paid. Cash sales (Sale Price − Cost, from the Sales tab) plus card sales (Paid To You − Cost Out, from the Trades tab). Both use the same profit maths."><div class="hero-stat-label">Actual Profit</div><div class="hero-stat-value" id="kpi-profit">$0</div></div>
         <div class="hero-stat"><div class="hero-stat-label">Total Expenses</div><div class="hero-stat-value" id="kpi-expenses">$0</div></div>
       </div>
     </section>
@@ -1290,24 +1290,29 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <!-- ===================== TRADES TAB ===================== -->
   <section class="tab-panel" id="tab-trades">
     <div id="trade-conflict-alert" class="alert-banner hidden"></div>
+    <div id="trade-balance-alert" class="alert-banner hidden"></div>
     <div class="kpi-row" style="margin-bottom:var(--gap)">
-      <div class="kpi-card" style="--dot:var(--positive)">
-        <div class="kpi-label">Total Cash In</div>
-        <div class="kpi-value" id="kpi-trade-cash-in">$0</div>
+      <div class="kpi-card" style="--dot:var(--accent2)" title="Retail of every card you handed over across all trades — what you sold, at sticker price.">
+        <div class="kpi-label">Sold via Trade</div>
+        <div class="kpi-value" id="kpi-trade-sold">$0</div>
       </div>
-      <div class="kpi-card" style="--dot:var(--negative)">
-        <div class="kpi-label">Total Cash Out</div>
-        <div class="kpi-value" id="kpi-trade-cash-out">$0</div>
+      <div class="kpi-card" style="--dot:var(--positive)" title="What you were paid in total: the credit you gave for their cards plus any cash that settled the difference.">
+        <div class="kpi-label">Paid To You</div>
+        <div class="kpi-value" id="kpi-trade-paid">$0</div>
       </div>
-      <div class="kpi-card" style="--dot:var(--accent2)">
-        <div class="kpi-label">Net Trade Cash</div>
+      <div class="kpi-card" style="--dot:var(--accent)" title="Cash that physically moved. Positive = customers paid you, negative = you paid out. Cash flow, not earnings.">
+        <div class="kpi-label">Net Cash</div>
         <div class="kpi-value" id="kpi-trade-cash-net">$0</div>
+      </div>
+      <div class="kpi-card" style="--dot:var(--positive)" title="Paid To You minus what those cards cost you — the same profit maths as any cash sale.">
+        <div class="kpi-label">Trade Profit</div>
+        <div class="kpi-value" id="kpi-trade-profit">$0</div>
       </div>
     </div>
     <div class="table-section">
       <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
-      <div class="edit-note" style="margin-top:-6px">Tip: a trade can involve several cards on either side (e.g. a customer trading 3 lower-value cards for 1 high-end card) — use the "+ add…" picker in the Traded Out / Received cells to add every card involved, and use Cash In / Cash Out to record any cash that changed hands to balance the trade.</div>
-      <div class="edit-note" style="margin-top:-6px"><strong>Trade Profit</strong> = the cash this trade nets (Cash In − Cash Out) — the amount it adds to Total Actual Profit. A pure card-for-card swap shows $0 here because profit on the cards you took in is realized <em>later, when you sell them</em> (it flows through Sales profit, and the upside shows in Potential Profit). A trade linked to a sale shows $0 too — its profit is counted on that sale instead.</div>
+      <div class="edit-note" style="margin-top:-6px"><strong>A trade is a sale where the customer pays in cards instead of cash.</strong> The cards under <em>You Gave</em> are what you sold; the cards under <em>You Got</em> are how they paid, valued at <em>Rate&nbsp;%</em> of their market price. <em>Cash&nbsp;+/−</em> settles whatever's left over — positive means they paid you, negative means you paid them.</div>
+      <div class="edit-note" style="margin-top:-6px"><strong>Profit</strong> = Paid To You − Cost Out. Identical to a cash sale: what you got for the cards, minus what those cards cost you. &nbsp;<strong>Balance</strong> should read $0 — it's Market Out − Credit Given − Cash. Anything else means a price or cash figure is mistyped, not that you made or lost money.</div>
       <div class="table-toolbar">
         <h3 style="margin:0">Trades Log</h3>
         <div class="toolbar-actions">
@@ -1421,7 +1426,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v47</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v48</strong>
   </footer>
 </div>
 
@@ -1699,8 +1704,16 @@ class Dashboard {
       }
       delete row['Item ID Traded Out'];
       delete row['Item ID Received (optional)'];
-      if(row['Cash Received']==null) row['Cash Received'] = 0;
-      if(row['Cash Paid Out']==null) row['Cash Paid Out'] = 0;
+      // Cash In and Cash Out could never both be set — one signed figure says the same thing
+      // without inviting the "what if I fill both" question. Positive = they paid you.
+      if(row['Cash Settled']==null){
+        row['Cash Settled'] = round2((Number(row['Cash Received'])||0) - (Number(row['Cash Paid Out'])||0));
+      }
+      delete row['Cash Received'];
+      delete row['Cash Paid Out'];
+      // Value of Trade was a hand-typed duplicate of the retail of the cards going out, free to
+      // drift from them. Market Out (auto) derives it now.
+      delete row['Value of Trade'];
       if(!row['Trade ID']){ maxTradeId += 1; row['Trade ID'] = 'TRD'+String(maxTradeId).padStart(3,'0'); }
       row._id = this.nextId++;
       return row;
@@ -2222,16 +2235,17 @@ class Dashboard {
     const totalSales = sales.reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
     const salesProfit = sales.reduce((a,s)=>a+(Number(s['Profit (auto)'])||0),0);
     const totalExpenses = expenses.reduce((a,e)=>a+(Number(e['Amount'])||0),0);
-    const tradeCash = trades.reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+    const tradeCash = trades.reduce((a,t)=>a+(Number(t['Cash Settled'])||0),0);
+    const tradeProfit = trades.reduce((a,t)=>a+(Number(t['Trade Profit (auto)'])||0),0);
     const itemsSold = sales.reduce((a,s)=>a+(Number(s['Quantity Sold'])||0),0);
     // Use the ledger's Actual Profit when start/end cash+inventory were recorded; otherwise fall
-    // back to a cash-basis estimate from the records themselves (sales margin − expenses + trade cash).
+    // back to an estimate from the records: cash sales margin + trade profit − expenses.
     const ledgerBasis = c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)+(Number(c['Ending Cash'])||0)+(Number(c['Ending Inventory Value'])||0)) : 0;
     const usingLedger = ledgerBasis!==0;
-    const net = usingLedger ? (Number(c['Actual Profit (auto)'])||0) : (salesProfit - totalExpenses + tradeCash);
+    const net = usingLedger ? (Number(c['Actual Profit (auto)'])||0) : (salesProfit + tradeProfit - totalExpenses);
     const netNote = usingLedger
       ? 'From your start/end cash + inventory count.'
-      : 'Estimated: sales margin − expenses + trade cash (no cash count recorded for this show).';
+      : 'Estimated: sales margin + trade profit − expenses (no cash count recorded for this show).';
     const startBasis = c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)) : 0;
     const roi = startBasis>0 ? (net/startBasis*100) : null;
     const date = c ? this._fmtShowDate(c['Date']) : '';
@@ -2289,8 +2303,9 @@ class Dashboard {
     html += `<div class="sd-section"><h4>Trades <span>${trades.length} trade${trades.length!==1?'s':''}</span></h4>`;
     html += trades.length
       ? `<div class="sd-list">` + trades.map(t=>{
-          const netc=Number(t['Net Cash (auto)'])||0;
-          return `<div class="sd-item"><div class="sd-item-main"><div class="sd-item-name">${this._esc(t['Items Traded (auto)']||'—')} &rarr; ${this._esc(t['Items Received (auto)']||'—')}</div><div class="sd-item-sub">Trade value ${money(Number(t['Value of Trade'])||0)}</div></div><div class="sd-item-amt ${cls(netc)}">${money(netc)}</div></div>`;
+          const tp=Number(t['Trade Profit (auto)'])||0, cash=Number(t['Cash Settled'])||0;
+          const cashNote = Math.abs(cash)>=0.005 ? ` &middot; ${cash>0?'collected':'paid'} ${money(Math.abs(cash))}` : '';
+          return `<div class="sd-item"><div class="sd-item-main"><div class="sd-item-name">${this._esc(t['Items Traded (auto)']||'—')} &rarr; ${this._esc(t['Items Received (auto)']||'—')}</div><div class="sd-item-sub">Sold ${money(Number(t['Market Value Out (auto)'])||0)}${cashNote}</div></div><div class="sd-item-amt ${cls(tp)}">${money(tp)}</div></div>`;
         }).join('') + `</div>`
       : `<div class="sd-empty">No trades.</div>`;
     html += `</div>`;
@@ -2352,7 +2367,7 @@ class Dashboard {
     const zeroCostItems = {};
     this.data.sales.forEach(s=>{
       const price=Number(s['Sale Price'])||0, cost=Number(s['Cost (auto)'])||0;
-      if(price>0 && cost===0 && !s['Linked Trade']){
+      if(price>0 && cost===0){
         const k = s['Item ID']||s['Item Name (auto)']||'?';
         if(!zeroCostItems[k]) zeroCostItems[k]={ name:s['Item Name (auto)']||s['Item ID']||'—', id:s['Item ID']||'', n:0 };
         zeroCostItems[k].n++;
@@ -2489,7 +2504,7 @@ class Dashboard {
   }
   recordQuickTrade(){
     if(!this.quickTrade.out.length && !this.quickTrade.in.length){ this.showToast('Add at least one card to the trade.'); return; }
-    const { outTotal, cashDiff } = this._quickTradeTotals();
+    const { cashDiff } = this._quickTradeTotals();
     this._pushUndoSnapshot();
     const rate = (Number(this.quickTrade.rate)||0)/100;
     const invCat = (this.data.lists['Inventory Categories']||[])[0]||'';
@@ -2500,7 +2515,9 @@ class Dashboard {
       row['Item Name'] = l.name;
       row['Category'] = invCat;
       row['Condition / Grade'] = cond;
-      row['Cost'] = Math.round((Number(l.market)||0)*rate*100)/100;
+      // You "bought" this card at the credit you gave for it — market x your trade rate — so
+      // that credit is its cost, exactly as if you'd paid cash for it.
+      row['Cost'] = round2((Number(l.market)||0)*rate);
       row['Retail Price'] = Number(l.market)||0;
       row['Qty Purchased'] = 1;
       row._id = this.nextId++;
@@ -2510,9 +2527,9 @@ class Dashboard {
     const trade = this.blankRow('trades');
     trade['Items Traded Out'] = this.quickTrade.out.map(l=>l.itemId);
     trade['Items Received'] = receivedIds;
-    trade['Value of Trade'] = Math.round(outTotal*100)/100;
-    trade['Cash Received'] = cashDiff>0 ? Math.round(cashDiff*100)/100 : 0;
-    trade['Cash Paid Out'] = cashDiff<0 ? Math.round(-cashDiff*100)/100 : 0;
+    trade['Trade Rate %'] = Number(this.quickTrade.rate)||0;
+    // One signed figure: positive means the customer paid you to balance the trade.
+    trade['Cash Settled'] = round2(cashDiff);
     trade['Show Name'] = this._defaultShow();
     trade._id = this.nextId++;
     this.data.trades.push(trade);
@@ -2547,7 +2564,7 @@ class Dashboard {
     const show = this.activeShow;
     const sales = this.data.sales.filter(s=>s['Show Name']===show).reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
     const expenses = this.data.expenses.filter(e=>e['Show Name']===show).reduce((a,e)=>a+(Number(e['Amount'])||0),0);
-    const tradeCash = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+    const tradeCash = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+(Number(t['Cash Settled'])||0),0);
     const cash = Number(this.data.settings.baseCashOnHand)||0;
     el.innerHTML = `<span aria-hidden="true">&#127914;</span><span class="show-mode-name">${this._esc(show)}</span>`
       + `<span class="show-mode-stat">Sales<b>${fmtMoney(sales)}</b></span>`
@@ -3209,46 +3226,50 @@ class Dashboard {
     const nameById = {}, catById = {}, costById = {}, retailById = {};
     this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; catById[i['Item ID']] = i['Category']; costById[i['Item ID']] = Number(i['Cost'])||0; retailById[i['Item ID']] = Number(i['Retail Price'])||0; });
 
-    // A trade is "linked" when a Sales row points at it via Trade Ref — its economics live in
-    // that sale, so on its own it books $0 extra profit (avoids double counting). A standalone
-    // trade books only the cash it netted; the profit on cards you took in is recognized later,
-    // when those cards sell (via the normal Sales profit / Potential Profit). This mirrors
-    // exactly how computeKPIs() rolls trades into Total Actual Profit — the column below is just
-    // that same contribution made visible per row, so no headline number changes.
-    const linkedTradeIdSet = new Set(this.data.sales.filter(s=>s['Linked Trade']).map(s=>s['Linked Trade']));
-
-    // Trades are recalculated first so their auto-fields (and Value of Trade) are
-    // available to pull into any Sales rows paid for via a linked trade, below.
+    // ---- Trades ----
+    // A trade IS a sale: the customer pays partly or wholly in cards instead of cash. So the
+    // cards you hand over are what you sold, and what you got paid is their cards (valued at
+    // your trade-credit rate) plus whatever cash settled the difference. One definition, one
+    // profit path — there is no separate "trade profit" concept to reconcile against Sales.
+    //
+    //   Market Out    = Retail of the cards you handed over — the sticker price you sold at
+    //   Credit Given  = Retail of their cards x the rate you struck (what you "paid" for them)
+    //   Cash Settled  = one signed figure: positive = they paid you, negative = you paid them
+    //   Paid To You   = Credit Given + Cash Settled — total consideration you received
+    //   Cost Out      = what those cards cost YOU
+    //   Trade Profit  = Paid To You − Cost Out          (identical to any cash sale)
+    //
+    // A well-formed trade balances: Market Out = Credit Given + Cash Settled. Balance is that
+    // identity made visible — anything non-zero is a data-entry slip (a card priced wrong, cash
+    // mistyped), not a real economic result. Cards no longer in inventory contribute $0.
+    const defaultRate = Number(this.data.settings.tradeRatePct)||85;
     this.data.trades.forEach(t=>{
       const outIds = Array.isArray(t['Items Traded Out']) ? t['Items Traded Out'] : [];
       const inIds = Array.isArray(t['Items Received']) ? t['Items Received'] : [];
       t['Items Traded (auto)'] = outIds.map(id=>nameById[id]||id).join(', ');
       t['Items Received (auto)'] = inIds.map(id=>nameById[id]||id).join(', ');
-      // Market value of each side of the trade — the Retail Price on the inventory row, added up
-      // across every card on that side. This is the sticker value of what changed hands, before
-      // any trade-credit rate or cash settlement, so you can see at a glance whether a trade was
-      // lopsided. Cards that are no longer in inventory contribute $0.
-      t['Market Value Out (auto)'] = round2(outIds.reduce((a,id)=>a+(retailById[id]||0),0));
-      t['Market Value In (auto)'] = round2(inIds.reduce((a,id)=>a+(retailById[id]||0),0));
-      t['Market Difference (auto)'] = round2((t['Market Value In (auto)']||0) - (t['Market Value Out (auto)']||0));
-      const cashIn = Number(t['Cash Received'])||0, cashOut = Number(t['Cash Paid Out'])||0;
-      t['Net Cash (auto)'] = cashIn - cashOut;
-      t['Trade Profit (auto)'] = linkedTradeIdSet.has(t['Trade ID']) ? 0 : (cashIn - cashOut);
+      // The rate lives on the row so every trade remembers the deal it was actually struck at,
+      // and both entry paths (Quick Trade and + Add Trade) produce the same shape of record.
+      const rate = t['Trade Rate %']==null || t['Trade Rate %']==='' ? defaultRate : (Number(t['Trade Rate %'])||0);
+      const marketOut = round2(outIds.reduce((a,id)=>a+(retailById[id]||0),0));
+      const marketIn = round2(inIds.reduce((a,id)=>a+(retailById[id]||0),0));
+      const creditGiven = round2(marketIn * rate/100);
+      const cashSettled = Number(t['Cash Settled'])||0;
+      const paidToYou = round2(creditGiven + cashSettled);
+      const costOut = round2(outIds.reduce((a,id)=>a+(costById[id]||0),0));
+      t['Market Value Out (auto)'] = marketOut;
+      t['Market Value In (auto)'] = marketIn;
+      t['Credit Given (auto)'] = creditGiven;
+      t['Paid To You (auto)'] = paidToYou;
+      t['Cost Basis Out (auto)'] = costOut;
+      t['Balance (auto)'] = round2(marketOut - creditGiven - cashSettled);
+      t['Trade Profit (auto)'] = round2(paidToYou - costOut);
     });
-    const tradeById = {};
-    this.data.trades.forEach(t=>{ tradeById[t['Trade ID']] = t; });
-
     this.data.sales.forEach(s=>{
       s['Item Name (auto)'] = nameById[s['Item ID']] || '';
-      // If this sale was paid for via a trade, pull its Sale Price live from the linked
-      // trade so the two tabs never drift out of sync. Price = the trade's card-for-card
-      // Value of Trade, adjusted by any cash that changed hands as part of that trade
-      // (cash the customer paid in on top increases the effective price; cash paid back
-      // out to the customer reduces it) — i.e. Value of Trade + Net Cash (auto).
-      // The link is driven by the Linked Trade field alone (not Payment Method) — setting a
-      // Trade Ref on a sale makes it trade-financed, so its price derives from that trade.
-      const linkedTrade = s['Linked Trade'] ? tradeById[s['Linked Trade']] : null;
-      if(linkedTrade){ s['Sale Price'] = (Number(linkedTrade['Value of Trade'])||0) + (Number(linkedTrade['Net Cash (auto)'])||0); }
+      // No trade-financed branch here any more. A trade is itself the sale of the cards that
+      // left, so it books its own profit on the Trades tab — recording those same cards as a
+      // Sales row too would count one departure twice. That was the old "Trade Ref" path.
       const qty = Number(s['Quantity Sold'])||0, price = Number(s['Sale Price'])||0;
       const unitCost = costById[s['Item ID']] || 0;
       s['Cost (auto)'] = unitCost;
@@ -3284,10 +3305,11 @@ class Dashboard {
       const show = c['Show Name'];
       const totalSales = this.data.sales.filter(s=>s['Show Name']===show).reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
       const totalExpenses = this.data.expenses.filter(e=>e['Show Name']===show).reduce((a,e)=>a+(Number(e['Amount'])||0),0);
-      // Net cash physically taken in/paid out from trades at this show (e.g. someone trades
-      // in cards plus cash on top, or gets cash back as part of the deal) — this is real money
-      // moving in the cash box, so it counts toward actual (cash-basis) profit for the show.
-      const totalTradeCash = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+      // Trades at this show: the cash that physically moved, and the profit they earned. Cash is
+      // for the drawer; profit is what counts toward the show's result.
+      const showTrades = this.data.trades.filter(t=>t['Show Name']===show);
+      const totalTradeCash = showTrades.reduce((a,t)=>a+(Number(t['Cash Settled'])||0),0);
+      const totalTradeProfit = showTrades.reduce((a,t)=>a+(Number(t['Trade Profit (auto)'])||0),0);
       const startCash=Number(c['Starting Cash'])||0, startInv=Number(c['Starting Inventory Value'])||0;
       const endCash=Number(c['Ending Cash'])||0, endInv=Number(c['Ending Inventory Value'])||0;
       const invChg = endInv-startInv;
@@ -3300,16 +3322,18 @@ class Dashboard {
       c['Change in Inventory Value (auto)'] = invChg;
       c['Sales Margin (auto)'] = salesProfit;
       c['Potential Profit (auto)'] = totalSales-totalExpenses+invChg;
-      // Actual Profit is the cash-count result (End − Start cash+inventory, plus trade cash) when
-      // any of those four figures was recorded. When none were (a show entered without a cash
-      // count), that formula collapses to $0 and understates the show — so fall back to an
-      // estimate from what the records actually show: sales margin − expenses + trade cash. The
-      // flag lets the ledger / leaderboard mark the value as estimated. Bookkeeping buckets keep
-      // the literal cash-count value (they're overhead, not shows) and are never flagged.
+      // Actual Profit is the cash-count result (End − Start, across cash AND inventory) when any
+      // of those four figures was recorded. Trade cash is NOT added on top: a real count already
+      // captures the whole trade — the cash is in the counted drawer and the cards that changed
+      // hands are in the counted inventory. When no count was recorded the formula collapses to
+      // $0 and understates the show, so fall back to an estimate from the records: cash-sales
+      // margin + trade profit − expenses. The flag lets the ledger / leaderboard mark the value
+      // as estimated. Bookkeeping buckets keep the literal cash-count value (they're overhead,
+      // not shows) and are never flagged.
       const hasCount = (startCash+startInv+endCash+endInv) !== 0;
       const isBucket = this._isBookkeepingBucket(show);
-      const trueActual = (endCash+endInv)-(startCash+startInv)+totalTradeCash;
-      const estActual = salesProfit - totalExpenses + totalTradeCash;
+      const trueActual = (endCash+endInv)-(startCash+startInv);
+      const estActual = salesProfit + totalTradeProfit - totalExpenses;
       c['Actual Profit (auto)'] = (hasCount || isBucket) ? trueActual : estActual;
       c['Actual Profit Estimated (auto)'] = !hasCount && !isBucket;
     });
@@ -3331,27 +3355,15 @@ class Dashboard {
       return a + (retail-cost);
     }, 0);
     const totalExpenses = sum(this.data.expenses,'Amount');
-    // Total Actual Profit = profit actually realized from selling inventory (Sale Price minus
-    // Cost, summed across every row in the Sales tab) plus Net Trade Cash (Cash Received minus
-    // Cash Paid Out, summed across every row in the Trades tab — the same total shown as
-    // "Net Trade Cash" on the Trades tab). This replaced the older per-show cash/inventory
-    // balance calculation, which depended on manually-entered Starting/Ending Cash and
-    // Inventory Value and could drift out of sync with what Sales/Trades actually recorded.
-    // A trade that's linked to a Sales row (Payment Method "Trade" + a Trade Ref) already has
-    // its cash folded into that sale's own Profit (auto) — see recalcAll(). So its Net Cash is
-    // excluded here to avoid counting it twice; only "standalone" trades (not backing any sale)
-    // contribute their Net Cash on top of Sales profit.
-    const linkedTradeIds = new Set(
-      this.data.sales
-        .filter(s=>s['Linked Trade'])
-        .map(s=>s['Linked Trade'])
-    );
+    // Total Actual Profit = every card sold for cash (Sales tab) plus every card sold for cards
+    // (Trades tab). Both are sales; they differ only in what the customer handed over. Each side
+    // computes profit the same way — what you were paid minus what those cards cost you — so
+    // they simply add, with no linked/standalone bookkeeping to reconcile.
     const salesProfit = sum(this.data.sales,'Profit (auto)');
-    const netTradeCash = this.data.trades.reduce((a,t)=>{
-      if(linkedTradeIds.has(t['Trade ID'])) return a;
-      return a + (Number(t['Net Cash (auto)'])||0);
-    }, 0);
-    const totalActualProfit = salesProfit + netTradeCash;
+    const tradeProfit = sum(this.data.trades,'Trade Profit (auto)');
+    // Cash that physically moved through trades. A cash-flow figure for the drawer, not earnings.
+    const netTradeCash = sum(this.data.trades,'Cash Settled');
+    const totalActualProfit = salesProfit + tradeProfit;
     const totalSalesAmt = sum(this.data.sales,'Total Sale Amount (auto)');
     const itemsSold = sum(this.data.sales,'Quantity Sold');
     const qtyPurchased = sum(this.data.inventory,'Qty Purchased');
@@ -3366,6 +3378,8 @@ class Dashboard {
       inventoryValue: sum(this.data.inventory,'Total Inventory Value (auto)'),
       itemsSold: itemsSold,
       itemsTraded: this.data.trades.length,
+      netTradeCash: netTradeCash,
+      tradeProfit: tradeProfit,
       netCashflow: sum(this.data.cashflow,'Ending Cash') - sum(this.data.cashflow,'Starting Cash'),
       // Cash on Hand — the cash you're physically holding right now (e.g. what you walk into a
       // show with). A manually maintained figure you set in Settings; not auto-computed.
@@ -4657,15 +4671,6 @@ class Dashboard {
     const invIdsInStock = () => this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0)>0).map(i=>i['Item ID']);
     const invIdLabel = (id) => { const n=this.itemCat && this.data.inventory.find(i=>i['Item ID']===id); const nm=n?n['Item Name']:''; return nm?`${id} — ${nm}`:id; };
     const showNames = () => [...new Set(this.data.cashflow.map(c=>c['Show Name']).filter(Boolean))];
-    const tradeIds = () => this.data.trades.map(t=>t['Trade ID']);
-    const tradeIdLabel = (id) => {
-      const t = this.data.trades.find(x=>x['Trade ID']===id);
-      if(!t) return id;
-      const items = t['Items Traded (auto)'] || (Array.isArray(t['Items Traded Out']) ? t['Items Traded Out'].join(', ') : '');
-      const value = fmtMoney(Number(t['Value of Trade'])||0);
-      const parts = [t['Date'], items, value].filter(Boolean);
-      return parts.length ? `${id} — ${parts.join(' · ')}` : id;
-    };
     const paymentMethods = () => this.data.lists['Payment Methods']||[];
     const invCategories = () => this.data.lists['Inventory Categories']||[];
     const expCategories = () => this.data.lists['Expense Categories']||[];
@@ -4696,29 +4701,29 @@ class Dashboard {
         {field:'Item Name (auto)', label:'Item Name', editable:false, primary:true},
         {field:'Cost (auto)', label:'Unit Cost', editable:false, money:true},
         {field:'Quantity Sold', label:'Qty', editable:true, type:'number'},
-        {field:'Sale Price', label:'Price', editable:true, type:'money', money:true, editableIf:(row)=> !row['Linked Trade']},
+        {field:'Sale Price', label:'Price', editable:true, type:'money', money:true},
         {field:'Total Sale Amount (auto)', label:'Total', editable:false, money:true, primary:true},
         {field:'Total Cost (auto)', label:'Total Cost', editable:false, money:true},
         {field:'Profit (auto)', label:'Profit', editable:false, money:true},
         {field:'Payment Method', label:'Payment', editable:true, type:'select', options:paymentMethods},
-        {field:'Linked Trade', label:'Trade Ref', editable:true, type:'select', options:tradeIds, optionLabel:tradeIdLabel, allowBlank:true},
       ],
       trades: [
         {field:'Trade ID', label:'ID', editable:false, primary:true},
         {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Show Name', label:'Show', editable:true, type:'select', options:showNames},
-        {field:'Items Traded Out', label:'Traded Out', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
-        {field:'Items Traded (auto)', label:'Item(s) Out', editable:false},
-        {field:'Market Value Out (auto)', label:'Market Out', editable:false, money:true},
-        {field:'Items Received', label:'Received', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
-        {field:'Items Received (auto)', label:'Item(s) In', editable:false},
+        // You sold these ↓
+        {field:'Items Traded Out', label:'You Gave', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
+        {field:'Market Value Out (auto)', label:'Market Out', editable:false, money:true, primary:true},
+        {field:'Cost Basis Out (auto)', label:'Cost Out', editable:false, money:true},
+        // …and were paid with these ↓
+        {field:'Items Received', label:'You Got', editable:true, type:'multiselect', options:invIds, optionLabel:invIdLabel},
         {field:'Market Value In (auto)', label:'Market In', editable:false, money:true},
-        {field:'Market Difference (auto)', label:'Market Diff', editable:false, money:true},
-        {field:'Value of Trade', label:'Trade Value', editable:true, type:'money', money:true, primary:true},
-        {field:'Cash Received', label:'Cash In', editable:true, type:'money', money:true},
-        {field:'Cash Paid Out', label:'Cash Out', editable:true, type:'money', money:true},
-        {field:'Net Cash (auto)', label:'Net Cash', editable:false, money:true},
-        {field:'Trade Profit (auto)', label:'Trade Profit', editable:false, money:true},
+        {field:'Trade Rate %', label:'Rate %', editable:true, type:'number'},
+        {field:'Credit Given (auto)', label:'Credit Given', editable:false, money:true},
+        {field:'Cash Settled', label:'Cash +/-', editable:true, type:'money', money:true},
+        {field:'Paid To You (auto)', label:'Paid To You', editable:false, money:true},
+        {field:'Balance (auto)', label:'Balance', editable:false, money:true},
+        {field:'Trade Profit (auto)', label:'Profit', editable:false, money:true, primary:true},
       ],
       expenses: [
         {field:'Date', label:'Date', editable:true, type:'date', primary:true},
@@ -4799,8 +4804,8 @@ class Dashboard {
   blankRow(table){
     switch(table){
       case 'inventory': return {'Item ID':this.nextItemId(), 'Item Name':'New Item', 'Category':(this.data.lists['Inventory Categories']||[])[0]||'', 'SKU':'', 'Set / Expansion':'', 'Condition / Grade':(this.data.lists['Card Condition / Grade']||[])[0]||'', 'Cost':0, 'Retail Price':0, 'Qty Purchased':0, 'Reorder Level':0};
-      case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstInStockItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||'', 'Linked Trade':''};
-      case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Value of Trade':0, 'Cash Received':0, 'Cash Paid Out':0};
+      case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstInStockItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||''};
+      case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Trade Rate %':Number(this.data.settings.tradeRatePct)||85, 'Cash Settled':0};
       case 'expenses': return {'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0, 'uid':this._uid()};
       case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Notes':''};
     }
@@ -4950,16 +4955,8 @@ class Dashboard {
       .filter(f=>f.mode!=='skip');
   }
 
-  // Mirrors the Sale Price auto-fill in recalcAll() for a sale linked to a trade, so the
-  // popup's preview matches exactly what the row will show once it's actually added.
   _addModalPreviewValue(col){
-    const draft = this._addModalDraft;
-    if(col.field==='Sale Price'){
-      const trade = this.data.trades.find(t=>t['Trade ID']===draft['Linked Trade']);
-      const price = trade ? (Number(trade['Value of Trade'])||0) + (Number(trade['Net Cash (auto)'])||0) : 0;
-      return fmtMoney(price);
-    }
-    return this._esc(draft[col.field]);
+    return this._esc(this._addModalDraft[col.field]);
   }
 
   _renderAddModalBody(){
@@ -4981,8 +4978,7 @@ class Dashboard {
   // Quick Add version (updateSaleInfo). Injected right after the Item ID field in
   // _renderAddModalBody(); since that modal fully re-renders on every field change, this
   // recomputes automatically without needing separate live listeners. Returns '' until a
-  // real inventory item is picked. When a Linked Trade is set the Sale Price is derived from
-  // the trade (mirroring _addModalPreviewValue / recalcAll), so margin uses that price too.
+  // real inventory item is picked.
   _addModalSaleInfoHtml(){
     if(this._addModalTable!=='sales') return '';
     const draft = this._addModalDraft;
@@ -4990,8 +4986,7 @@ class Dashboard {
     if(!it) return '';
     const cost = Number(it['Cost'])||0, retail = Number(it['Retail Price'])||0, stock = Number(it['Remaining Inventory (auto)'])||0;
     const qty = Math.max(1, parseInt(draft['Quantity Sold'],10)||1);
-    const trade = draft['Linked Trade'] ? this.data.trades.find(t=>t['Trade ID']===draft['Linked Trade']) : null;
-    const price = trade ? (Number(trade['Value of Trade'])||0) + (Number(trade['Net Cash (auto)'])||0) : (parseFloat(draft['Sale Price'])||0);
+    const price = parseFloat(draft['Sale Price'])||0;
     const margin = (price - cost) * qty;
     const cls = margin < 0 ? 'qa-margin-neg' : 'qa-margin-pos';
     return `<div class="qa-sale-info">Cost <b>${fmtMoney(cost)}</b> &middot; Retail <b>${fmtMoney(retail)}</b> &middot; <b>${stock}</b> in stock`
@@ -5456,7 +5451,7 @@ class Dashboard {
     const terms = q.split(/\s+/);
     const invById = {};
     this.data.inventory.forEach(i=>{ invById[i['Item ID']] = i; });
-    const fields = ['Sale ID','Date','Show Name','Item ID','Item Name (auto)','Payment Method','Linked Trade'];
+    const fields = ['Sale ID','Date','Show Name','Item ID','Item Name (auto)','Payment Method'];
     return rows.filter(r=>{
       const it = invById[r['Item ID']];
       const extra = it ? [it['SKU'], it['Set / Expansion'], it['Item Name']] : [];
@@ -5489,18 +5484,30 @@ class Dashboard {
     document.getElementById('trades-body').innerHTML = data.map(row=>
       '<tr>' + cols.map(c=>this._cell('trades', row, c)).join('') + this._deleteCell('trades', row) + '</tr>'
     ).join('');
-    const cashIn = this.data.trades.reduce((a,t)=>a+(Number(t['Cash Received'])||0),0);
-    const cashOut = this.data.trades.reduce((a,t)=>a+(Number(t['Cash Paid Out'])||0),0);
-    document.getElementById('kpi-trade-cash-in').textContent = fmtMoney(cashIn);
-    document.getElementById('kpi-trade-cash-out').textContent = fmtMoney(cashOut);
-    document.getElementById('kpi-trade-cash-net').textContent = fmtMoney(cashIn-cashOut);
+    const sumT = (f)=>this.data.trades.reduce((a,t)=>a+(Number(t[f])||0),0);
+    document.getElementById('kpi-trade-sold').textContent = fmtMoney(sumT('Market Value Out (auto)'));
+    document.getElementById('kpi-trade-paid').textContent = fmtMoney(sumT('Paid To You (auto)'));
+    document.getElementById('kpi-trade-cash-net').textContent = fmtMoney(sumT('Cash Settled'));
+    document.getElementById('kpi-trade-profit').textContent = fmtMoney(sumT('Trade Profit (auto)'));
+    // Trades whose two sides don't reconcile — a mistyped price or cash figure, not a real result.
+    const off = this.data.trades.filter(t=>Math.abs(Number(t['Balance (auto)'])||0) >= 0.01);
+    const el = document.getElementById('trade-balance-alert');
+    if(el){
+      if(!off.length){ el.classList.add('hidden'); el.innerHTML=''; }
+      else {
+        el.classList.remove('hidden');
+        el.innerHTML = `<strong>&#9888; ${off.length} trade${off.length>1?'s don\'t':' doesn\'t'} balance:</strong> `
+          + `${off.slice(0,4).map(t=>`${this._esc(t['Trade ID'])} (${fmtMoney(t['Balance (auto)'])} off)`).join(', ')}`
+          + `${off.length>4?`, +${off.length-4} more`:''}. Market Out should equal Credit Given + Cash. Check the card prices and the cash figure.`;
+      }
+    }
     this._renderTradeConflictAlert();
   }
 
   // Warn when a card is recorded as leaving inventory through BOTH a Sale and a trade's
-  // "Items Traded Out" — that double-counts its departure and drives Remaining Inventory
-  // negative. A trade-financed sale should list the card in the Sale only; the trade should
-  // carry just the cards received (plus cash).
+  // "You Gave" list — that double-counts its departure and drives Remaining Inventory negative,
+  // and books its profit twice. A card leaves exactly once: sold for cash (Sales) or sold for
+  // cards (Trades), never both.
   _renderTradeConflictAlert(){
     const el = document.getElementById('trade-conflict-alert');
     if(!el) return;
@@ -5513,8 +5520,9 @@ class Dashboard {
     const names = conflicts.map(id=>this._esc(nameById[id]||id)).join(', ');
     el.classList.remove('hidden');
     el.innerHTML = `<strong>&#9888; Double-counted item${conflicts.length>1?'s':''}:</strong> ${names} `
-      + `${conflicts.length>1?'are':'is'} in both a Sale and a trade's "Traded Out" list, so `
-      + `inventory is being subtracted twice. For a trade-financed sale, keep the card in the Sale only and remove it from the trade's Traded Out.`;
+      + `${conflicts.length>1?'are':'is'} in both a Sale and a trade's "You Gave" list, so `
+      + `inventory is subtracted twice and the profit is counted twice. A card sells once — for cash on the Sales tab, `
+      + `or for cards here. Delete whichever record didn't happen.`;
   }
   sortTrades(field){ this._sortBy('trades', field, 'asc'); this.renderTrades(); }
 
