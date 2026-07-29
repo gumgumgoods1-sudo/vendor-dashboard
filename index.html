@@ -1299,9 +1299,13 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <div class="kpi-label">Total Cash Out</div>
         <div class="kpi-value" id="kpi-trade-cash-out">$0</div>
       </div>
-      <div class="kpi-card" style="--dot:var(--accent2)">
+      <div class="kpi-card" style="--dot:var(--accent2)" title="Cash that physically changed hands across all trades (Cash In minus Cash Out). This is cash movement, not earnings — see Trade Profit.">
         <div class="kpi-label">Net Trade Cash</div>
         <div class="kpi-value" id="kpi-trade-cash-net">$0</div>
+      </div>
+      <div class="kpi-card" style="--dot:var(--accent)" title="Profit these trades actually earned: only cash beyond the cost of the cards you handed over. Cash that just paid down that cost isn't profit — it lowers the cost of the cards you took in, and shows up as profit when those sell.">
+        <div class="kpi-label">Trade Profit</div>
+        <div class="kpi-value" id="kpi-trade-profit">$0</div>
       </div>
     </div>
     <div class="table-section">
@@ -1421,7 +1425,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v45</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v46</strong>
   </footer>
 </div>
 
@@ -1485,6 +1489,10 @@ const RAW = {"generated": "2026-07-02", "kpis": {"totalSales": 2606, "totalExpen
 // Categorical chart palette — CVD-validated fixed order (worst adjacent pair ΔE 24.2).
 // Mirrors the --accent* tokens in the stylesheet; assign by index, never re-sort by rank.
 const PALETTE = ['#2a78d6','#1baf7a','#eda100','#008300','#4a3aa7','#e34948','#e87ba4'];
+
+// Money rounded to whole cents — keeps split/derived cost figures from drifting into
+// floating-point dust (0.1+0.2 territory) once they're summed across rows.
+function round2(v){ return Math.round(((Number(v)||0) + Number.EPSILON) * 100) / 100; }
 
 function fmtMoney(v){
   const n = Number(v)||0;
@@ -1606,8 +1614,29 @@ class Dashboard {
       settings: this.normalizeSettings(raw.settings),
       snapshots: this.normalizeSnapshots(raw.snapshots),
     };
+    this.normalizeTradeAcquisitions();
     this.defineColumns();
     this.init();
+  }
+
+  // Cross-table cleanup for cards that entered stock through a trade. Needs inventory AND
+  // trades loaded, so it runs after both are normalized.
+  //
+  // Such a card is stocked by its trade's "Items Received" entry alone. Older builds ALSO wrote
+  // Qty Purchased = 1 on the row, and Remaining Inventory adds the two together — so a single
+  // card read as 2 in stock. Zeroing Qty Purchased on these rows makes the count right, and the
+  // 'Acquired Via Trade' flag marks which rows the recalc engine owns the cost basis for (see
+  // recalcAll) so hand-entered purchases are never touched.
+  normalizeTradeAcquisitions(){
+    const received = new Set();
+    (this.data.trades||[]).forEach(t=>{
+      (Array.isArray(t['Items Received']) ? t['Items Received'] : []).forEach(id=>received.add(id));
+    });
+    (this.data.inventory||[]).forEach(r=>{
+      if(r['Acquired Via Trade'] !== true && !received.has(r['Item ID'])) return;
+      r['Acquired Via Trade'] = true;
+      r['Qty Purchased'] = 0;
+    });
   }
 
   normalizeSettings(settings){
@@ -2219,15 +2248,17 @@ class Dashboard {
     const salesProfit = sales.reduce((a,s)=>a+(Number(s['Profit (auto)'])||0),0);
     const totalExpenses = expenses.reduce((a,e)=>a+(Number(e['Amount'])||0),0);
     const tradeCash = trades.reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+    const tradeProfit = trades.reduce((a,t)=>a+(Number(t['Trade Profit (auto)'])||0),0);
     const itemsSold = sales.reduce((a,s)=>a+(Number(s['Quantity Sold'])||0),0);
     // Use the ledger's Actual Profit when start/end cash+inventory were recorded; otherwise fall
-    // back to a cash-basis estimate from the records themselves (sales margin − expenses + trade cash).
+    // back to an estimate from the records themselves. Trades contribute their RECOGNIZED profit,
+    // not the raw cash — cash that only paid down the basis of cards handed over isn't earnings.
     const ledgerBasis = c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)+(Number(c['Ending Cash'])||0)+(Number(c['Ending Inventory Value'])||0)) : 0;
     const usingLedger = ledgerBasis!==0;
-    const net = usingLedger ? (Number(c['Actual Profit (auto)'])||0) : (salesProfit - totalExpenses + tradeCash);
+    const net = usingLedger ? (Number(c['Actual Profit (auto)'])||0) : (salesProfit - totalExpenses + tradeProfit);
     const netNote = usingLedger
       ? 'From your start/end cash + inventory count.'
-      : 'Estimated: sales margin − expenses + trade cash (no cash count recorded for this show).';
+      : 'Estimated: sales margin − expenses + trade profit (no cash count recorded for this show).';
     const startBasis = c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)) : 0;
     const roi = startBasis>0 ? (net/startBasis*100) : null;
     const date = c ? this._fmtShowDate(c['Date']) : '';
@@ -2257,6 +2288,7 @@ class Dashboard {
       + stat('Sales Margin', money(salesProfit), cls(salesProfit))
       + stat('Expenses', money(totalExpenses))
       + stat('Trade Cash', money(tradeCash), cls(tradeCash))
+      + stat('Trade Profit', money(tradeProfit), cls(tradeProfit))
       + stat('Items Sold', String(itemsSold))
       + stat('ROI', roi==null?'&mdash;':`${roi>=0?'+':''}${roi.toFixed(1)}%`, roi==null?'':cls(roi))
       + `</div>`;
@@ -2315,6 +2347,24 @@ class Dashboard {
         name:s['Item Name (auto)']||s['Item ID']||'—',
         detail:`${s['Show Name']||''} · sold ${money(Number(s['Sale Price'])||0)} vs cost ${money(Number(s['Cost (auto)'])||0)}`,
         val:money((Number(s['Sale Price'])||0)-(Number(s['Cost (auto)'])||0)), neg:true })) });
+
+    // 1b) Trades pointing at cards that no longer exist. The Trades tab falls back to printing
+    // the raw ID when a lookup misses, so these read like a card name and hide in plain sight.
+    // They carry no cost basis, so any trade referencing one silently under-counts what you gave.
+    const invIdSet = new Set(this.data.inventory.map(i=>i['Item ID']));
+    const orphanTrades = [];
+    this.data.trades.forEach(t=>{
+      const out = Array.isArray(t['Items Traded Out']) ? t['Items Traded Out'] : [];
+      const inn = Array.isArray(t['Items Received']) ? t['Items Received'] : [];
+      const missing = [...out, ...inn].filter(id=>id && !invIdSet.has(id));
+      if(missing.length) orphanTrades.push({ t, missing });
+    });
+    if(orphanTrades.length) findings.push({ sev:'error', icon:'🔗', title:'Trades linked to missing cards',
+      desc:'These trades reference inventory items that no longer exist — the card was deleted or re-numbered. They contribute no cost basis, so the trade under-counts what you handed over. Re-point them at the right card, or clear the reference.',
+      items: orphanTrades.map(({t,missing})=>({ table:'trades', search:t['Trade ID']||'',
+        name:t['Trade ID']||'—',
+        detail:`${t['Show Name']||'no show'} · missing ${missing.join(', ')}`,
+        val:money(Number(t['Value of Trade'])||0), neg:true })) });
 
     // 2) Negative stock — oversold or a miscount.
     const negStock = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0)<0);
@@ -2417,7 +2467,9 @@ class Dashboard {
   // ---------------- Quick Trade calculator ----------------
   // Value the cards you give (from stock, at retail) against the cards you take in (market ×
   // your trade-credit rate), settle the cash difference, and record it — incoming cards enter
-  // inventory (Cost = credit given, Retail = their market) so they're tracked and sellable.
+  // inventory (Retail = their market) so they're tracked and sellable. Their Cost is set by
+  // recalcAll from the basis carried through the trade, not by the credit rate: the rate is what
+  // you QUOTE a customer, which isn't what the cards actually cost you.
   openQuickTrade(){
     this.quickTrade = { out:[], in:[], rate: Number(this.data.settings.tradeRatePct)||85 };
     this.renderQuickTrade();
@@ -2487,7 +2539,6 @@ class Dashboard {
     if(!this.quickTrade.out.length && !this.quickTrade.in.length){ this.showToast('Add at least one card to the trade.'); return; }
     const { outTotal, cashDiff } = this._quickTradeTotals();
     this._pushUndoSnapshot();
-    const rate = (Number(this.quickTrade.rate)||0)/100;
     const invCat = (this.data.lists['Inventory Categories']||[])[0]||'';
     const cond = (this.data.lists['Card Condition / Grade']||[])[0]||'';
     const receivedIds = [];
@@ -2496,9 +2547,14 @@ class Dashboard {
       row['Item Name'] = l.name;
       row['Category'] = invCat;
       row['Condition / Grade'] = cond;
-      row['Cost'] = Math.round((Number(l.market)||0)*rate*100)/100;
+      // Cost is assigned by recalcAll from the trade's carried basis (cash you took in pays that
+      // basis down first) — seeded at 0 here rather than market x rate, which was booking a fresh
+      // cost the trade never actually paid. Qty Purchased stays 0: this card is stocked by the
+      // trade's "Items Received" entry, and counting both read as 2 cards in stock.
+      row['Cost'] = 0;
       row['Retail Price'] = Number(l.market)||0;
-      row['Qty Purchased'] = 1;
+      row['Qty Purchased'] = 0;
+      row['Acquired Via Trade'] = true;
       row._id = this.nextId++;
       this.data.inventory.push(row);
       receivedIds.push(row['Item ID']);
@@ -3202,27 +3258,64 @@ class Dashboard {
 
   // ---------------- live recalculation engine (mirrors the workbook's formulas) ----------------
   recalcAll(){
-    const nameById = {}, catById = {}, costById = {};
-    this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; catById[i['Item ID']] = i['Category']; costById[i['Item ID']] = Number(i['Cost'])||0; });
+    const nameById = {}, catById = {}, costById = {}, invById = {};
+    this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; catById[i['Item ID']] = i['Category']; costById[i['Item ID']] = Number(i['Cost'])||0; invById[i['Item ID']] = i; });
 
     // A trade is "linked" when a Sales row points at it via Trade Ref — its economics live in
-    // that sale, so on its own it books $0 extra profit (avoids double counting). A standalone
-    // trade books only the cash it netted; the profit on cards you took in is recognized later,
-    // when those cards sell (via the normal Sales profit / Potential Profit). This mirrors
-    // exactly how computeKPIs() rolls trades into Total Actual Profit — the column below is just
-    // that same contribution made visible per row, so no headline number changes.
+    // that sale, so on its own it books $0 extra profit (avoids double counting).
     const linkedTradeIdSet = new Set(this.data.sales.filter(s=>s['Linked Trade']).map(s=>s['Linked Trade']));
 
     // Trades are recalculated first so their auto-fields (and Value of Trade) are
     // available to pull into any Sales rows paid for via a linked trade, below.
-    this.data.trades.forEach(t=>{
+    //
+    // Cash on a trade is NOT profit. It first pays down the cost basis of what you handed over;
+    // only cash beyond that basis is money you actually made today. Whatever basis the cash
+    // doesn't cover rides along with the cards you took in, so that gain is recognized when
+    // THOSE cards sell — not the moment you shake hands:
+    //
+    //   basis out   = Cost of every card handed over
+    //   recognized  = Net Cash − basis out
+    //   cards back  → profit = max(0, recognized); basis carried = max(0, −recognized)
+    //   nothing back→ it was really a cash sale: profit = recognized (may be a loss)
+    //
+    // Basis can't go negative, so trading a cheap card for a pile of cash books the excess now —
+    // you genuinely made it. Carried basis is split across the cards received in proportion to
+    // Retail Price (evenly when no prices are set). Trades are walked oldest-first so a card
+    // taken in by one trade carries the right cost if a later trade sends it back out.
+    const tradesByDate = [...this.data.trades].sort((a,b)=>String(a['Date']||'').localeCompare(String(b['Date']||'')));
+    tradesByDate.forEach(t=>{
       const outIds = Array.isArray(t['Items Traded Out']) ? t['Items Traded Out'] : [];
       const inIds = Array.isArray(t['Items Received']) ? t['Items Received'] : [];
       t['Items Traded (auto)'] = outIds.map(id=>nameById[id]||id).join(', ');
       t['Items Received (auto)'] = inIds.map(id=>nameById[id]||id).join(', ');
       const cashIn = Number(t['Cash Received'])||0, cashOut = Number(t['Cash Paid Out'])||0;
-      t['Net Cash (auto)'] = cashIn - cashOut;
-      t['Trade Profit (auto)'] = linkedTradeIdSet.has(t['Trade ID']) ? 0 : (cashIn - cashOut);
+      const netCash = cashIn - cashOut;
+      const basisOut = outIds.reduce((a,id)=>a+(costById[id]||0),0);
+      const recognized = netCash - basisOut;
+      const carried = inIds.length ? Math.max(0, -recognized) : 0;
+      t['Net Cash (auto)'] = netCash;
+      t['Cost Basis Out (auto)'] = round2(basisOut);
+      t['Basis Carried In (auto)'] = round2(carried);
+      t['Trade Profit (auto)'] = linkedTradeIdSet.has(t['Trade ID'])
+        ? 0
+        : round2(inIds.length ? Math.max(0, recognized) : recognized);
+      // Push the carried basis onto the cards received. Only rows flagged 'Acquired Via Trade'
+      // are touched — a hand-entered purchase keeps whatever Cost you typed.
+      const rows = inIds.map(id=>invById[id]).filter(r=>r && r['Acquired Via Trade']===true);
+      if(rows.length){
+        const weights = rows.map(r=>Number(r['Retail Price'])||0);
+        const wTotal = weights.reduce((a,w)=>a+w,0);
+        let assigned = 0;
+        rows.forEach((r,idx)=>{
+          // Last row soaks up the rounding remainder so the split always re-adds to `carried`.
+          const basis = idx===rows.length-1
+            ? round2(carried-assigned)
+            : round2(carried * (wTotal>0 ? weights[idx]/wTotal : 1/rows.length));
+          assigned = round2(assigned + basis);
+          r['Cost'] = basis;
+          costById[r['Item ID']] = basis;
+        });
+      }
     });
     const tradeById = {};
     this.data.trades.forEach(t=>{ tradeById[t['Trade ID']] = t; });
@@ -3273,10 +3366,13 @@ class Dashboard {
       const show = c['Show Name'];
       const totalSales = this.data.sales.filter(s=>s['Show Name']===show).reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
       const totalExpenses = this.data.expenses.filter(e=>e['Show Name']===show).reduce((a,e)=>a+(Number(e['Amount'])||0),0);
-      // Net cash physically taken in/paid out from trades at this show (e.g. someone trades
-      // in cards plus cash on top, or gets cash back as part of the deal) — this is real money
-      // moving in the cash box, so it counts toward actual (cash-basis) profit for the show.
-      const totalTradeCash = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+      // Net cash physically taken in/paid out from trades at this show (someone trades in cards
+      // plus cash on top, or gets cash back to balance the deal). Reported for the cash box —
+      // but see below: it is cash movement, not profit.
+      const showTrades = this.data.trades.filter(t=>t['Show Name']===show);
+      const totalTradeCash = showTrades.reduce((a,t)=>a+(Number(t['Net Cash (auto)'])||0),0);
+      // Profit those trades actually recognized — cash beyond the cost of the cards handed over.
+      const totalTradeProfit = showTrades.reduce((a,t)=>a+(Number(t['Trade Profit (auto)'])||0),0);
       const startCash=Number(c['Starting Cash'])||0, startInv=Number(c['Starting Inventory Value'])||0;
       const endCash=Number(c['Ending Cash'])||0, endInv=Number(c['Ending Inventory Value'])||0;
       const invChg = endInv-startInv;
@@ -3289,16 +3385,19 @@ class Dashboard {
       c['Change in Inventory Value (auto)'] = invChg;
       c['Sales Margin (auto)'] = salesProfit;
       c['Potential Profit (auto)'] = totalSales-totalExpenses+invChg;
-      // Actual Profit is the cash-count result (End − Start cash+inventory, plus trade cash) when
-      // any of those four figures was recorded. When none were (a show entered without a cash
-      // count), that formula collapses to $0 and understates the show — so fall back to an
-      // estimate from what the records actually show: sales margin − expenses + trade cash. The
-      // flag lets the ledger / leaderboard mark the value as estimated. Bookkeeping buckets keep
-      // the literal cash-count value (they're overhead, not shows) and are never flagged.
+      // Actual Profit is the cash-count result (End − Start, across cash AND inventory) when any
+      // of those four figures was recorded. Trade cash is NOT added on top: a real count already
+      // captures the whole trade — the cash you took in is sitting in the counted drawer, and the
+      // cards that changed hands are in the counted inventory. Adding it again double-counted it.
+      // When no count was recorded the formula collapses to $0 and understates the show, so fall
+      // back to an estimate from the records: sales margin − expenses + recognized trade profit
+      // (profit, not cash — cash that only paid down basis isn't earnings). The flag lets the
+      // ledger / leaderboard mark the value as estimated. Bookkeeping buckets keep the literal
+      // cash-count value (they're overhead, not shows) and are never flagged.
       const hasCount = (startCash+startInv+endCash+endInv) !== 0;
       const isBucket = this._isBookkeepingBucket(show);
-      const trueActual = (endCash+endInv)-(startCash+startInv)+totalTradeCash;
-      const estActual = salesProfit - totalExpenses + totalTradeCash;
+      const trueActual = (endCash+endInv)-(startCash+startInv);
+      const estActual = salesProfit - totalExpenses + totalTradeProfit;
       c['Actual Profit (auto)'] = (hasCount || isBucket) ? trueActual : estActual;
       c['Actual Profit Estimated (auto)'] = !hasCount && !isBucket;
     });
@@ -3321,26 +3420,27 @@ class Dashboard {
     }, 0);
     const totalExpenses = sum(this.data.expenses,'Amount');
     // Total Actual Profit = profit actually realized from selling inventory (Sale Price minus
-    // Cost, summed across every row in the Sales tab) plus Net Trade Cash (Cash Received minus
-    // Cash Paid Out, summed across every row in the Trades tab — the same total shown as
-    // "Net Trade Cash" on the Trades tab). This replaced the older per-show cash/inventory
-    // balance calculation, which depended on manually-entered Starting/Ending Cash and
-    // Inventory Value and could drift out of sync with what Sales/Trades actually recorded.
+    // Cost, summed across every row in the Sales tab) plus each trade's RECOGNIZED profit —
+    // Trade Profit (auto), i.e. only the cash that exceeded the cost basis you traded away.
+    // Cash that merely paid down basis is not profit; it rides on the cards you took in and
+    // shows up when those sell. See recalcAll() for the full rule.
     // A trade that's linked to a Sales row (Payment Method "Trade" + a Trade Ref) already has
-    // its cash folded into that sale's own Profit (auto) — see recalcAll(). So its Net Cash is
-    // excluded here to avoid counting it twice; only "standalone" trades (not backing any sale)
-    // contribute their Net Cash on top of Sales profit.
+    // its cash folded into that sale's own Profit (auto), so recalcAll() zeroes its Trade Profit
+    // and it contributes nothing here — only "standalone" trades add on top of Sales profit.
     const linkedTradeIds = new Set(
       this.data.sales
         .filter(s=>s['Linked Trade'])
         .map(s=>s['Linked Trade'])
     );
     const salesProfit = sum(this.data.sales,'Profit (auto)');
+    // Cash that physically moved across all standalone trades. This is a CASH-FLOW figure, not
+    // profit — reported on its own tile so the drawer still reconciles.
     const netTradeCash = this.data.trades.reduce((a,t)=>{
       if(linkedTradeIds.has(t['Trade ID'])) return a;
       return a + (Number(t['Net Cash (auto)'])||0);
     }, 0);
-    const totalActualProfit = salesProfit + netTradeCash;
+    const tradeProfit = this.data.trades.reduce((a,t)=>a+(Number(t['Trade Profit (auto)'])||0), 0);
+    const totalActualProfit = salesProfit + tradeProfit;
     const totalSalesAmt = sum(this.data.sales,'Total Sale Amount (auto)');
     const itemsSold = sum(this.data.sales,'Quantity Sold');
     const qtyPurchased = sum(this.data.inventory,'Qty Purchased');
@@ -3355,6 +3455,9 @@ class Dashboard {
       inventoryValue: sum(this.data.inventory,'Total Inventory Value (auto)'),
       itemsSold: itemsSold,
       itemsTraded: this.data.trades.length,
+      // Cash moved by trades (flow) vs. profit trades actually recognized (earnings).
+      netTradeCash: netTradeCash,
+      tradeProfit: tradeProfit,
       netCashflow: sum(this.data.cashflow,'Ending Cash') - sum(this.data.cashflow,'Starting Cash'),
       // Cash on Hand — the cash you're physically holding right now (e.g. what you walk into a
       // show with). A manually maintained figure you set in Settings; not auto-computed.
@@ -4704,6 +4807,8 @@ class Dashboard {
         {field:'Cash Received', label:'Cash In', editable:true, type:'money', money:true},
         {field:'Cash Paid Out', label:'Cash Out', editable:true, type:'money', money:true},
         {field:'Net Cash (auto)', label:'Net Cash', editable:false, money:true},
+        {field:'Cost Basis Out (auto)', label:'Cost Out', editable:false, money:true},
+        {field:'Basis Carried In (auto)', label:'Basis Carried', editable:false, money:true},
         {field:'Trade Profit (auto)', label:'Trade Profit', editable:false, money:true},
       ],
       expenses: [
@@ -4732,15 +4837,30 @@ class Dashboard {
   }
 
   todayStr(){ return new Date().toISOString().slice(0,10); }
-  nextItemId(){
+  // Highest number ever used for a given ID prefix across EVERY place that stores one — not just
+  // the rows still alive. Deleting a card used to free its ID for reuse, so the next card minted
+  // silently inherited any sale or trade still pointing at the old one (a card could even show
+  // double stock by being "received" in a stale trade). IDs are never recycled now.
+  _maxIdSeen(prefix, refs){
+    const re = new RegExp('^'+prefix+'(\\d+)$');
     let max = 0;
-    this.data.inventory.forEach(i=>{ const m=/^ITM(\d+)$/.exec(i['Item ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
-    return 'ITM'+String(max+1).padStart(3,'0');
+    refs.forEach(v=>{
+      (Array.isArray(v) ? v : [v]).forEach(x=>{ const m=re.exec(x||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
+    });
+    return max;
+  }
+  nextItemId(){
+    const refs = [];
+    this.data.inventory.forEach(i=>refs.push(i['Item ID']));
+    this.data.sales.forEach(s=>refs.push(s['Item ID']));
+    this.data.trades.forEach(t=>{ refs.push(t['Items Traded Out']); refs.push(t['Items Received']); });
+    return 'ITM'+String(this._maxIdSeen('ITM', refs)+1).padStart(3,'0');
   }
   nextTradeId(){
-    let max = 0;
-    this.data.trades.forEach(t=>{ const m=/^TRD(\d+)$/.exec(t['Trade ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
-    return 'TRD'+String(max+1).padStart(3,'0');
+    const refs = [];
+    this.data.trades.forEach(t=>refs.push(t['Trade ID']));
+    this.data.sales.forEach(s=>refs.push(s['Linked Trade']));
+    return 'TRD'+String(this._maxIdSeen('TRD', refs)+1).padStart(3,'0');
   }
   nextSaleId(){
     let max = 0;
@@ -5480,6 +5600,9 @@ class Dashboard {
     document.getElementById('kpi-trade-cash-in').textContent = fmtMoney(cashIn);
     document.getElementById('kpi-trade-cash-out').textContent = fmtMoney(cashOut);
     document.getElementById('kpi-trade-cash-net').textContent = fmtMoney(cashIn-cashOut);
+    document.getElementById('kpi-trade-profit').textContent = fmtMoney(
+      this.data.trades.reduce((a,t)=>a+(Number(t['Trade Profit (auto)'])||0),0)
+    );
     this._renderTradeConflictAlert();
   }
 
