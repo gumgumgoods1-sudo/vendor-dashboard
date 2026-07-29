@@ -280,6 +280,17 @@ body {
 .qt-settle .qt-settle-value { font-size:26px; font-weight:800; margin-top:3px; }
 .qt-settle .qt-settle-hint { font-size:11.5px; opacity:.8; margin-top:4px; }
 .qt-empty { font-size:12px; color:var(--text-muted); font-style:italic; padding:2px 0; }
+.promo-controls { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:14px; }
+.promo-ctl { display:flex; flex-direction:column; gap:4px; font-size:11px; font-weight:700;
+             text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); }
+.promo-ctl select, .promo-ctl input[type=text] { font-family:inherit; font-size:13px; padding:7px 9px;
+  border:1px solid var(--border-subtle); border-radius:8px; background:var(--bg-card); color:var(--text-primary); }
+.promo-ctl.promo-check { flex-direction:row; align-items:center; gap:7px; text-transform:none;
+  letter-spacing:0; font-size:12.5px; font-weight:600; color:var(--text-secondary); padding-bottom:7px; }
+.promo-preview { background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:12px;
+  padding:12px; display:flex; justify-content:center; max-height:52vh; overflow:auto; }
+.promo-preview canvas { display:block; max-width:340px; border-radius:8px; box-shadow:var(--shadow-sm); }
+.promo-actions { margin-top:12px; }
 #net-by-show { display:flex; flex-direction:column; gap:6px; }
 .nbs-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; padding:9px 12px; cursor:pointer; font-family:inherit; }
 .nbs-row:hover { border-color:var(--action); }
@@ -1002,6 +1013,18 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </div>
   </div>
 
+  <!-- Promo Poster — turns the upcoming bookings on the Calendar into a shareable schedule
+       graphic (logo, dates, venues) that downloads as a PNG for social media. -->
+  <div class="qa-overlay hidden" id="promo-overlay">
+    <div class="qa-modal show-detail-modal">
+      <div class="qa-modal-head">
+        <h2>&#128226; Promo Poster</h2>
+        <button type="button" class="qa-close" id="promo-close" title="Close">&times;</button>
+      </div>
+      <div id="promo-body"></div>
+    </div>
+  </div>
+
   <!-- Quick Trade calculator — value the cards you give vs the cards you get, settle the cash
        difference, and record the trade (incoming cards enter inventory) in one step. -->
   <div class="qa-overlay hidden" id="quick-trade-overlay">
@@ -1184,6 +1207,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button class="btn-sm" onclick="dash.calStep(-1)" title="Previous month">&lsaquo; Prev</button>
           <button class="btn-sm" onclick="dash.calStep(0)">Today</button>
           <button class="btn-sm" onclick="dash.calStep(1)" title="Next month">Next &rsaquo;</button>
+          <button class="btn-sm" id="cal-promo-btn" onclick="dash.openPromoPoster()" title="Build a shareable schedule graphic from your upcoming bookings">&#128226; Promo Poster</button>
           <button class="btn-sm btn-add" id="cal-book-btn" onclick="dash.toggleBookForm()">+ Book a Show</button>
         </div>
       </div>
@@ -1191,6 +1215,8 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <input type="text" id="cal-book-name" placeholder="Show name" required>
         <input type="text" id="cal-book-location" placeholder="Location (optional)">
         <input type="date" id="cal-book-date" required>
+        <input type="text" id="cal-book-time" placeholder="Hours (e.g. 10am–4pm)" title="Optional — shown on the promo poster">
+        <input type="text" id="cal-book-table" placeholder="Table # (optional)" title="Optional — shown on the promo poster">
         <select id="cal-book-status" title="Locked in, or still deciding?">
           <option value="confirmed">Going (confirmed)</option>
           <option value="maybe">Maybe</option>
@@ -1431,7 +1457,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v49</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v50</strong>
   </footer>
 </div>
 
@@ -1633,6 +1659,8 @@ class Dashboard {
       buyRatePct: Number.isFinite(buy) ? buy : 80,
       tradeRatePct: Number.isFinite(trade) ? trade : 85,
       baseCashOnHand: Number.isFinite(cash) ? cash : 0,
+      // Social handle printed on the promo poster; blank until you set one.
+      promoHandle: settings && typeof settings.promoHandle==='string' ? settings.promoHandle : '',
     };
   }
 
@@ -1675,7 +1703,9 @@ class Dashboard {
   // Show ledger; older saved data has no calendar array, so this defaults to empty.
   normalizeCalendar(arr){
     return (Array.isArray(arr) ? arr : [])
-      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), status:((e&&e.status)==='maybe' ? 'maybe' : 'confirmed'), uid:(e&&e.uid)||this._uid(), _id:this.nextId++ }))
+      // `time` and `table` are optional and exist for the promo poster — they're the two details
+      // customers always ask for that a booking had no home for.
+      .map(e => ({ name:String((e&&e.name)||'').trim(), location:String((e&&e.location)||'').trim(), date:String((e&&e.date)||'').slice(0,10), time:String((e&&e.time)||'').trim(), table:String((e&&e.table)||'').trim(), status:((e&&e.status)==='maybe' ? 'maybe' : 'confirmed'), uid:(e&&e.uid)||this._uid(), _id:this.nextId++ }))
       .filter(e => e.name && /^\d{4}-\d{2}-\d{2}$/.test(e.date));
   }
 
@@ -1849,6 +1879,9 @@ class Dashboard {
     document.getElementById('data-health-btn').addEventListener('click', ()=>this.openDataAudit());
     document.getElementById('audit-close').addEventListener('click', ()=>this.closeDataAudit());
     document.getElementById('audit-overlay').addEventListener('click', (e)=>{ if(e.target.id==='audit-overlay') this.closeDataAudit(); });
+    // Promo Poster overlay.
+    document.getElementById('promo-close').addEventListener('click', ()=>this.closePromoPoster());
+    document.getElementById('promo-overlay').addEventListener('click', (e)=>{ if(e.target.id==='promo-overlay') this.closePromoPoster(); });
     // Quick Trade calculator.
     document.getElementById('quick-trade-btn').addEventListener('click', ()=>this.openQuickTrade());
     document.getElementById('quick-trade-close').addEventListener('click', ()=>this.closeQuickTrade());
@@ -3727,6 +3760,8 @@ class Dashboard {
       document.getElementById('cal-book-name').value = '';
       document.getElementById('cal-book-location').value = '';
       document.getElementById('cal-book-date').value = this.todayStr();
+      document.getElementById('cal-book-time').value = '';
+      document.getElementById('cal-book-table').value = '';
       document.getElementById('cal-book-status').value = 'confirmed';
       document.getElementById('cal-book-name').focus();
     }
@@ -3742,10 +3777,276 @@ class Dashboard {
     document.getElementById('cal-book-name').value = b.name || '';
     document.getElementById('cal-book-location').value = b.location || '';
     document.getElementById('cal-book-date').value = b.date || this.todayStr();
+    document.getElementById('cal-book-time').value = b.time || '';
+    document.getElementById('cal-book-table').value = b.table || '';
     document.getElementById('cal-book-status').value = b.status === 'maybe' ? 'maybe' : 'confirmed';
     document.getElementById('cal-book-submit').textContent = 'Save';
     document.getElementById('cal-book-name').focus();
     form.scrollIntoView({block:'nearest'});
+  }
+
+  // ---------------- Promo Poster ----------------
+  // Turns upcoming Calendar bookings into a shareable schedule graphic. Drawn on a <canvas>
+  // rather than rendered from HTML so it exports to a real PNG with no external library and no
+  // tainted-canvas problem (the logo is same-origin). Everything on it comes from your own
+  // records — a booking with no venue/hours simply omits that line rather than inventing one.
+  _promoFormats(){
+    return {
+      portrait: { w:1080, h:1350, label:'Portrait 4:5 — feed' },
+      square:   { w:1080, h:1080, label:'Square 1:1 — feed' },
+      story:    { w:1080, h:1920, label:'Story 9:16 — reels' },
+    };
+  }
+
+  // Bookings from today onward, soonest first. "Maybe" shows are included but marked, so the
+  // poster never promises a table you haven't committed to.
+  _promoBookings(){
+    const today = this.todayStr();
+    return this.data.calendar
+      .filter(b=>b.date && b.date >= today)
+      .sort((a,b)=>a.date.localeCompare(b.date));
+  }
+
+  openPromoPoster(){
+    this._promoFormat = this._promoFormat || 'portrait';
+    this._promoIncludeMaybe = this._promoIncludeMaybe !== false;
+    document.getElementById('promo-overlay').classList.remove('hidden');
+    // Same-origin, so drawing it onto the canvas leaves the canvas exportable. Repaint once it
+    // decodes; the first paint just omits it rather than blocking the modal.
+    if(!this._promoLogo){
+      const img = new Image();
+      img.onload = ()=>this._paintPromo();
+      img.onerror = ()=>{};
+      img.src = 'assets/icons/logo-v2.png';
+      this._promoLogo = img;
+    }
+    this.renderPromoPoster();
+  }
+  closePromoPoster(){ document.getElementById('promo-overlay').classList.add('hidden'); }
+
+  renderPromoPoster(){
+    const body = document.getElementById('promo-body');
+    if(!body) return;
+    const all = this._promoBookings();
+    if(!all.length){
+      body.innerHTML = `<div class="qt-empty" style="padding:14px 0">`
+        + `Nothing to promote yet — your Calendar has no upcoming bookings.<br><br>`
+        + `Add one with <strong>+ Book a Show</strong> (name, date, and optionally location, hours `
+        + `and table&nbsp;#) and the poster builds itself from it.</div>`;
+      return;
+    }
+    const fmts = this._promoFormats();
+    const handle = this.data.settings.promoHandle || '';
+    const maybeCount = all.filter(b=>b.status==='maybe').length;
+    body.innerHTML =
+        `<div class="promo-controls">`
+      +   `<label class="promo-ctl"><span>Format</span><select id="promo-format">`
+      +     Object.entries(fmts).map(([k,f])=>`<option value="${k}"${k===this._promoFormat?' selected':''}>${this._esc(f.label)}</option>`).join('')
+      +   `</select></label>`
+      +   `<label class="promo-ctl"><span>Your handle</span><input type="text" id="promo-handle" placeholder="@yourhandle" value="${this._esc(handle)}"></label>`
+      +   (maybeCount ? `<label class="promo-ctl promo-check"><input type="checkbox" id="promo-maybe"${this._promoIncludeMaybe?' checked':''}><span>Include ${maybeCount} “maybe” show${maybeCount>1?'s':''}</span></label>` : '')
+      + `</div>`
+      + `<div class="promo-preview"><canvas id="promo-canvas"></canvas></div>`
+      + `<div class="promo-actions">`
+      +   `<button type="button" class="qa-submit" id="promo-download">&#11015; Download PNG</button>`
+      + `</div>`
+      + `<div class="edit-note" style="margin:10px 0 0">Pulled straight from your Calendar. A booking with no location, hours or table just leaves that line off — add them via the pencil on any upcoming show.</div>`;
+
+    document.getElementById('promo-format').onchange = (e)=>{ this._promoFormat = e.target.value; this._paintPromo(); };
+    document.getElementById('promo-handle').oninput = (e)=>{
+      this.data.settings.promoHandle = e.target.value.trim();
+      this.markDirty(); this._paintPromo();
+    };
+    const mb = document.getElementById('promo-maybe');
+    if(mb) mb.onchange = (e)=>{ this._promoIncludeMaybe = e.target.checked; this._paintPromo(); };
+    document.getElementById('promo-download').onclick = ()=>this.downloadPromoPoster();
+    this._paintPromo();
+  }
+
+  _paintPromo(){
+    const canvas = document.getElementById('promo-canvas');
+    if(!canvas) return;
+    const f = this._promoFormats()[this._promoFormat] || this._promoFormats().portrait;
+    let list = this._promoBookings();
+    if(!this._promoIncludeMaybe) list = list.filter(b=>b.status!=='maybe');
+    this._drawPromoPoster(canvas, f, list.slice(0, this._promoFormat==='story' ? 6 : 4));
+  }
+
+  _drawPromoPoster(canvas, fmt, shows){
+    const W = fmt.w, H = fmt.h;
+    canvas.width = W; canvas.height = H;
+    canvas.style.width = '100%'; canvas.style.height = 'auto';
+    const g = canvas.getContext('2d');
+    const GOLD='#f0b23c', GOLD_LT='#ffd98a', GOLD_DP='#c8811b', RED='#c8342c', ROPE='#e0b978', CREAM='#f6e7c8';
+    const F = '"Liberation Sans", "Helvetica Neue", Arial, sans-serif';
+
+    const rr = (x,y,w,h,r)=>{ g.beginPath();
+      g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r);
+      g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); };
+    // Shrink to fit, but only down to `min` — past that a long name is truncated instead, since
+    // scaling it to nothing to keep every word is worse than showing fewer words legibly.
+    const fit = (txt,max,px,weight,min)=>{
+      const floor = min || 11;
+      let s=px;
+      while(s>floor){ g.font=`${weight} ${s}px ${F}`; if(g.measureText(txt).width<=max) return {txt,size:s}; s-=1; }
+      g.font=`${weight} ${floor}px ${F}`;
+      if(g.measureText(txt).width<=max) return {txt,size:floor};
+      let t=txt; while(t.length>1 && g.measureText(t+'…').width>max) t=t.slice(0,-1);
+      return {txt:t.trimEnd()+'…', size:floor};
+    };
+    const spaced = (txt,x,y,px,weight,color,gapPx)=>{
+      g.font=`${weight} ${px}px ${F}`; g.fillStyle=color;
+      const chars=[...txt];
+      const total = chars.reduce((a,c)=>a+g.measureText(c).width,0) + gapPx*(chars.length-1);
+      let cx = x-total/2;
+      chars.forEach(c=>{ g.fillText(c,cx,y); cx += g.measureText(c).width + gapPx; });
+    };
+
+    // backdrop
+    const bg = g.createLinearGradient(0,0,W*0.4,H);
+    bg.addColorStop(0,'#0d1a2e'); bg.addColorStop(.45,'#0a1424'); bg.addColorStop(1,'#07101d');
+    g.fillStyle=bg; g.fillRect(0,0,W,H);
+    const glow = g.createRadialGradient(W/2,H*0.19,0,W/2,H*0.19,W*0.62);
+    glow.addColorStop(0,'rgba(240,178,60,.20)'); glow.addColorStop(1,'rgba(240,178,60,0)');
+    g.fillStyle=glow; g.fillRect(0,0,W,H);
+    const glow2 = g.createRadialGradient(W*0.12,H*0.9,0,W*0.12,H*0.9,W*0.6);
+    glow2.addColorStop(0,'rgba(200,52,44,.15)'); glow2.addColorStop(1,'rgba(200,52,44,0)');
+    g.fillStyle=glow2; g.fillRect(0,0,W,H);
+    g.globalAlpha=.05; g.fillStyle=CREAM;
+    for(let y=0;y<H;y+=68) g.fillRect(0,y,W,2);
+    g.globalAlpha=1;
+
+    // frame
+    const M = Math.round(W*0.024);
+    g.strokeStyle=GOLD_DP; g.lineWidth=3; g.globalAlpha=.55;
+    rr(M,M,W-M*2,H-M*2,16); g.stroke();
+    g.strokeStyle='rgba(224,185,120,.42)'; g.lineWidth=1;
+    rr(M+9,M+9,W-(M+9)*2,H-(M+9)*2,9); g.stroke();
+    g.globalAlpha=1;
+
+    const pad = Math.round(W*0.068);
+    let y = M + Math.round(H*0.030);
+
+    // logo (already decoded by openPromoPoster's caller path via _promoLogo)
+    const logoSize = Math.round(W * (fmt.h>1500 ? 0.235 : fmt.h<1200 ? 0.185 : 0.252));
+    const img = this._promoLogo;
+    if(img && img.complete && img.naturalWidth){
+      g.save(); rr((W-logoSize)/2, y, logoSize, logoSize, Math.round(logoSize*0.095)); g.clip();
+      g.drawImage(img, (W-logoSize)/2, y, logoSize, logoSize);
+      g.restore();
+      g.strokeStyle=GOLD_DP; g.lineWidth=3;
+      rr((W-logoSize)/2, y, logoSize, logoSize, Math.round(logoSize*0.095)); g.stroke();
+    }
+    y += logoSize + Math.round(H*0.026);
+
+    g.textBaseline='alphabetic';
+    spaced('CATCH US AT', W/2, y, Math.round(W*0.021), '700', ROPE, Math.round(W*0.0075));
+    y += Math.round(W*0.058);
+
+    const head = fit('UPCOMING SHOWS', W-pad*2, Math.round(W*0.076), '800');
+    g.font=`800 ${head.size}px ${F}`; g.textAlign='center';
+    g.fillStyle=GOLD_DP; g.fillText(head.txt, W/2, y+4);
+    g.fillStyle=GOLD_LT; g.fillText(head.txt, W/2, y);
+    y += Math.round(W*0.03);
+    const rw = Math.round(W*0.27);
+    const rg = g.createLinearGradient(W/2-rw/2,0,W/2+rw/2,0);
+    rg.addColorStop(0,'rgba(240,178,60,0)'); rg.addColorStop(.5,GOLD); rg.addColorStop(1,'rgba(240,178,60,0)');
+    g.fillStyle=rg; g.fillRect(W/2-rw/2, y, rw, 3);
+    g.textAlign='left';
+
+    // ---- show cards, vertically centred in the space between header and footer ----
+    // Reserved for the footer stack (tagline + sub + handle pill) plus breathing room.
+    const footH = Math.round(H*0.155);
+    const areaTop = y + Math.round(H*0.028);
+    const areaBot = H - M - footH;
+    const gap = Math.round(H*0.016);
+    const cardH = shows.length ? Math.min(Math.round(H*0.115), Math.floor((areaBot-areaTop - gap*(shows.length-1))/shows.length)) : 0;
+    const blockH = cardH*shows.length + gap*(shows.length-1);
+    let cy = areaTop + Math.max(0, (areaBot-areaTop-blockH)/2);
+
+    const MONTHS=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const DOW=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+    shows.forEach(b=>{
+      const x = pad, w = W - pad*2;
+      const cg = g.createLinearGradient(0,cy,0,cy+cardH);
+      cg.addColorStop(0,'rgba(246,231,200,.10)'); cg.addColorStop(1,'rgba(246,231,200,.045)');
+      g.fillStyle=cg; rr(x,cy,w,cardH,14); g.fill();
+      g.strokeStyle='rgba(224,185,120,.42)'; g.lineWidth=2; rr(x,cy,w,cardH,14); g.stroke();
+      g.fillStyle = b.status==='maybe' ? ROPE : GOLD;
+      rr(x,cy,7,cardH,4); g.fill();
+
+      const [Y,Mo,D] = b.date.split('-').map(Number);
+      const dt = new Date(Y, Mo-1, D);
+      const dcx = x + Math.round(W*0.115);
+      g.textAlign='center';
+      g.font=`800 ${Math.round(cardH*0.175)}px ${F}`; g.fillStyle=RED;
+      g.fillText(MONTHS[Mo-1], dcx, cy+cardH*0.30);
+      g.font=`800 ${Math.round(cardH*0.44)}px ${F}`; g.fillStyle=GOLD_LT;
+      g.fillText(String(D), dcx, cy+cardH*0.70);
+      g.font=`700 ${Math.round(cardH*0.115)}px ${F}`; g.fillStyle=ROPE;
+      g.fillText(DOW[dt.getDay()], dcx, cy+cardH*0.86);
+
+      const divX = x + Math.round(W*0.205);
+      g.strokeStyle='rgba(224,185,120,.34)'; g.lineWidth=2; g.setLineDash([5,5]);
+      g.beginPath(); g.moveTo(divX, cy+cardH*0.16); g.lineTo(divX, cy+cardH*0.84); g.stroke();
+      g.setLineDash([]);
+
+      // name + the detail lines that actually exist
+      const tx = divX + Math.round(W*0.028);
+      const tw = x + w - tx - Math.round(W*0.03);
+      g.textAlign='left';
+      const lines = [];
+      const where = [b.location, b.time && `${b.time}`, b.table && `Table ${b.table}`].filter(Boolean);
+      if(where.length) lines.push(where.join('  ·  '));
+      if(b.status==='maybe') lines.push('TBC');
+      const nameY = lines.length ? cy+cardH*0.44 : cy+cardH*0.58;
+      const nm = fit(b.name, tw, Math.round(cardH*0.235), '800', Math.round(cardH*0.175));
+      g.font=`800 ${nm.size}px ${F}`; g.fillStyle='#fff';
+      g.fillText(nm.txt, tx, nameY);
+      if(lines.length){
+        const ln = fit(lines.join('   ·   '), tw, Math.round(cardH*0.145), '600');
+        g.font=`600 ${ln.size}px ${F}`; g.fillStyle=ROPE;
+        g.fillText(ln.txt, tx, cy+cardH*0.70);
+      }
+      cy += cardH + gap;
+    });
+
+    // ---- footer, stacked from the bottom up so the handle pill can never ride over the
+    // tagline the way a top-down cursor let it when the block ran tall ----
+    g.textAlign='center';
+    const handle = (this.data.settings.promoHandle||'').trim();
+    let fy = H - M - Math.round(H*0.024);
+    if(handle){
+      const hh = Math.round(W*0.047);
+      g.font=`800 ${Math.round(W*0.023)}px ${F}`;
+      const hw = g.measureText(handle).width + Math.round(W*0.055);
+      g.fillStyle=RED; rr(W/2-hw/2, fy-hh, hw, hh, hh/2); g.fill();
+      g.fillStyle='#fff'; g.textBaseline='middle';
+      g.fillText(handle, W/2, fy-hh/2);
+      g.textBaseline='alphabetic';
+      fy -= hh + Math.round(H*0.017);
+    }
+    g.font=`400 ${Math.round(W*0.019)}px ${F}`; g.fillStyle=ROPE;
+    g.fillText('Buying · Selling · Trading all weekend', W/2, fy);
+    fy -= Math.round(W*0.031);
+    const tag = fit('One Piece TCG — Singles · Sealed · Graded', W-pad*2, Math.round(W*0.025), '700');
+    g.font=`700 ${tag.size}px ${F}`; g.fillStyle=GOLD_LT; g.fillText(tag.txt, W/2, fy);
+    g.textAlign='left';
+  }
+
+  downloadPromoPoster(){
+    const canvas = document.getElementById('promo-canvas');
+    if(!canvas) return;
+    canvas.toBlob(blob=>{
+      if(!blob){ this.showToast('Could not build the image.'); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gumgumgoods-shows-${this._promoFormat}-${this.todayStr()}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+      this.showToast('Poster downloaded.');
+    }, 'image/png');
   }
 
   addBooking(e){
@@ -3756,6 +4057,8 @@ class Dashboard {
     const name = (nameEl.value||'').trim();
     const location = (locEl.value||'').trim();
     const date = (dateEl.value||'').slice(0,10);
+    const time = (document.getElementById('cal-book-time').value||'').trim();
+    const table = (document.getElementById('cal-book-table').value||'').trim();
     const status = document.getElementById('cal-book-status').value === 'maybe' ? 'maybe' : 'confirmed';
     if(!name || !/^\d{4}-\d{2}-\d{2}$/.test(date)){
       this.showToast('Enter a show name and a date.');
@@ -3765,9 +4068,10 @@ class Dashboard {
     const editing = this._editingBookingId != null
       ? this.data.calendar.find(b=>b._id===this._editingBookingId) : null;
     if(editing){
-      editing.name = name; editing.location = location; editing.date = date; editing.status = status;
+      editing.name = name; editing.location = location; editing.date = date;
+      editing.time = time; editing.table = table; editing.status = status;
     } else {
-      this.data.calendar.push({ name, location, date, status, uid:this._uid(), _id:this.nextId++ });
+      this.data.calendar.push({ name, location, date, time, table, status, uid:this._uid(), _id:this.nextId++ });
     }
     this.toggleBookForm(false);  // also clears edit state + fields
     this.renderCalendar();
