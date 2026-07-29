@@ -256,6 +256,30 @@ body {
 .audit-item .audit-item-val { white-space:nowrap; font-weight:800; }
 .audit-item .audit-item-val.neg { color:var(--negative); }
 .audit-more { font-size:11.5px; color:var(--text-muted); padding:3px 2px 0; }
+.qt-section { margin:0 0 14px; }
+.qt-section > h4 { margin:0 0 8px; font-size:13px; font-weight:800; color:var(--text-primary); display:flex; justify-content:space-between; align-items:baseline; }
+.qt-section > h4 .qt-sub { font-weight:800; font-size:13px; }
+.qt-give h4 .qt-sub { color:var(--negative); }
+.qt-get h4 .qt-sub { color:var(--positive); }
+.qt-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.qt-line { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--border-subtle); border-radius:9px; padding:7px 9px; }
+.qt-line-name { flex:1; min-width:0; font-size:12.5px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.qt-line-sub { font-size:11px; color:var(--text-muted); }
+.qt-line input.qt-amt { width:74px; padding:6px 8px; border:1px solid var(--border-subtle); border-radius:7px; font-size:12.5px; font-family:inherit; text-align:right; }
+.qt-line .qt-del { border:none; background:transparent; color:var(--text-muted); font-size:16px; cursor:pointer; padding:0 2px; }
+.qt-line .qt-del:hover { color:var(--negative); }
+.qt-addrow { display:flex; gap:6px; margin-top:8px; }
+.qt-addrow input { padding:8px 10px; border:1px solid var(--border-subtle); border-radius:8px; font-size:13px; font-family:inherit; }
+.qt-addrow input.qt-in-name { flex:1; min-width:0; }
+.qt-addrow input.qt-in-market { width:84px; text-align:right; }
+.qt-addrow button { border:none; background:var(--bg-header); color:#fff; border-radius:8px; padding:0 14px; font-weight:800; font-family:inherit; cursor:pointer; }
+.qt-rate { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-secondary); margin-top:8px; }
+.qt-rate input { width:56px; padding:5px 7px; border:1px solid var(--border-subtle); border-radius:7px; font-size:12.5px; font-family:inherit; text-align:right; }
+.qt-settle { background:linear-gradient(90deg,#14172b,#2c3158); color:#fff; border-radius:12px; padding:14px 16px; margin:4px 0 12px; text-align:center; }
+.qt-settle .qt-settle-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; opacity:.85; }
+.qt-settle .qt-settle-value { font-size:26px; font-weight:800; margin-top:3px; }
+.qt-settle .qt-settle-hint { font-size:11.5px; opacity:.8; margin-top:4px; }
+.qt-empty { font-size:12px; color:var(--text-muted); font-style:italic; padding:2px 0; }
 .calc-list { display:flex; flex-direction:column; gap:8px; margin:16px 0; max-height:38vh; overflow-y:auto; }
 .calc-empty { font-size:13px; color:var(--text-secondary); text-align:center; padding:18px 0; }
 .calc-row { display:flex; align-items:center; gap:10px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:11px; padding:9px 12px; }
@@ -692,7 +716,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .scan-frame { position:absolute; inset:14%; border:3px solid rgba(255,255,255,.85); border-radius:16px; pointer-events:none;
   box-shadow:0 0 0 999px rgba(0,0,0,.28); }
 .scan-title { color:#fff; font-size:16px; font-weight:700; margin:0; }
-.scan-status { color:#d6dbee; font-size:13px; margin:0; text-align:center; max-width:480px; }
+.scan-status { color:#d6dbee; font-size:13px; margin:0; text-align:center; max-width:480px; white-space:pre-line; line-height:1.5; }
+.scan-frame.scan-hit { border-color:#37d67a; box-shadow:0 0 0 999px rgba(0,0,0,.28), 0 0 18px 3px rgba(55,214,122,.7); transition:border-color .05s, box-shadow .05s; }
+.scan-frame.scan-miss { border-color:#ff7a80; box-shadow:0 0 0 999px rgba(0,0,0,.28), 0 0 18px 3px rgba(255,122,128,.6); transition:border-color .05s, box-shadow .05s; }
 .scan-cancel { border:1.5px solid rgba(255,255,255,.5); background:transparent; color:#fff; border-radius:11px; padding:10px 22px; font-size:14px; font-family:inherit; cursor:pointer; }
 .scan-cancel:hover { background:rgba(255,255,255,.12); }
 .qa-sku-scan-row { display:flex; align-items:center; gap:6px; }
@@ -958,6 +984,18 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <button type="button" class="qa-close" id="audit-close" title="Close">&times;</button>
       </div>
       <div id="audit-body"></div>
+    </div>
+  </div>
+
+  <!-- Quick Trade calculator — value the cards you give vs the cards you get, settle the cash
+       difference, and record the trade (incoming cards enter inventory) in one step. -->
+  <div class="qa-overlay hidden" id="quick-trade-overlay">
+    <div class="qa-modal show-detail-modal">
+      <div class="qa-modal-head">
+        <h2>&#9889; Quick Trade</h2>
+        <button type="button" class="qa-close" id="quick-trade-close" title="Close">&times;</button>
+      </div>
+      <div id="quick-trade-body"></div>
     </div>
   </div>
 
@@ -1263,6 +1301,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
             <div class="col-toggle-panel hidden" id="colpanel-trades"></div>
           </div>
           <button class="btn-sm" data-export data-table="trades">Export CSV</button>
+          <button class="btn-sm" id="quick-trade-btn" title="Fast trade calculator — value cards out & in, settle the cash difference, record in one step">&#9889; Quick Trade</button>
           <button class="btn-sm btn-add" data-addrow data-table="trades">+ Add Trade</button>
         </div>
         <div class="mobile-table-controls">
@@ -1366,7 +1405,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v42</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v43</strong>
   </footer>
 </div>
 
@@ -1517,6 +1556,9 @@ class Dashboard {
     // the lines into real Sales rows, and a page reload abandons the basket.
     this.checkoutItems = [];
     this.checkoutNextId = 1;
+    // Quick Trade calculator working state (cards given out / taken in), reset each time it opens.
+    this.quickTrade = { out:[], in:[], rate:null };
+    this.quickTradeNextId = 1;
     // Merge-on-save support: deletions made on THIS device, keyed by the same stable record key
     // used for merging, so a delete still propagates instead of the record being resurrected from
     // the cloud copy on the next merge. Persisted in the payload as `deletedKeys`.
@@ -1669,6 +1711,8 @@ class Dashboard {
       if(e.target.matches('[data-col-visibility]')){ this.handleColumnVisibility(e.target); return; }
       if(e.target.matches('[data-addfield]')){ this.handleAddModalFieldChange(e.target); return; }
       if(e.target.matches('[data-addmulti-add]')){ this.handleAddModalMultiAdd(e.target); return; }
+      if(e.target.matches('[data-qt-edit]')){ this.quickTradeEdit(e.target); return; }
+      if(e.target.matches('[data-qt-rate]')){ this.quickTradeSetRate(e.target); return; }
     });
     document.addEventListener('click', e=>{
       const qa = e.target.closest('[data-qty-adjust]');
@@ -1677,6 +1721,10 @@ class Dashboard {
       if(sd){ this.openShowDetail(sd.dataset.showDetail); return; }
       const ag = e.target.closest('[data-audit-goto]');
       if(ag){ this._auditGoto(ag); return; }
+      const qtRm = e.target.closest('[data-qt-remove]');
+      if(qtRm){ this.quickTradeRemove(qtRm.dataset.qtKind, qtRm.dataset.qtLine); return; }
+      if(e.target.closest('#qt-in-add')){ this.quickTradeAddIn(); return; }
+      if(e.target.closest('#qt-record')){ this.recordQuickTrade(); return; }
       const ret = e.target.closest('[data-return-sale]');
       if(ret){ this.returnSaleToInventory(Number(ret.dataset.id)); return; }
       const del = e.target.closest('[data-delete]');
@@ -1763,6 +1811,10 @@ class Dashboard {
     document.getElementById('data-health-btn').addEventListener('click', ()=>this.openDataAudit());
     document.getElementById('audit-close').addEventListener('click', ()=>this.closeDataAudit());
     document.getElementById('audit-overlay').addEventListener('click', (e)=>{ if(e.target.id==='audit-overlay') this.closeDataAudit(); });
+    // Quick Trade calculator.
+    document.getElementById('quick-trade-btn').addEventListener('click', ()=>this.openQuickTrade());
+    document.getElementById('quick-trade-close').addEventListener('click', ()=>this.closeQuickTrade());
+    document.getElementById('quick-trade-overlay').addEventListener('click', (e)=>{ if(e.target.id==='quick-trade-overlay') this.closeQuickTrade(); });
     ['new-show-venue','new-show-date'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input', ()=>this._updateShowPickerPreview('new-show')); } });
     document.getElementById('show-mode-banner').addEventListener('click', (e)=>{ if(e.target.closest('[data-show-mode-end]')) this.endShowMode(); });
     // QR scanner cancel button.
@@ -1841,6 +1893,7 @@ class Dashboard {
       if(!document.getElementById('new-show-overlay').classList.contains('hidden')){ this.closeNewShow(); return; }
       if(!document.getElementById('show-detail-overlay').classList.contains('hidden')){ this.closeShowDetail(); return; }
       if(!document.getElementById('audit-overlay').classList.contains('hidden')){ this.closeDataAudit(); return; }
+      if(!document.getElementById('quick-trade-overlay').classList.contains('hidden')){ this.closeQuickTrade(); return; }
       if(!document.getElementById('confirm-overlay').classList.contains('hidden')){ this._closeConfirm(); return; }
       if(!document.getElementById('add-modal-overlay').classList.contains('hidden')){ this.closeAddModal(); return; }
       if(!document.getElementById('calc-overlay').classList.contains('hidden')){ this.closeCalculator(); return; }
@@ -2343,6 +2396,113 @@ class Dashboard {
       const inp=document.getElementById('sales-search'); if(inp){ inp.value=search; document.getElementById('sales-search-clear').classList.toggle('hidden', !search); }
       this.salesPageIndex = 0; this.renderSales();
     }
+  }
+
+  // ---------------- Quick Trade calculator ----------------
+  // Value the cards you give (from stock, at retail) against the cards you take in (market ×
+  // your trade-credit rate), settle the cash difference, and record it — incoming cards enter
+  // inventory (Cost = credit given, Retail = their market) so they're tracked and sellable.
+  openQuickTrade(){
+    this.quickTrade = { out:[], in:[], rate: Number(this.data.settings.tradeRatePct)||85 };
+    this.renderQuickTrade();
+    document.getElementById('quick-trade-overlay').classList.remove('hidden');
+  }
+  closeQuickTrade(){ document.getElementById('quick-trade-overlay').classList.add('hidden'); }
+  _quickTradeAddOut(item){
+    this.quickTrade.out.push({ lineId:this.quickTradeNextId++, itemId:item['Item ID'], name:item['Item Name']||item['Item ID'], value:Number(item['Retail Price'])||0 });
+    this.renderQuickTrade();
+  }
+  quickTradeAddIn(){
+    const nameEl = document.getElementById('qt-in-name'), mktEl = document.getElementById('qt-in-market');
+    const name = (nameEl.value||'').trim();
+    if(!name){ nameEl.focus(); return; }
+    this.quickTrade.in.push({ lineId:this.quickTradeNextId++, name, market:parseFloat(mktEl.value)||0 });
+    this.renderQuickTrade();
+    const n = document.getElementById('qt-in-name'); if(n) n.focus();
+  }
+  quickTradeRemove(kind, lineId){
+    this.quickTrade[kind] = this.quickTrade[kind].filter(l=>l.lineId!==Number(lineId));
+    this.renderQuickTrade();
+  }
+  quickTradeEdit(el){
+    const line = this.quickTrade[el.dataset.qtKind].find(l=>l.lineId===Number(el.dataset.qtLine));
+    if(!line) return;
+    line[el.dataset.qtField] = parseFloat(el.value)||0;
+    this.renderQuickTrade();
+  }
+  quickTradeSetRate(el){ this.quickTrade.rate = parseFloat(el.value)||0; this.renderQuickTrade(); }
+  _quickTradeTotals(){
+    const outTotal = this.quickTrade.out.reduce((a,l)=>a+(Number(l.value)||0),0);
+    const rate = (Number(this.quickTrade.rate)||0)/100;
+    const inCredit = this.quickTrade.in.reduce((a,l)=>a+(Number(l.market)||0)*rate,0);
+    return { outTotal, inCredit, cashDiff: outTotal-inCredit };
+  }
+  renderQuickTrade(){
+    const body = document.getElementById('quick-trade-body');
+    if(!body) return;
+    const { outTotal, inCredit, cashDiff } = this._quickTradeTotals();
+    const money = (n)=>fmtMoney(n);
+    const rate = Number(this.quickTrade.rate)||0;
+
+    let html = `<div class="qt-section qt-give"><h4>You give &mdash; from your stock <span class="qt-sub">${money(outTotal)}</span></h4>`;
+    html += `<div class="sku-lookup">${this._skuLookupBoxHtml('qtrade-out')}</div>`;
+    html += this.quickTrade.out.length
+      ? `<div class="qt-list">` + this.quickTrade.out.map(l=>`<div class="qt-line"><span class="qt-line-name">${this._esc(l.name)}</span><input class="qt-amt" type="number" step="0.01" data-qt-edit data-qt-kind="out" data-qt-line="${l.lineId}" data-qt-field="value" value="${l.value}"><button class="qt-del" data-qt-remove data-qt-kind="out" data-qt-line="${l.lineId}" title="Remove">&times;</button></div>`).join('') + `</div>`
+      : `<div class="qt-empty">Scan or look up the cards you're giving the customer.</div>`;
+    html += `</div>`;
+
+    html += `<div class="qt-section qt-get"><h4>You get &mdash; their cards <span class="qt-sub">${money(inCredit)}</span></h4>`;
+    html += `<div class="qt-addrow"><input class="qt-in-name" id="qt-in-name" type="text" placeholder="Card name" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();dash.quickTradeAddIn();}"><input class="qt-in-market" id="qt-in-market" type="number" step="0.01" placeholder="Market $" onkeydown="if(event.key==='Enter'){event.preventDefault();dash.quickTradeAddIn();}"><button type="button" id="qt-in-add">Add</button></div>`;
+    html += `<div class="qt-rate">Trade credit rate <input type="number" min="0" max="100" step="1" data-qt-rate value="${rate}">% of market</div>`;
+    html += this.quickTrade.in.length
+      ? `<div class="qt-list">` + this.quickTrade.in.map(l=>`<div class="qt-line"><span class="qt-line-name">${this._esc(l.name)}<span class="qt-line-sub"> &middot; credit ${money((Number(l.market)||0)*rate/100)}</span></span><input class="qt-amt" type="number" step="0.01" data-qt-edit data-qt-kind="in" data-qt-line="${l.lineId}" data-qt-field="market" value="${l.market}"><button class="qt-del" data-qt-remove data-qt-kind="in" data-qt-line="${l.lineId}" title="Remove">&times;</button></div>`).join('') + `</div>`
+      : `<div class="qt-empty">Add each card they're giving you and its market value.</div>`;
+    html += `</div>`;
+
+    let label, hint;
+    if(Math.abs(cashDiff)<0.005){ label='Even trade'; hint='No cash changes hands.'; }
+    else if(cashDiff>0){ label='Customer pays you'; hint='Cash they owe to balance the trade.'; }
+    else { label='You pay customer'; hint='Cash you owe to balance the trade.'; }
+    html += `<div class="qt-settle"><div class="qt-settle-label">${label}</div><div class="qt-settle-value">${money(Math.abs(cashDiff))}</div><div class="qt-settle-hint">${this._esc(hint)}</div></div>`;
+    html += `<button type="button" class="qa-submit" id="qt-record">Record trade</button>`;
+    body.innerHTML = html;
+  }
+  recordQuickTrade(){
+    if(!this.quickTrade.out.length && !this.quickTrade.in.length){ this.showToast('Add at least one card to the trade.'); return; }
+    const { outTotal, cashDiff } = this._quickTradeTotals();
+    this._pushUndoSnapshot();
+    const rate = (Number(this.quickTrade.rate)||0)/100;
+    const invCat = (this.data.lists['Inventory Categories']||[])[0]||'';
+    const cond = (this.data.lists['Card Condition / Grade']||[])[0]||'';
+    const receivedIds = [];
+    this.quickTrade.in.forEach(l=>{
+      const row = this.blankRow('inventory');
+      row['Item Name'] = l.name;
+      row['Category'] = invCat;
+      row['Condition / Grade'] = cond;
+      row['Cost'] = Math.round((Number(l.market)||0)*rate*100)/100;
+      row['Retail Price'] = Number(l.market)||0;
+      row['Qty Purchased'] = 1;
+      row._id = this.nextId++;
+      this.data.inventory.push(row);
+      receivedIds.push(row['Item ID']);
+    });
+    const trade = this.blankRow('trades');
+    trade['Items Traded Out'] = this.quickTrade.out.map(l=>l.itemId);
+    trade['Items Received'] = receivedIds;
+    trade['Value of Trade'] = Math.round(outTotal*100)/100;
+    trade['Cash Received'] = cashDiff>0 ? Math.round(cashDiff*100)/100 : 0;
+    trade['Cash Paid Out'] = cashDiff<0 ? Math.round(-cashDiff*100)/100 : 0;
+    trade['Show Name'] = this._defaultShow();
+    trade._id = this.nextId++;
+    this.data.trades.push(trade);
+    const outN = this.quickTrade.out.length, inN = receivedIds.length;
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.closeQuickTrade();
+    const cashNote = Math.abs(cashDiff)>=0.005 ? ` · ${cashDiff>0?'collected':'paid'} ${fmtMoney(Math.abs(cashDiff))}` : '';
+    this.showToast(`Trade recorded — ${outN} out, ${inN} in${cashNote}.`);
   }
 
   endShowMode(){
@@ -3938,6 +4098,7 @@ class Dashboard {
     else if(location==='modal-trades') this._skuApplyModalTrades(item);
     else if(location==='inventory') this._skuApplyInventory(item);
     else if(location==='qa-checkout') this.addToCheckout(item);
+    else if(location==='qtrade-out') this._quickTradeAddOut(item);
   }
 
   // ---------------- SKU Quick Lookup — live suggestion dropdown ----------------
@@ -4125,6 +4286,11 @@ class Dashboard {
       const row = btnEl.closest('.qa-sku-scan-row');
       this._scanFillInput = row ? row.querySelector('input') : null;
     }
+    // Rapid checkout mode: launched from the checkout basket's SKU box. Each decoded card is
+    // added straight to the basket and the camera stays open for the next one — no re-tapping.
+    this._scanRapid = !!(this._scanInput && this._scanInput.getAttribute('data-sku-lookup')==='qa-checkout');
+    const cancelBtn = document.getElementById('scan-cancel');
+    if(cancelBtn) cancelBtn.textContent = this._scanRapid ? '✓ Done' : 'Cancel';
     const status = document.getElementById('scan-status');
     document.getElementById('scan-overlay').classList.remove('hidden');
     status.textContent = 'Starting camera…';
@@ -4144,7 +4310,9 @@ class Dashboard {
       const video = document.getElementById('scan-video');
       video.srcObject = stream;
       await video.play();
-      status.textContent = "Point the camera at the item's QR label.";
+      status.textContent = this._scanRapid
+        ? 'Rapid checkout — scan each card to add it to the basket. Tap ✓ Done when finished.'
+        : "Point the camera at the item's QR label.";
       this._scanRunning = true;
       this._scanTick();
     }catch(err){
@@ -4192,7 +4360,55 @@ class Dashboard {
     return out;
   }
 
+  // Best inventory match for a scanned label: exact SKU, narrowed by the label's item name when
+  // several items share that SKU (NIIMBOT QRs carry the name, so shared-SKU variants disambiguate).
+  _resolveScanToItem(parsed){
+    let matches = this.findInventoryItemsBySkuExact(parsed.sku);
+    if(matches.length>1 && parsed.name){
+      const n = parsed.name.trim().toLowerCase();
+      const narrowed = matches.filter(m=>{
+        const mn = String(m['Item Name']||'').toLowerCase();
+        return mn && (mn.includes(n) || n.includes(mn));
+      });
+      if(narrowed.length===1) matches = narrowed;
+    }
+    return matches;
+  }
+  _rapidBasketLine(){
+    const n = this.checkoutItems.reduce((a,l)=>a+l.qty,0);
+    const total = this.checkoutItems.reduce((a,l)=>a+l.qty*(Number(l.price)||0),0);
+    return `Basket: ${n} card${n!==1?'s':''} · ${fmtMoney(total)} — tap ✓ Done when finished.`;
+  }
+  _setScanStatus(main){ const el=document.getElementById('scan-status'); if(el) el.textContent = main + '\n' + this._rapidBasketLine(); }
+  _flashScanFrame(ok){
+    const f = document.querySelector('.scan-frame'); if(!f) return;
+    f.classList.remove('scan-hit','scan-miss');
+    void f.offsetWidth; // restart the CSS transition
+    f.classList.add(ok?'scan-hit':'scan-miss');
+  }
+
   _handleScanResult(text){
+    // Rapid checkout: add to the basket and keep scanning instead of closing.
+    if(this._scanRapid){
+      const parsed = this._parseScannedLabel(text);
+      const matches = this._resolveScanToItem(parsed);
+      if(matches.length===1){
+        this.addToCheckout(matches[0]);
+        if(navigator.vibrate) navigator.vibrate(60);
+        this._flashScanFrame(true);
+        this._setScanStatus(`✓ Added ${matches[0]['Item Name']||matches[0]['SKU']}`);
+      } else if(matches.length===0){
+        this._flashScanFrame(false);
+        this._setScanStatus(`✗ No item found for “${parsed.sku}”`);
+      } else {
+        this._flashScanFrame(false);
+        this._setScanStatus(`⚠ SKU ${parsed.sku} matches ${matches.length} items — add that one from the basket manually`);
+      }
+      // Pause briefly so one card isn't counted many times, then resume scanning.
+      clearTimeout(this._scanRearm);
+      this._scanRearm = setTimeout(()=>{ if(this._scanRunning) this._scanTick(); }, 1300);
+      return;
+    }
     const input = this._scanInput, fill = this._scanFillInput;
     this.closeScanner();
     if(navigator.vibrate) navigator.vibrate(80);
@@ -4247,6 +4463,14 @@ class Dashboard {
 
   closeScanner(){
     this._scanRunning = false;
+    clearTimeout(this._scanRearm);
+    if(this._scanRapid){
+      this._scanRapid = false;
+      const cancelBtn = document.getElementById('scan-cancel');
+      if(cancelBtn) cancelBtn.textContent = 'Cancel';
+      const n = this.checkoutItems.reduce((a,l)=>a+l.qty,0);
+      if(n>0) this.showToast(`${n} card${n!==1?'s':''} in basket — review and complete the sale.`);
+    }
     if(this._scanStream){ this._scanStream.getTracks().forEach(t=>t.stop()); this._scanStream = null; }
     const video = document.getElementById('scan-video');
     if(video) video.srcObject = null;
