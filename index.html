@@ -197,6 +197,11 @@ body {
 .qa-submit { margin-top:4px; padding:14px; border:none; border-radius:12px; background:var(--bg-header); color:#fff; font-size:15px; font-weight:800; cursor:pointer; transition:background .15s; }
 .qa-submit:hover { background:#20264a; }
 .qa-submit:active { transform:scale(0.99); }
+.show-picker-or { text-align:center; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); margin:6px 0; }
+.show-picker-preview { font-size:12.5px; color:var(--text-secondary); background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:9px; padding:8px 11px; margin:-2px 0 4px; }
+.show-picker-preview[hidden] { display:none; }
+.show-picker-preview b { color:var(--text-primary); }
+.new-show-activate { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); margin:2px 0 6px; cursor:pointer; }
 .calc-list { display:flex; flex-direction:column; gap:8px; margin:16px 0; max-height:38vh; overflow-y:auto; }
 .calc-empty { font-size:13px; color:var(--text-secondary); text-align:center; padding:18px 0; }
 .calc-row { display:flex; align-items:center; gap:10px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:11px; padding:9px 12px; }
@@ -830,11 +835,36 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <button type="button" class="qa-close" id="show-mode-close" title="Close">&times;</button>
       </div>
       <div class="edit-note" style="margin:0 0 10px">While Show Mode is on, new sales, trades, and expenses default to this show, and the banner above the tabs tracks its sales, expenses, and your cash live.</div>
-      <div class="qa-field"><label>Pick a show</label><select id="show-mode-select"></select></div>
-      <div class="qa-field"><label>Or start a brand-new show</label><input type="text" id="show-mode-new" placeholder="e.g. Card Syndicate Orlando — Aug"></div>
+      <div class="qa-field"><label>Pick a show in progress</label><select id="show-mode-select"></select></div>
+      <div class="show-picker-or">— or start a new show —</div>
+      <div class="qa-field"><label>Venue</label><input type="text" list="venue-datalist" id="show-mode-venue" autocomplete="off" placeholder="e.g. Calhoun Card Show"></div>
+      <div class="qa-field"><label>Date</label><input type="date" id="show-mode-date"></div>
+      <div class="show-picker-preview" id="show-mode-preview" hidden></div>
       <button type="button" class="qa-submit" id="show-mode-start">Start Show Mode</button>
     </div>
   </div>
+
+  <!-- Add-a-show builder (also used by the Card Show tab's "+ Add Show"). A venue + date compose
+       a unique show name, so attending the same venue again on a new date makes a separate event
+       with its own totals — no accidental duplicate from re-typing a name. -->
+  <div class="qa-overlay hidden" id="new-show-overlay">
+    <div class="qa-modal">
+      <div class="qa-modal-head">
+        <h2>Add a Show</h2>
+        <button type="button" class="qa-close" id="new-show-close" title="Close">&times;</button>
+      </div>
+      <div class="edit-note" style="margin:0 0 10px">Pick a venue you've been to (or type a new one) and the date. Same venue again? Pick it with a new date — it becomes its own event with its own sales, expenses, and profit.</div>
+      <div class="qa-field"><label>Venue</label><input type="text" list="venue-datalist" id="new-show-venue" autocomplete="off" placeholder="e.g. Calhoun Card Show"></div>
+      <div class="qa-field"><label>Date</label><input type="date" id="new-show-date"></div>
+      <div class="qa-field"><label>Starting cash (optional)</label><input type="number" step="0.01" id="new-show-cash" placeholder="0.00"></div>
+      <div class="show-picker-preview" id="new-show-preview" hidden></div>
+      <label class="new-show-activate"><input type="checkbox" id="new-show-activate-chk"> Start Show Mode for this show now</label>
+      <button type="button" class="qa-submit" id="new-show-create">Create show</button>
+    </div>
+  </div>
+
+  <!-- Shared venue autocomplete source for both the Show Mode picker and the Add-a-show builder. -->
+  <datalist id="venue-datalist"></datalist>
 
   <!-- SKU disambiguation picker — shown when a scanned/typed SKU matches MORE THAN ONE
        inventory item (e.g. two printings sharing a card number), instead of silently taking
@@ -1241,7 +1271,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v37</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v38</strong>
   </footer>
 </div>
 
@@ -1468,6 +1498,9 @@ class Dashboard {
   normalizeLists(lists){
     const out = {};
     Object.keys(lists||{}).forEach(k=>{ out[k] = Array.isArray(lists[k]) ? [...lists[k]] : []; });
+    // Show Venues powers the venue autocomplete when adding a show / starting Show Mode. Always
+    // present so it also shows up in the Settings list editor for curation.
+    if(!Array.isArray(out['Show Venues'])) out['Show Venues'] = [];
     return out;
   }
 
@@ -1618,6 +1651,13 @@ class Dashboard {
     document.getElementById('show-mode-close').addEventListener('click', ()=>this.closeShowMode());
     document.getElementById('show-mode-start').addEventListener('click', ()=>this.startShowModeFromModal());
     document.getElementById('show-mode-overlay').addEventListener('click', (e)=>{ if(e.target.id==='show-mode-overlay') this.closeShowMode(); });
+    // Live preview of the composed show name as venue/date change, in both pickers.
+    ['show-mode-venue','show-mode-date'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input', ()=>this._updateShowPickerPreview('show-mode')); } });
+    // Add-a-show builder (Card Show tab "+ Add Show").
+    document.getElementById('new-show-close').addEventListener('click', ()=>this.closeNewShow());
+    document.getElementById('new-show-create').addEventListener('click', ()=>this.createNewShowFromModal());
+    document.getElementById('new-show-overlay').addEventListener('click', (e)=>{ if(e.target.id==='new-show-overlay') this.closeNewShow(); });
+    ['new-show-venue','new-show-date'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input', ()=>this._updateShowPickerPreview('new-show')); } });
     document.getElementById('show-mode-banner').addEventListener('click', (e)=>{ if(e.target.closest('[data-show-mode-end]')) this.endShowMode(); });
     // QR scanner cancel button.
     document.getElementById('scan-cancel').addEventListener('click', ()=>this.closeScanner());
@@ -1685,6 +1725,7 @@ class Dashboard {
       if(!document.getElementById('sku-pick-overlay').classList.contains('hidden')){ this.closeSkuPicker(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
       if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
+      if(!document.getElementById('new-show-overlay').classList.contains('hidden')){ this.closeNewShow(); return; }
       if(!document.getElementById('confirm-overlay').classList.contains('hidden')){ this._closeConfirm(); return; }
       if(!document.getElementById('add-modal-overlay').classList.contains('hidden')){ this.closeAddModal(); return; }
       if(!document.getElementById('calc-overlay').classList.contains('hidden')){ this.closeCalculator(); return; }
@@ -1839,46 +1880,143 @@ class Dashboard {
       : this.firstShow();
   }
 
+  // ---------------- Show identity helpers (venue + date -> unique show name) ----------------
+  // A show instance's identity is its Show Name string (sales/expenses/trades link by it, and
+  // the merge key is 'c:'+name). Composing "{Venue} · {Mon D, YYYY}" keeps every dated instance
+  // of a recurring venue unique, so the same venue on two dates stays two separate events.
+  _fmtShowDate(dateStr){
+    const s = String(dateStr||'').slice(0,10);
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if(!m) return s;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[Number(m[2])-1]} ${Number(m[3])}, ${m[1]}`;
+  }
+  _composeShowName(venue, dateStr){
+    const v = String(venue||'').trim();
+    const d = this._fmtShowDate(dateStr);
+    return d ? `${v} · ${d}` : v;
+  }
+  // Venue autocomplete source: the curated Show Venues list plus the base name (part before the
+  // " · date" suffix) of every show that already exists, so past venues are always suggestable.
+  _showVenues(){
+    const set = new Set((this.data.lists['Show Venues']||[]).map(v=>String(v).trim()).filter(Boolean));
+    this.data.cashflow.forEach(c=>{
+      const name = String(c['Show Name']||'').trim();
+      if(!name) return;
+      const base = name.split(' · ')[0].trim();
+      if(base) set.add(base);
+    });
+    return [...set].sort((a,b)=>a.localeCompare(b));
+  }
+  _rememberVenue(venue){
+    const v = String(venue||'').trim();
+    if(!v) return;
+    const arr = this.data.lists['Show Venues'] || (this.data.lists['Show Venues']=[]);
+    if(!arr.some(x=>String(x).trim().toLowerCase()===v.toLowerCase())) arr.push(v);
+  }
+  _refreshVenueDatalist(){
+    const dl = document.getElementById('venue-datalist');
+    if(dl) dl.innerHTML = this._showVenues().map(v=>`<option value="${this._esc(v)}"></option>`).join('');
+  }
+  // Returns the canonical Show Name for a venue+date, creating the cashflow row if it's new.
+  // Reuses an exact existing instance (idempotent) so re-adding the same venue+date won't dupe.
+  _createOrGetShow(venue, dateStr, startingCash){
+    const name = this._composeShowName(venue, dateStr);
+    const existing = this.data.cashflow.find(c=>String(c['Show Name']||'').trim().toLowerCase()===name.toLowerCase());
+    this._rememberVenue(venue);
+    if(existing) return existing['Show Name'];
+    this._pushUndoSnapshot();
+    const row = this.blankRow('cashflow');
+    row['Show Name'] = name;
+    row['Date'] = String(dateStr||'').slice(0,10) || this.todayStr();
+    if(startingCash!=null && !Number.isNaN(Number(startingCash))) row['Starting Cash'] = Number(startingCash);
+    row._id = this.nextId++;
+    this.data.cashflow.push(row);
+    this.recalcAll();
+    this.markDirty();
+    return name;
+  }
+
   openShowMode(){
     const sel = document.getElementById('show-mode-select');
     const byDate = {};
     this.data.cashflow.forEach(c=>{ if(c['Show Name']) byDate[c['Show Name']] = String(c['Date']||''); });
     const shows = [...new Set(this.data.cashflow.map(c=>c['Show Name']).filter(Boolean))]
-      .sort((a,b)=> byDate[b].localeCompare(byDate[a]));   // most recent first — tonight's show on top
-    sel.innerHTML = shows.length
+      .sort((a,b)=> (byDate[b]||'').localeCompare(byDate[a]||''));   // most recent first — tonight's show on top
+    sel.innerHTML = `<option value="">— pick one —</option>` + (shows.length
       ? shows.map(s=>`<option value="${this._esc(s)}" ${s===this.activeShow?'selected':''}>${this._esc(s)}</option>`).join('')
-      : '<option value="">— no shows yet — type one below —</option>';
-    document.getElementById('show-mode-new').value = '';
+      : '');
+    this._refreshVenueDatalist();
+    document.getElementById('show-mode-venue').value = '';
+    document.getElementById('show-mode-date').value = this.todayStr();
+    this._updateShowPickerPreview('show-mode');
     document.getElementById('show-mode-overlay').classList.remove('hidden');
   }
 
   closeShowMode(){ document.getElementById('show-mode-overlay').classList.add('hidden'); }
 
   startShowModeFromModal(){
-    const typed = document.getElementById('show-mode-new').value.trim();
-    let name = typed || document.getElementById('show-mode-select').value;
-    if(!name){ this.showToast('Pick a show or type a new one.'); return; }
-    if(typed){
-      // Reuse the existing row (canonical casing) if the typed name matches one; otherwise
-      // create the show on the Card Show tab through the same pipeline as "+ Add Show".
-      const existing = this.data.cashflow.find(c=>String(c['Show Name']||'').trim().toLowerCase()===typed.toLowerCase());
-      if(existing){
-        name = existing['Show Name'];
-      } else {
-        this._pushUndoSnapshot();
-        const row = this.blankRow('cashflow');
-        row['Show Name'] = typed;
-        row._id = this.nextId++;
-        this.data.cashflow.push(row);
-        this.recalcAll();
-        this.markDirty();
-      }
+    const venue = document.getElementById('show-mode-venue').value.trim();
+    const date = document.getElementById('show-mode-date').value;
+    let name;
+    if(venue){
+      if(!date){ this.showToast('Pick a date for the new show.'); return; }
+      name = this._createOrGetShow(venue, date);
+    } else {
+      name = document.getElementById('show-mode-select').value;
     }
+    if(!name){ this.showToast('Pick a show, or enter a venue + date to start a new one.'); return; }
     this.activeShow = name;
     try{ localStorage.setItem('tcgvd-active-show', name); }catch(e){}
     this.closeShowMode();
     this.renderAll();
     this.showToast(`Show Mode on — ${name}`);
+  }
+
+  // ---------------- Add-a-show builder (Card Show tab "+ Add Show") ----------------
+  openNewShow(){
+    this._refreshVenueDatalist();
+    document.getElementById('new-show-venue').value = '';
+    document.getElementById('new-show-date').value = this.todayStr();
+    document.getElementById('new-show-cash').value = '';
+    document.getElementById('new-show-activate-chk').checked = false;
+    this._updateShowPickerPreview('new-show');
+    document.getElementById('new-show-overlay').classList.remove('hidden');
+    requestAnimationFrame(()=>document.getElementById('new-show-venue').focus());
+  }
+  closeNewShow(){ document.getElementById('new-show-overlay').classList.add('hidden'); }
+  createNewShowFromModal(){
+    const venue = document.getElementById('new-show-venue').value.trim();
+    const date = document.getElementById('new-show-date').value;
+    const cashRaw = document.getElementById('new-show-cash').value;
+    if(!venue){ this.showToast('Enter a venue name.'); document.getElementById('new-show-venue').focus(); return; }
+    if(!date){ this.showToast('Pick a date.'); document.getElementById('new-show-date').focus(); return; }
+    const before = this.data.cashflow.length;
+    const name = this._createOrGetShow(venue, date, cashRaw===''?null:cashRaw);
+    const wasNew = this.data.cashflow.length > before;
+    const activate = document.getElementById('new-show-activate-chk').checked;
+    if(activate){
+      this.activeShow = name;
+      try{ localStorage.setItem('tcgvd-active-show', name); }catch(e){}
+    }
+    this.closeNewShow();
+    this.showTab('cashflow');
+    this.renderAll();
+    this.showToast(wasNew ? (activate?`Show added — Show Mode on: ${name}`:`Show added — ${name}`) : `That show already exists — ${name}`);
+  }
+  // Live "will be saved as…" preview for both show pickers (which='show-mode' | 'new-show').
+  _updateShowPickerPreview(which){
+    const venue = document.getElementById(`${which}-venue`).value.trim();
+    const date = document.getElementById(`${which}-date`).value;
+    const el = document.getElementById(`${which}-preview`);
+    if(!el) return;
+    if(!venue || !date){ el.hidden = true; el.innerHTML=''; return; }
+    const name = this._composeShowName(venue, date);
+    const dupe = this.data.cashflow.some(c=>String(c['Show Name']||'').trim().toLowerCase()===name.toLowerCase());
+    el.hidden = false;
+    el.innerHTML = dupe
+      ? `Adds to existing show: <b>${this._esc(name)}</b>`
+      : `Will be saved as: <b>${this._esc(name)}</b>`;
   }
 
   endShowMode(){
@@ -4109,6 +4247,9 @@ class Dashboard {
   }
 
   handleAddRow(el){
+    // Shows are created through the venue+date builder (unique names, recurring-safe) rather than
+    // the generic free-text Add modal.
+    if(el.dataset.table==='cashflow'){ this.openNewShow(); return; }
     this.openAddModal(el.dataset.table);
   }
 
