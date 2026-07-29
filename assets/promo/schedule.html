@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --gold:#f0b23c; --gold-lt:#ffd98a; --gold-dp:#c8811b;
+    --red:#c8342c; --ink:#0a1424; --ink2:#122036;
+    --cream:#f6e7c8; --rope:#e0b978;
+  }
+  body { width:1080px; height:1350px; font-family:"Liberation Sans","DejaVu Sans",sans-serif; overflow:hidden;
+         background:var(--ink); color:var(--cream); position:relative; }
+
+  /* deep sea-chart backdrop: wood-dark navy with a warm lantern glow behind the logo */
+  .bg { position:absolute; inset:0;
+        background:
+          radial-gradient(circle at 50% 20%, rgba(240,178,60,.20), transparent 46%),
+          radial-gradient(circle at 12% 88%, rgba(200,52,44,.16), transparent 45%),
+          linear-gradient(165deg,#0d1a2e 0%, #0a1424 45%, #07101d 100%); }
+  /* faint plank lines so the flat navy reads as a wooden board, not a gradient */
+  .planks { position:absolute; inset:0; opacity:.055;
+            background:repeating-linear-gradient(0deg, #f6e7c8 0 2px, transparent 2px 68px); }
+  .vign { position:absolute; inset:0; box-shadow:inset 0 0 220px 70px rgba(0,0,0,.72); }
+
+  .frame { position:absolute; inset:26px; border:3px solid var(--gold-dp); border-radius:16px; opacity:.55; }
+  .frame::after { content:""; position:absolute; inset:9px; border:1px solid rgba(224,185,120,.42); border-radius:9px; }
+
+  .wrap { position:relative; height:100%; display:flex; flex-direction:column;
+          align-items:center; padding:62px 74px 54px; }
+
+  /* The logo file is a square photo of a wooden board, so it gets a rounded frame and a gold
+     ring — otherwise its hard square edge cuts against the border frame behind it. */
+  .logo { width:272px; height:272px; object-fit:cover; border-radius:26px;
+          border:3px solid var(--gold-dp); box-shadow:0 14px 34px rgba(0,0,0,.7); }
+
+  .kicker { margin-top:16px; font-size:23px; letter-spacing:8px; font-weight:700;
+            color:var(--rope); text-transform:uppercase; }
+  .headline { margin-top:8px; font-size:80px; line-height:.98; font-weight:800; letter-spacing:-1px;
+              color:var(--gold-lt); text-transform:uppercase;
+              text-shadow:0 4px 0 var(--gold-dp), 0 14px 26px rgba(0,0,0,.6); }
+  .rule { margin:20px 0 4px; width:290px; height:3px; border-radius:2px;
+          background:linear-gradient(90deg,transparent,var(--gold),transparent); }
+
+  /* Centred in whatever space is left so a short list doesn't leave a hole in the middle. */
+  .shows { width:100%; margin:auto 0; display:flex; flex-direction:column; gap:26px; }
+
+  .show { display:flex; align-items:stretch; gap:22px;
+          background:linear-gradient(180deg, rgba(246,231,200,.10), rgba(246,231,200,.045));
+          border:2px solid rgba(224,185,120,.42); border-left:7px solid var(--gold);
+          border-radius:14px; padding:22px 24px; }
+
+  .date { flex-shrink:0; width:132px; text-align:center; padding-right:22px;
+          border-right:2px dashed rgba(224,185,120,.34); }
+  .mon { font-size:27px; font-weight:800; letter-spacing:3px; color:var(--red);
+         text-transform:uppercase; text-shadow:0 1px 0 rgba(0,0,0,.5); }
+  .day { font-size:70px; font-weight:800; line-height:.92; color:var(--gold-lt); }
+  .dow { font-size:17px; font-weight:700; letter-spacing:2px; color:var(--rope); text-transform:uppercase; }
+
+  .meta { flex:1; display:flex; flex-direction:column; justify-content:center; min-width:0; }
+  .name { font-size:35px; font-weight:800; line-height:1.15; color:#fff; }
+  .where { margin-top:11px; font-size:21px; font-weight:600; color:var(--rope);
+           display:flex; align-items:center; gap:6px; }
+  .row2 { margin-top:9px; display:flex; gap:30px; font-size:21px; font-weight:600; color:var(--rope); }
+  .row2 span.lbl { display:flex; align-items:center; gap:9px; }
+  .tag { font-size:15px; font-weight:800; letter-spacing:1.6px; text-transform:uppercase;
+         color:var(--gold); }
+
+  /* ---- 1080x1080 square variant (?f=square) — same content, tightened to fit ---- */
+  body.square { height:1080px; }
+  body.square .wrap { padding:44px 62px 40px; }
+  body.square .logo { width:190px; height:190px; border-radius:20px; }
+  body.square .kicker { margin-top:12px; font-size:19px; letter-spacing:6px; }
+  body.square .headline { font-size:62px; }
+  body.square .rule { margin:14px 0 2px; }
+  body.square .shows { gap:18px; }
+  body.square .show { padding:17px 20px; }
+  body.square .date { width:112px; padding-right:18px; }
+  body.square .mon { font-size:23px; }
+  body.square .day { font-size:56px; }
+  body.square .dow { font-size:15px; }
+  body.square .name { font-size:29px; }
+  body.square .where, body.square .row2 { font-size:18px; }
+  body.square .tag { font-size:13px; }
+  body.square .tagline { font-size:22px; }
+  body.square .sub { margin-top:6px; font-size:17px; }
+  body.square .handle { margin-top:12px; padding:9px 26px; font-size:21px; }
+  /* Deliberately obvious: these are blanks for real details, never invented ones. */
+  .blank { display:inline-block; min-width:230px; padding:1px 12px; border-bottom:2px dotted #7d6a49;
+           color:#8d7a58; font-style:italic; }
+
+  .foot { margin-top:auto; width:100%; text-align:center; }
+  .tagline { font-size:26px; font-weight:700; color:var(--gold-lt); letter-spacing:1px; }
+  .sub { margin-top:9px; font-size:20px; color:var(--rope); letter-spacing:1px; }
+  .handle { margin-top:16px; display:inline-block; padding:11px 30px; border-radius:99px;
+            background:var(--red); color:#fff; font-size:24px; font-weight:800; letter-spacing:1px;
+            box-shadow:0 6px 18px rgba(0,0,0,.5); }
+</style>
+</head>
+<body>
+  <div class="bg"></div><div class="planks"></div><div class="vign"></div><div class="frame"></div>
+  <div class="wrap">
+    <img class="logo" src="/assets/icons/logo-v2.png" alt="GumGumGoods Collectibles &amp; Cards">
+    <div class="kicker">Catch us at</div>
+    <div class="headline">Upcoming Shows</div>
+    <div class="rule"></div>
+
+    <div class="shows">
+      <div class="show">
+        <div class="date">
+          <div class="mon">Sep</div>
+          <div class="day">19</div>
+          <div class="dow">Sat</div>
+        </div>
+        <div class="meta">
+          <div class="name">Southeast Card &amp; Collectibles Expo</div>
+          <div class="where">&#128205; <span class="blank">venue &amp; city</span></div>
+          <div class="row2">
+            <span class="lbl"><b class="tag">Hours</b> <span class="blank" style="min-width:150px"></span></span>
+            <span class="lbl"><b class="tag">Table</b> <span class="blank" style="min-width:110px"></span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="show">
+        <div class="date">
+          <div class="mon">Nov</div>
+          <div class="day">28</div>
+          <div class="dow">Sat</div>
+        </div>
+        <div class="meta">
+          <div class="name">Holiday TCG Convention</div>
+          <div class="where">&#128205; <span class="blank">venue &amp; city</span></div>
+          <div class="row2">
+            <span class="lbl"><b class="tag">Hours</b> <span class="blank" style="min-width:150px"></span></span>
+            <span class="lbl"><b class="tag">Table</b> <span class="blank" style="min-width:110px"></span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <div class="tagline">One Piece TCG &mdash; Singles &middot; Sealed &middot; Graded</div>
+      <div class="sub">Buying &middot; Selling &middot; Trading all weekend</div>
+      <div class="handle">@gumgumgoods</div>
+    </div>
+  </div>
+<script>
+  // ?f=square renders the same schedule at 1080x1080 for feed posts.
+  if (new URLSearchParams(location.search).get('f') === 'square') document.body.classList.add('square');
+</script>
+</body>
+</html>
