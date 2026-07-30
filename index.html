@@ -291,6 +291,24 @@ body {
   padding:12px; display:flex; justify-content:center; max-height:52vh; overflow:auto; }
 .promo-preview canvas { display:block; max-width:340px; border-radius:8px; box-shadow:var(--shadow-sm); }
 .promo-actions { margin-top:12px; }
+.restock-lead { font-size:13px; color:var(--text-secondary); line-height:1.5; margin-bottom:12px; }
+.restock-lead b { color:var(--text-primary); }
+.restock-qty { display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px;
+  padding:10px 12px; margin-bottom:12px; font-size:13px; font-weight:700; color:var(--text-primary); }
+.restock-qty input { width:82px; padding:8px 10px; border:1.5px solid var(--border-subtle);
+  border-radius:8px; font-size:16px; font-family:inherit; text-align:right; font-weight:700; }
+.restock-list { display:flex; flex-direction:column; gap:7px; max-height:44vh; overflow-y:auto; }
+.restock-opt { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+  text-align:left; background:var(--bg-card); border:1.5px solid var(--border-subtle);
+  border-radius:11px; padding:11px 13px; font-family:inherit; cursor:pointer; }
+.restock-opt:hover { border-color:var(--action); background:var(--bg-inset); }
+.restock-opt .ro-main { min-width:0; }
+.restock-opt .ro-name { display:block; font-size:13.5px; font-weight:700; color:var(--text-primary);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.restock-opt .ro-meta { display:block; font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+.restock-opt .ro-stock { flex-shrink:0; text-align:right; font-size:11px; color:var(--text-muted); }
+.restock-opt .ro-stock b { display:block; font-size:17px; color:var(--action-deep); }
 #net-by-show { display:flex; flex-direction:column; gap:6px; }
 .nbs-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; padding:9px 12px; cursor:pointer; font-family:inherit; }
 .nbs-row:hover { border-color:var(--action); }
@@ -1037,6 +1055,19 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </div>
   </div>
 
+  <!-- Restock picker — shown when a SKU scanned into Quick Add Inventory already belongs to one
+       or more cards. Lets you add stock to the right card (the usual reason for re-scanning a
+       label) instead of only ever creating another item with the same SKU. -->
+  <div class="qa-overlay hidden" id="restock-overlay">
+    <div class="qa-modal">
+      <div class="qa-modal-head">
+        <h2>&#128230; Already in inventory</h2>
+        <button type="button" class="qa-close" id="restock-close" title="Close">&times;</button>
+      </div>
+      <div id="restock-body"></div>
+    </div>
+  </div>
+
   <!-- Promo Poster — turns the upcoming bookings on the Calendar into a shareable schedule
        graphic (logo, dates, venues) that downloads as a PNG for social media. -->
   <div class="qa-overlay hidden" id="promo-overlay">
@@ -1489,7 +1520,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v54</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v55</strong>
   </footer>
 </div>
 
@@ -1915,6 +1946,14 @@ class Dashboard {
     document.getElementById('data-health-btn').addEventListener('click', ()=>this.openDataAudit());
     document.getElementById('audit-close').addEventListener('click', ()=>this.closeDataAudit());
     document.getElementById('audit-overlay').addEventListener('click', (e)=>{ if(e.target.id==='audit-overlay') this.closeDataAudit(); });
+    // Restock picker (scan an existing SKU into Quick Add Inventory).
+    document.getElementById('restock-close').addEventListener('click', ()=>this.closeRestockPicker());
+    document.getElementById('restock-overlay').addEventListener('click', (e)=>{
+      if(e.target.id==='restock-overlay'){ this.closeRestockPicker(); return; }
+      const opt = e.target.closest('[data-restock-id]');
+      if(opt){ this.restockItem(opt); return; }
+      if(e.target.closest('#restock-new')) this.restockCreateNew();
+    });
     // Promo Poster overlay.
     document.getElementById('promo-close').addEventListener('click', ()=>this.closePromoPoster());
     document.getElementById('promo-overlay').addEventListener('click', (e)=>{ if(e.target.id==='promo-overlay') this.closePromoPoster(); });
@@ -4617,6 +4656,80 @@ class Dashboard {
     this.openSkuPicker(location, matches, trimmed);
   }
 
+  // ---------------- Restock picker (scan into Quick Add Inventory) ----------------
+  // A scanned SKU that already belongs to one or more cards used to be a dead end: a message
+  // saying "pick the right one" / "edit Qty Purchased on the existing item instead", with no
+  // way to pick and no way to enter a quantity. This turns it into the action itself — choose
+  // the card, say how many arrived, done. Creating a separate item is still available.
+  _openRestockPicker(parsed, matches){
+    this._restockParsed = parsed;
+    this._restockMatches = matches;
+    const body = document.getElementById('restock-body');
+    const many = matches.length > 1;
+    body.innerHTML =
+        `<div class="restock-lead">SKU <b>${this._esc(parsed.sku)}</b> ${many?`belongs to <b>${matches.length}</b> cards`:'is already in your inventory'}.`
+      + `<br>${many?'Pick the one you just scanned and':'Enter how many arrived and'} tap it to add stock.</div>`
+      + `<label class="restock-qty"><span>How many arrived?</span>`
+      + `<input type="number" id="restock-qty" min="1" step="1" value="1"></label>`
+      + `<div class="restock-list">`
+      + matches.map(m=>{
+          const stock = Number(m['Remaining Inventory (auto)'])||0;
+          return `<button type="button" class="restock-opt" data-restock-id="${m._id}">`
+            + `<span class="ro-main"><span class="ro-name">${this._esc(m['Item Name']||m['Item ID'])}</span>`
+            + `<span class="ro-meta">${this._esc(m['Item ID'])} · cost ${fmtMoney(Number(m['Cost'])||0)} · retail ${fmtMoney(Number(m['Retail Price'])||0)}</span></span>`
+            + `<span class="ro-stock"><b>${stock}</b>in stock</span></button>`;
+        }).join('')
+      + `</div>`
+      + `<button type="button" class="btn-sm" id="restock-new" style="width:100%;margin-top:10px">`
+      + `+ It's a different card — create a new item</button>`;
+    document.getElementById('restock-overlay').classList.remove('hidden');
+    const qty = document.getElementById('restock-qty');
+    if(qty){ qty.focus(); qty.select(); }
+  }
+
+  closeRestockPicker(){
+    document.getElementById('restock-overlay').classList.add('hidden');
+    this._restockParsed = null;
+    this._restockMatches = null;
+  }
+
+  // Add the scanned quantity to an existing card's Qty Purchased — the actual restock.
+  restockItem(el){
+    const item = this.data.inventory.find(i=>i._id===Number(el.dataset.restockId));
+    if(!item){ this.closeRestockPicker(); return; }
+    const input = document.getElementById('restock-qty');
+    const add = Math.max(1, Math.floor(Number(input && input.value)||1));
+    this._pushUndoSnapshot();
+    item['Qty Purchased'] = (Number(item['Qty Purchased'])||0) + add;
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    const name = item['Item Name']||item['Item ID'];
+    const stock = Number(item['Remaining Inventory (auto)'])||0;
+    this.closeRestockPicker();
+    this.closeQuickAdd();
+    this.showToast(`Added ${add} to ${name} — ${stock} now in stock.`);
+  }
+
+  // "It's a different card" — fall back to the old behaviour: prefill the Quick Add form from
+  // the closest existing match for anything the QR itself didn't carry, and let them edit it.
+  restockCreateNew(){
+    const parsed = this._restockParsed, matches = this._restockMatches || [];
+    const existing = matches[0];
+    this.closeRestockPicker();
+    if(!parsed) return;
+    const form = document.getElementById('qa-form-inventory');
+    const msg = document.querySelector('[data-qa-sku-msg]');
+    if(form && existing){
+      if(!parsed.name && form.elements['Item Name']) form.elements['Item Name'].value = existing['Item Name'] || '';
+      if(!Number.isFinite(parsed.cost) && form.elements['Cost']) form.elements['Cost'].value = Number(existing['Cost'])||0;
+      if(!Number.isFinite(parsed.retail) && form.elements['Retail Price']) form.elements['Retail Price'].value = Number(existing['Retail Price'])||0;
+    }
+    if(msg) msg.textContent = `${matches.length} item${matches.length>1?'s':''} already use SKU ${parsed.sku}`
+      + ` — this will create another one. Give it a name that tells them apart.`;
+    if(form && form.elements['Item Name']){ form.elements['Item Name'].focus(); form.elements['Item Name'].select(); }
+  }
+
   // ---------------- SKU disambiguation picker ----------------
   openSkuPicker(location, matches, sku){
     this._skuPickLocation = location;
@@ -5068,29 +5181,19 @@ class Dashboard {
       const dupes = this.findInventoryItemsBySkuExact(parsed.sku);
       const existing = dupes[0];
       const msg = document.querySelector('[data-qa-sku-msg]');
-      if(dupes.length > 1){
-        // Several items already share this SKU — prefilling from any one of them would be a
-        // guess, so just warn and leave the details for the vendor to type.
-        const names = dupes.map(d=>d['Item Name']||d['Item ID']).join('; ');
-        if(msg) msg.textContent = `Heads up: ${dupes.length} items already use SKU ${parsed.sku} (${names}). Adding this will create another one — details were not auto-filled.`;
-        this.showToast(`${dupes.length} items already use SKU ${parsed.sku}`);
-      } else if(existing){
-        // The SKU is already in inventory — prefill the form from the existing item wherever
-        // the QR itself didn't supply a value, so a bare-SKU label still prepopulates details.
-        if(form){
-          if(!parsed.name && form.elements['Item Name']) form.elements['Item Name'].value = existing['Item Name'] || '';
-          if(!Number.isFinite(parsed.cost) && form.elements['Cost']) form.elements['Cost'].value = Number(existing['Cost'])||0;
-          if(!Number.isFinite(parsed.retail) && form.elements['Retail Price']) form.elements['Retail Price'].value = Number(existing['Retail Price'])||0;
-        }
-        if(msg) msg.textContent = `Heads up: ${parsed.sku} is already in inventory (${existing['Item Name']||'unnamed item'}) — details filled from that item. Adding will create a second item with the same SKU; if you're restocking, edit Qty Purchased on the existing item instead.`;
-        this.showToast(`SKU ${parsed.sku} already exists — details filled in`);
-      } else {
+      if(dupes.length){
+        // Re-scanning a label you already printed almost always means "I got more of this" —
+        // so offer to add stock to the right card, with a quantity, rather than only ever
+        // creating a second row with the same SKU. Creating a new item is still one tap away.
         if(msg) msg.textContent = '';
-        this.showToast(parsed.labeled && parsed.name
-          ? `Label scanned — SKU + item details filled in`
-          : `SKU ${parsed.sku} scanned — fill in the item details`);
-        if(form && form.elements['Item Name'] && !form.elements['Item Name'].value) form.elements['Item Name'].focus();
+        this._openRestockPicker(parsed, dupes);
+        return;
       }
+      if(msg) msg.textContent = '';
+      this.showToast(parsed.labeled && parsed.name
+        ? `Label scanned — SKU + item details filled in`
+        : `SKU ${parsed.sku} scanned — fill in the item details`);
+      if(form && form.elements['Item Name'] && !form.elements['Item Name'].value) form.elements['Item Name'].focus();
       return;
     }
     const matches = this.findInventoryItemsBySkuExact(parsed.sku);
@@ -5352,14 +5455,20 @@ class Dashboard {
   _mintId(table, fallbackPrefix, fallbackWidth){
     const known = this._knownIds(table);
     // Commonest "prefix + trailing digits" shape among the IDs we know about.
-    const shapes = {};
+    const shapes = new Map();   // "prefix|width" is avoided: a prefix may contain any character
     known.forEach(id=>{
       const m = /^(.*?)(\d+)$/.exec(id);
-      if(m) shapes[m[1]+' '+m[2].length] = (shapes[m[1]+' '+m[2].length]||0) + 1;
+      if(!m) return;
+      const bucket = shapes.get(m[1]) || new Map();
+      bucket.set(m[2].length, (bucket.get(m[2].length)||0) + 1);
+      shapes.set(m[1], bucket);
     });
-    let prefix = fallbackPrefix, width = fallbackWidth;
-    const best = Object.entries(shapes).sort((a,b)=>b[1]-a[1])[0];
-    if(best){ const parts = best[0].split(' '); prefix = parts[0]; width = Number(parts[1]); }
+    let prefix = fallbackPrefix, width = fallbackWidth, bestCount = 0;
+    shapes.forEach((bucket, pfx)=>{
+      bucket.forEach((count, w)=>{
+        if(count > bestCount){ bestCount = count; prefix = pfx; width = w; }
+      });
+    });
     const re = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(\\d+)$');
     let max = 0;
     known.forEach(id=>{ const m = re.exec(id); if(m) max = Math.max(max, parseInt(m[1],10)); });
