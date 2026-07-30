@@ -1489,7 +1489,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v53</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v54</strong>
   </footer>
 </div>
 
@@ -3082,8 +3082,18 @@ class Dashboard {
     const keyOf = (r)=> this._recordKey(table, r) || ('raw:'+JSON.stringify(r));
     const map = new Map();
     (cloudRows||[]).forEach(r=>{ map.set(keyOf(r), r); });
-    (localRows||[]).forEach(r=>{ map.set(keyOf(r), r); });   // local overrides cloud on same key
-    for(const k of tomb) map.delete(k);
+    const localKeys = new Set();
+    (localRows||[]).forEach(r=>{ const k = keyOf(r); localKeys.add(k); map.set(k, r); });  // local wins on same key
+    // A tombstone must never remove a row that is on screen RIGHT NOW. A tombstone means "the
+    // row with this key was deleted here"; if a row with that key is present locally, that key
+    // is live again and the deletion is void. Without this guard a new row that happened to be
+    // handed a previously-deleted ID was stripped out on its way to the cloud — it looked saved,
+    // then vanished on the next refresh. IDs are no longer recycled, so this is a backstop, but
+    // it is the invariant that actually matters: if it's on screen, it reaches the cloud.
+    for(const k of tomb){
+      if(localKeys.has(k)) tomb.delete(k);   // key reclaimed — drop the stale tombstone entirely
+      else map.delete(k);
+    }
     return Array.from(map.values());
   }
 
@@ -5303,21 +5313,64 @@ class Dashboard {
   }
 
   todayStr(){ return new Date().toISOString().slice(0,10); }
-  nextItemId(){
-    let max = 0;
-    this.data.inventory.forEach(i=>{ const m=/^ITM(\d+)$/.exec(i['Item ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
-    return 'ITM'+String(max+1).padStart(3,'0');
+  // ---------------- ID minting ----------------
+  // Every ID this device knows of for `table`, INCLUDING ones whose row is already gone: live
+  // rows, references other tables still hold, and tombstones from deletions (our own, and any
+  // pulled down from the cloud).
+  //
+  // Tombstones are the reason this has to be exhaustive. Deleting a row records a tombstone
+  // keyed on its ID, and merge-on-save deletes any row matching one. Hand a brand-new row a
+  // recycled ID and it inherits that tombstone — the row shows up on screen, then gets stripped
+  // out on its way to the cloud and is gone on the next refresh. IDs are therefore never reused.
+  _knownIds(table){
+    const ids = new Set();
+    const add = v => { if(v!=null && v!=='') ids.add(String(v)); };
+    if(table==='inventory'){
+      this.data.inventory.forEach(i=>add(i['Item ID']));
+      this.data.sales.forEach(s=>add(s['Item ID']));
+      this.data.trades.forEach(t=>{
+        (Array.isArray(t['Items Traded Out']) ? t['Items Traded Out'] : []).forEach(add);
+        (Array.isArray(t['Items Received']) ? t['Items Received'] : []).forEach(add);
+      });
+    } else if(table==='sales'){
+      this.data.sales.forEach(s=>add(s['Sale ID']));
+    } else if(table==='trades'){
+      this.data.trades.forEach(t=>add(t['Trade ID']));
+      this.data.sales.forEach(s=>add(s['Linked Trade']));
+    }
+    // Tombstone keys are '<prefix>:<id>' — strip the prefix back off.
+    (this._tombstones[table] || new Set()).forEach(k=>{
+      const i = String(k).indexOf(':');
+      if(i >= 0) add(String(k).slice(i+1));
+    });
+    return ids;
   }
-  nextTradeId(){
+
+  // Mint the next free ID, continuing whatever numbering the existing rows already use — a
+  // dashboard numbered INV-001…INV-107 carries on at INV-108 rather than starting a parallel
+  // ITM001 series (which is what made collisions with old tombstones so easy to hit).
+  _mintId(table, fallbackPrefix, fallbackWidth){
+    const known = this._knownIds(table);
+    // Commonest "prefix + trailing digits" shape among the IDs we know about.
+    const shapes = {};
+    known.forEach(id=>{
+      const m = /^(.*?)(\d+)$/.exec(id);
+      if(m) shapes[m[1]+' '+m[2].length] = (shapes[m[1]+' '+m[2].length]||0) + 1;
+    });
+    let prefix = fallbackPrefix, width = fallbackWidth;
+    const best = Object.entries(shapes).sort((a,b)=>b[1]-a[1])[0];
+    if(best){ const parts = best[0].split(' '); prefix = parts[0]; width = Number(parts[1]); }
+    const re = new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(\\d+)$');
     let max = 0;
-    this.data.trades.forEach(t=>{ const m=/^TRD(\d+)$/.exec(t['Trade ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
-    return 'TRD'+String(max+1).padStart(3,'0');
+    known.forEach(id=>{ const m = re.exec(id); if(m) max = Math.max(max, parseInt(m[1],10)); });
+    let n = max + 1, id;
+    do { id = prefix + String(n).padStart(width,'0'); n++; } while(known.has(id));
+    return id;
   }
-  nextSaleId(){
-    let max = 0;
-    this.data.sales.forEach(s=>{ const m=/^SALE(\d+)$/.exec(s['Sale ID']||''); if(m) max=Math.max(max, parseInt(m[1],10)); });
-    return 'SALE'+String(max+1).padStart(3,'0');
-  }
+
+  nextItemId(){ return this._mintId('inventory','ITM',3); }
+  nextTradeId(){ return this._mintId('trades','TRD',3); }
+  nextSaleId(){ return this._mintId('sales','SALE',3); }
   firstShow(){ return this.data.cashflow[0] ? this.data.cashflow[0]['Show Name'] : ''; }
   firstItemId(){ return this.data.inventory[0] ? this.data.inventory[0]['Item ID'] : ''; }
   // First item that still has stock — the sensible default when creating a new sale.
