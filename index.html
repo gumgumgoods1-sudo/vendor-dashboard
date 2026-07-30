@@ -753,6 +753,22 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .scan-frame.scan-hit { border-color:#37d67a; box-shadow:0 0 0 999px rgba(0,0,0,.28), 0 0 18px 3px rgba(55,214,122,.7); transition:border-color .05s, box-shadow .05s; }
 .scan-frame.scan-warn { border-color:#f0b400; box-shadow:0 0 0 999px rgba(0,0,0,.28), 0 0 18px 3px rgba(240,180,0,.65); transition:border-color .05s, box-shadow .05s; }
 .scan-frame.scan-miss { border-color:#ff7a80; box-shadow:0 0 0 999px rgba(0,0,0,.28), 0 0 18px 3px rgba(255,122,128,.6); transition:border-color .05s, box-shadow .05s; }
+/* Mid-scan card picker. Sits above the camera view inside the scan overlay, so it never has to
+   compete on z-index with the app's other modals. */
+.scan-pick { position:absolute; inset:0; background:rgba(10,12,24,.97); z-index:5; display:flex;
+  flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:20px; }
+.scan-pick.hidden { display:none; }
+.scan-pick-head { color:#fff; font-size:15px; font-weight:700; text-align:center; max-width:460px; line-height:1.45; }
+.scan-pick-head small { display:block; margin-top:6px; font-size:12.5px; font-weight:500; color:#aab3cc; }
+.scan-pick-list { width:100%; max-width:460px; max-height:52vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+.scan-pick-opt { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+  text-align:left; background:rgba(255,255,255,.07); border:1.5px solid rgba(255,255,255,.28);
+  color:#fff; border-radius:12px; padding:12px 14px; font-family:inherit; font-size:14px; cursor:pointer; }
+.scan-pick-opt:hover { background:rgba(255,255,255,.15); border-color:rgba(255,255,255,.55); }
+.scan-pick-opt .nm { font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.scan-pick-opt .mt { flex-shrink:0; font-size:12px; color:#aab3cc; text-align:right; }
+.scan-pick-opt .mt b { display:block; color:#ffd98a; font-size:13.5px; }
+.scan-pick-opt.out .mt b { color:#ff7a80; }
 .scan-cancel { border:1.5px solid rgba(255,255,255,.5); background:transparent; color:#fff; border-radius:11px; padding:10px 22px; font-size:14px; font-family:inherit; cursor:pointer; }
 .scan-cancel:hover { background:rgba(255,255,255,.12); }
 .qa-sku-scan-row { display:flex; align-items:center; gap:6px; }
@@ -1070,6 +1086,13 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <p class="scan-status" id="scan-status">Point the camera at the item's QR label.</p>
     <button type="button" class="scan-cancel" id="scan-cancel">Cancel</button>
     <canvas id="scan-canvas" style="display:none"></canvas>
+    <!-- Shown mid-scan when a scanned SKU matches more than one card. Scanning pauses until a
+         card is picked (or skipped) so the basket never gets a guess. -->
+    <div class="scan-pick hidden" id="scan-pick">
+      <div class="scan-pick-head" id="scan-pick-head"></div>
+      <div class="scan-pick-list" id="scan-pick-list"></div>
+      <button type="button" class="scan-cancel" id="scan-pick-skip">Skip this card</button>
+    </div>
   </div>
 
   <!-- ===================== DASHBOARD TAB ===================== -->
@@ -1466,7 +1489,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v52</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v53</strong>
   </footer>
 </div>
 
@@ -1903,6 +1926,12 @@ class Dashboard {
     document.getElementById('show-mode-banner').addEventListener('click', (e)=>{ if(e.target.closest('[data-show-mode-end]')) this.endShowMode(); });
     // QR scanner cancel button.
     document.getElementById('scan-cancel').addEventListener('click', ()=>this.closeScanner());
+    // Mid-scan card picker: pick one, or skip it and carry on scanning.
+    document.getElementById('scan-pick-skip').addEventListener('click', ()=>this.skipScanPick());
+    document.getElementById('scan-pick-list').addEventListener('click', (e)=>{
+      const btn = e.target.closest('[data-scan-pick]');
+      if(btn) this.handleScanPick(btn);
+    });
     // SKU disambiguation picker close button + backdrop.
     document.getElementById('sku-pick-close').addEventListener('click', ()=>this.closeSkuPicker());
     document.getElementById('sku-pick-overlay').addEventListener('click', (e)=>{ if(e.target.id==='sku-pick-overlay') this.closeSkuPicker(); });
@@ -1970,6 +1999,9 @@ class Dashboard {
     });
     document.addEventListener('keydown', e=>{
       if(e.key!=='Escape') return;
+      // Esc with the mid-scan picker up skips just that card and keeps scanning — closing the
+      // whole scanner would throw away the basket-in-progress for one ambiguous label.
+      if(this._scanPicking){ this.skipScanPick(); return; }
       if(!document.getElementById('scan-overlay').classList.contains('hidden')){ this.closeScanner(); return; }
       if(!document.getElementById('sku-pick-overlay').classList.contains('hidden')){ this.closeSkuPicker(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
@@ -4836,7 +4868,9 @@ class Dashboard {
   }
 
   _scanTick(){
-    if(!this._scanRunning) return;
+    // Frozen while the mid-scan card picker is up, so the same label isn't decoded over and over
+    // behind it.
+    if(!this._scanRunning || this._scanPicking) return;
     const video = document.getElementById('scan-video');
     if(video.readyState >= 2 && video.videoWidth){
       const canvas = document.getElementById('scan-canvas');
@@ -4887,6 +4921,66 @@ class Dashboard {
     }
     return matches;
   }
+  // ---- mid-scan card picker (rapid checkout) ----
+  // Scanning is paused while this is open: _scanTick() bails on _scanPicking, and nothing
+  // re-arms it until the vendor picks a card or skips. Without that the camera would keep
+  // decoding the same label behind the picker and stack up choices.
+  _openScanPick(sku, matches){
+    this._scanPicking = true;
+    clearTimeout(this._scanRearm);
+    this._scanPickMatches = matches;
+    document.getElementById('scan-pick-head').innerHTML =
+      `${matches.length} cards use SKU ${this._esc(sku)}<small>Which one did you just scan?</small>`;
+    document.getElementById('scan-pick-list').innerHTML = matches.map((m,i)=>{
+      const stock = Number(m['Remaining Inventory (auto)'])||0;
+      const price = fmtMoney(Number(m['Retail Price'])||0);
+      return `<button type="button" class="scan-pick-opt${stock<=0?' out':''}" data-scan-pick="${i}">`
+        + `<span class="nm">${this._esc(m['Item Name']||m['Item ID'])}</span>`
+        + `<span class="mt"><b>${price}</b>${stock>0?`${stock} left`:'none left'}</span></button>`;
+    }).join('');
+    document.getElementById('scan-pick').classList.remove('hidden');
+  }
+
+  _closeScanPick(){
+    this._scanPicking = false;
+    this._scanPickMatches = null;
+    const el = document.getElementById('scan-pick');
+    if(el) el.classList.add('hidden');
+  }
+
+  // Resume the camera loop after the picker closes, unless the scanner itself was shut down.
+  _resumeScanAfterPick(){
+    this._closeScanPick();
+    clearTimeout(this._scanRearm);
+    if(this._scanRunning) this._scanRearm = setTimeout(()=>{ if(this._scanRunning) this._scanTick(); }, 700);
+  }
+
+  handleScanPick(el){
+    const matches = this._scanPickMatches || [];
+    const item = matches[Number(el.dataset.scanPick)];
+    if(!item){ this._resumeScanAfterPick(); return; }
+    this.addToCheckout(item);
+    const line = this.checkoutItems.find(l=>l.itemId===item['Item ID']);
+    const qty = line ? line.qty : 1;
+    const stock = Number(item['Remaining Inventory (auto)'])||0;
+    const name = item['Item Name']||item['SKU'];
+    this._resumeScanAfterPick();
+    if(qty > stock){
+      if(navigator.vibrate) navigator.vibrate([90,60,90,60,90]);
+      this._flashScanFrame('miss');
+      this._setScanStatus(`⛔ ${name} is now ×${qty} but only ${stock} in stock — remove one from the basket if this was a double scan.`);
+    } else {
+      if(navigator.vibrate) navigator.vibrate(60);
+      this._flashScanFrame('hit');
+      this._setScanStatus(`✓ Added ${name}`);
+    }
+  }
+
+  skipScanPick(){
+    this._resumeScanAfterPick();
+    this._setScanStatus('Skipped — nothing added. Scan the next card.');
+  }
+
   _rapidBasketLine(){
     const n = this.checkoutItems.reduce((a,l)=>a+l.qty,0);
     const total = this.checkoutItems.reduce((a,l)=>a+l.qty*(Number(l.price)||0),0);
@@ -4934,8 +5028,12 @@ class Dashboard {
         this._flashScanFrame('miss');
         this._setScanStatus(`✗ No item found for “${parsed.sku}”`);
       } else {
+        // Several cards share this SKU and the label's name didn't narrow it to one. Hold the
+        // scan and ask which card it is, rather than skipping it and making them add it by hand.
         this._flashScanFrame('warn');
-        this._setScanStatus(`⚠ SKU ${parsed.sku} matches ${matches.length} items — add that one from the basket manually`);
+        if(navigator.vibrate) navigator.vibrate([70,60,70]);
+        this._openScanPick(parsed.sku, matches);
+        return;
       }
       // Pause briefly so one card isn't counted many times, then resume scanning.
       clearTimeout(this._scanRearm);
@@ -4997,6 +5095,8 @@ class Dashboard {
   closeScanner(){
     this._scanRunning = false;
     clearTimeout(this._scanRearm);
+    // Drop any half-finished card choice, so reopening the scanner starts clean.
+    this._closeScanPick();
     if(this._scanRapid){
       this._scanRapid = false;
       const cancelBtn = document.getElementById('scan-cancel');
