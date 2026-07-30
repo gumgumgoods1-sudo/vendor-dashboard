@@ -309,6 +309,16 @@ body {
 .restock-opt .ro-meta { display:block; font-size:11.5px; color:var(--text-muted); margin-top:2px; }
 .restock-opt .ro-stock { flex-shrink:0; text-align:right; font-size:11px; color:var(--text-muted); }
 .restock-opt .ro-stock b { display:block; font-size:17px; color:var(--action-deep); }
+.sd-working .sd-work-row { display:flex; justify-content:space-between; gap:12px; align-items:baseline;
+  font-size:13px; padding:7px 2px; border-bottom:1px dashed var(--border-subtle); }
+.sd-working .sd-work-row span:last-child { font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.sd-working .sd-work-row .neg { color:var(--negative); }
+.sd-working .sd-work-row.total { border-bottom:none; border-top:2px solid var(--border-subtle);
+  margin-top:2px; padding-top:9px; font-size:14.5px; }
+.sd-work-note { font-size:12px; color:var(--text-secondary); line-height:1.55; margin:8px 0 4px; }
+.sd-work-note b.neg { color:var(--negative); }
+.sd-work-warn { font-size:12px; line-height:1.55; margin-top:10px; padding:9px 11px; border-radius:9px;
+  background:var(--warn-tint,#fdf4e3); color:#8a6100; border:1px solid #f0d9a8; }
 #net-by-show { display:flex; flex-direction:column; gap:6px; }
 .nbs-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; padding:9px 12px; cursor:pointer; font-family:inherit; }
 .nbs-row:hover { border-color:var(--action); }
@@ -1520,7 +1530,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v55</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v56</strong>
   </footer>
 </div>
 
@@ -2342,6 +2352,54 @@ class Dashboard {
       : `Will be saved as: <b>${this._esc(name)}</b>`;
   }
 
+  // Shows the arithmetic behind a show's headline profit, line by line.
+  //
+  // A show's profit is worked out one of two ways, and which one runs is decided purely by
+  // whether any of the four start/end boxes was filled in:
+  //   • cash count  — (Ending Cash + Ending Inventory) − (Starting Cash + Starting Inventory)
+  //   • estimate    — sales margin + trade profit − expenses
+  // The cash count wins whenever it's available, because it captures everything that happened,
+  // including cards bought at the show. But it's all-or-nothing: leave one of the four boxes at
+  // $0 and it still runs, silently treating that side as worthless.
+  _showProfitWorking(c, usingLedger, salesProfit, tradeProfit, totalExpenses, net){
+    const money = (n)=>fmtMoney(n);
+    const cls = (n)=> n<0 ? 'neg' : '';
+    const n = (v)=>Number(v)||0;
+    const row = (label, val, extra)=>
+      `<div class="sd-work-row${extra||''}"><span>${label}</span><span class="${cls(val)}">${money(val)}</span></div>`;
+    let inner = '';
+    if(usingLedger && c){
+      const sc=n(c['Starting Cash']), si=n(c['Starting Inventory Value']);
+      const ec=n(c['Ending Cash']), ei=n(c['Ending Inventory Value']);
+      const cashChg = ec-sc, invChg = ei-si;
+      const blanks = [['Starting Cash',sc],['Starting Inventory Value',si],['Ending Cash',ec],['Ending Inventory Value',ei]]
+        .filter(([,v])=>v===0).map(([k])=>k);
+      inner =
+          `<div class="sd-work-note">From your start/end count — everything that changed hands, including cards you bought here.</div>`
+        + row(`Cash: ${money(sc)} &rarr; ${money(ec)}`, cashChg)
+        + row(`Inventory: ${money(si)} &rarr; ${money(ei)}`, invChg)
+        + row('<b>Net profit</b>', net, ' total')
+        + `<div class="sd-work-note">Cash profit (money in the drawer) is the cash line: <b class="${cls(cashChg)}">${money(cashChg)}</b>.`
+        + (invChg!==0 ? ` The rest is stock ${invChg>0?'gained':'sold down'} — ${money(Math.abs(invChg))} of value ${invChg>0?'sitting in cards instead of cash':'converted from cards into cash'}.` : '')
+        + `</div>`
+        + (blanks.length
+            ? `<div class="sd-work-warn">&#9888; ${blanks.join(' and ')} ${blanks.length>1?'are':'is'} $0. `
+              + `The count still runs and treats ${blanks.length>1?'those':'that'} as genuinely zero, which throws the total out. `
+              + `Fill ${blanks.length>1?'them':'it'} in, or clear all four boxes to fall back to the estimate `
+              + `(<b>${money(salesProfit + tradeProfit - totalExpenses)}</b> from your sales and expenses).</div>`
+            : '');
+    } else {
+      inner =
+          `<div class="sd-work-note">No start/end count recorded, so this is estimated from the records themselves.</div>`
+        + row('Sales margin (sold price &minus; cost)', salesProfit)
+        + row('Trade profit', tradeProfit)
+        + row('Expenses', -totalExpenses)
+        + row('<b>Net profit</b>', net, ' total')
+        + `<div class="sd-work-note">This counts profit on what you <em>sold</em>. It can't see cards you bought at the show — enter the start/end cash and inventory figures for the full picture.</div>`;
+    }
+    return `<div class="sd-section sd-working"><h4>How this number is worked out</h4>${inner}</div>`;
+  }
+
   // ---------------- Per-show drill-down ----------------
   // Everything tied to one show, pulled from the same records the ledger totals from, so the
   // numbers here always reconcile with the Card Show ledger row.
@@ -2397,9 +2455,15 @@ class Dashboard {
       + stat('Sales Margin', money(salesProfit), cls(salesProfit))
       + stat('Expenses', money(totalExpenses))
       + stat('Trade Cash', money(tradeCash), cls(tradeCash))
+      + stat('Trade Profit', money(tradeProfit), cls(tradeProfit))
       + stat('Items Sold', String(itemsSold))
       + stat('ROI', roi==null?'&mdash;':`${roi>=0?'+':''}${roi.toFixed(1)}%`, roi==null?'':cls(roi))
       + `</div>`;
+
+    // Where the headline number actually came from. Two different formulas can produce it, and
+    // which one ran depends on whether ANY start/end figure was entered — the commonest source
+    // of a surprising show total, so it's spelled out rather than left to be inferred.
+    html += this._showProfitWorking(c, usingLedger, salesProfit, tradeProfit, totalExpenses, net);
 
     html += `<div class="sd-section"><h4>Top Sellers <span>${topSellers.length?'by revenue':''}</span></h4>`;
     html += topSellers.length
