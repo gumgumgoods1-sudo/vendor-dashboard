@@ -321,6 +321,20 @@ body {
 .sd-work-note b.neg { color:var(--negative); }
 .sd-work-warn { font-size:12px; line-height:1.55; margin-top:10px; padding:9px 11px; border-radius:9px;
   background:var(--warn-tint,#fdf4e3); color:#8a6100; border:1px solid #f0d9a8; }
+.section-toggle { display:flex; align-items:center; justify-content:space-between; gap:12px;
+  width:100%; background:transparent; border:none; padding:2px 0; cursor:pointer;
+  font-family:inherit; text-align:left; color:inherit; }
+.section-toggle-main { min-width:0; }
+.section-toggle-title { display:block; font-size:15px; font-weight:700; color:var(--text-primary); }
+.section-toggle-sub { display:block; font-size:12px; color:var(--text-muted); margin-top:3px; }
+.section-toggle-sub b { font-size:13.5px; }
+.section-toggle-sub b.pos { color:var(--positive); }
+.section-toggle-sub b.neg { color:var(--negative); }
+.section-toggle-chev { flex-shrink:0; font-size:13px; color:var(--text-muted);
+  transition:transform .18s ease; }
+.section-toggle.open .section-toggle-chev { transform:rotate(180deg); }
+.section-toggle:hover .section-toggle-title { color:var(--action-deep); }
+.section-panel.hidden { display:none; }
 #sales-profit-cards { display:flex; flex-direction:column; gap:5px; }
 .spc-row, .spc-total { display:flex; align-items:center; gap:11px; padding:9px 12px;
   border:1px solid var(--border-subtle); border-radius:10px; background:var(--bg-inset); }
@@ -1280,9 +1294,17 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </div>
 
     <div class="table-section">
-      <h3 style="margin:0 0 4px">&#127183; Profit by Card Sold</h3>
-      <div class="edit-note" style="margin:0 0 12px">Every card you sold for money, biggest profit first &mdash; sale price minus what the card cost you. <strong>Trades are excluded</strong>: cards swapped for other cards book their profit on the Trades tab. The total here is the <em>Profit from Sales</em> box above.</div>
-      <div id="sales-profit-cards"></div>
+      <button type="button" class="section-toggle" id="spc-toggle" aria-expanded="false" aria-controls="spc-panel">
+        <span class="section-toggle-main">
+          <span class="section-toggle-title">&#127183; Profit by Card Sold</span>
+          <span class="section-toggle-sub" id="spc-summary"></span>
+        </span>
+        <span class="section-toggle-chev" aria-hidden="true">&#9662;</span>
+      </button>
+      <div id="spc-panel" class="section-panel hidden">
+        <div class="edit-note" style="margin:10px 0 12px">Every card you sold for money, biggest profit first &mdash; sale price minus what the card cost you. <strong>Trades are excluded</strong>: cards swapped for other cards book their profit on the Trades tab. The total here is the <em>Profit from Sales</em> box above.</div>
+        <div id="sales-profit-cards"></div>
+      </div>
     </div>
 
     <div class="section-title">Per-Show Ledger</div>
@@ -1574,7 +1596,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v58</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v59</strong>
   </footer>
 </div>
 
@@ -2039,6 +2061,19 @@ class Dashboard {
       const open = bar.classList.toggle('tools-open');
       toolsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     }); }
+    // Profit by Card Sold — collapsed by default (it runs to a row per card), with the total
+    // kept on the header so collapsing never hides the number itself. Choice is remembered.
+    const spcToggle = document.getElementById('spc-toggle');
+    if(spcToggle){
+      let open = false;
+      try { open = localStorage.getItem('tcgvd-spc-open') === '1'; } catch(e){}
+      this._setSpcOpen(open);
+      spcToggle.addEventListener('click', ()=>{
+        const nowOpen = document.getElementById('spc-panel').classList.contains('hidden');
+        this._setSpcOpen(nowOpen);
+        try { localStorage.setItem('tcgvd-spc-open', nowOpen ? '1' : '0'); } catch(e){}
+      });
+    }
     document.getElementById('clear-all-filters-btn').addEventListener('click', ()=>this.handleClearAllFilters());
     document.getElementById('show-sold-toggle').addEventListener('change', (e)=>this.toggleShowSoldOut(e.target.checked));
     // Quick Add Sale — live cost/margin readout as item/qty/price change.
@@ -4525,6 +4560,15 @@ class Dashboard {
     document.getElementById('kpi-cs-expenses').textContent = fmtMoney(k.totalExpenses);
   }
 
+  _setSpcOpen(open){
+    const panel = document.getElementById('spc-panel');
+    const btn = document.getElementById('spc-toggle');
+    if(!panel || !btn) return;
+    panel.classList.toggle('hidden', !open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.classList.toggle('open', open);
+  }
+
   // Card-by-card breakdown of the "Profit from Sales" figure — the same Sales rows, grouped by
   // card so you can see which ones actually earned. Cash sales only: a card swapped for other
   // cards never appears on the Sales tab, so trades are excluded by construction, not filtered.
@@ -4551,11 +4595,20 @@ class Dashboard {
     const rows = [...byItem.values()].sort((a,b)=>b.profit-a.profit || a.name.localeCompare(b.name));
     if(!rows.length){
       el.innerHTML = `<div class="qt-empty">No cards sold yet — sales you record will be broken down here.</div>`;
+      const empty = document.getElementById('spc-summary');
+      if(empty) empty.textContent = 'No cards sold yet';
       return;
     }
     const total = rows.reduce((a,r)=>a+r.profit,0);
     const totalQty = rows.reduce((a,r)=>a+r.qty,0);
     const totalRev = rows.reduce((a,r)=>a+r.revenue,0);
+    // The headline lives on the collapsed header too, so the figure is readable without
+    // expanding a 30-row list to find it.
+    const summary = document.getElementById('spc-summary');
+    if(summary){
+      summary.innerHTML = `<b class="${total<0?'neg':'pos'}">${fmtMoney(total)}</b> from `
+        + `${totalQty} card${totalQty!==1?'s':''} sold &middot; ${rows.length} different card${rows.length!==1?'s':''}`;
+    }
     el.innerHTML =
         rows.map(r=>{
           const where = r.shows.size===1 ? [...r.shows][0] : r.shows.size>1 ? `${r.shows.size} shows` : '';
