@@ -1597,7 +1597,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v62</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v63</strong>
   </footer>
 </div>
 
@@ -2705,6 +2705,34 @@ class Dashboard {
       items: typedGaps.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff)).map(g=>({ table:'show', search:g.show,
         name:g.show, detail:`you typed ${money(g.typed)} · stock list says ${money(g.auto)}`,
         val:money(g.diff), neg:true })) });
+
+    // 8b) Stock rising between two shows with nothing recorded to explain it. A jump usually
+    // means a bulk buy — and when cash fell by a similar amount over the same gap, that is
+    // exactly what it was, so it is reported as an unrecorded purchase rather than as a
+    // mystery. Cash holding steady while stock climbs is the genuinely odd case.
+    const dated = this.data.cashflow
+      .filter(c=>!this._isBookkeepingBucket(c['Show Name']) && c['Date'])
+      .filter(c=>((Number(c['Starting Inventory Value'])||0)+(Number(c['Ending Inventory Value'])||0))!==0)
+      .sort((a,b)=>String(a['Date']).localeCompare(String(b['Date'])));
+    const jumps = [];
+    for(let i=0;i<dated.length-1;i++){
+      const end = Number(dated[i]['Ending Inventory Value'])||0;
+      const start = Number(dated[i+1]['Starting Inventory Value'])||0;
+      const diff = start-end;
+      if(Math.abs(diff) < 50) continue;
+      const cashOut = (Number(dated[i]['Ending Cash'])||0) - (Number(dated[i+1]['Starting Cash'])||0);
+      // Stock up and cash down by a comparable amount = a purchase between the two shows.
+      const looksLikePurchase = diff > 0 && cashOut > 0 && cashOut >= diff*0.5;
+      jumps.push({ from:dated[i]['Show Name'], to:dated[i+1]['Show Name'], end, start, diff, cashOut, looksLikePurchase });
+    }
+    if(jumps.length) findings.push({ sev:'warn', icon:'🔗', title:'Stock changed between shows',
+      desc:'One show’s ending inventory should carry into the next show’s starting value. Where it doesn’t, something moved that isn’t recorded. Cards bought between shows explain most of it — give those cards a Date Acquired and the value works itself out from then on.',
+      items: jumps.map(b=>({ table:'cashflow', search:b.to,
+        name:`${b.from} → ${b.to}`,
+        detail: b.looksLikePurchase
+          ? `stock +${money(b.diff)} while cash fell ${money(b.cashOut)} — looks like a bulk buy; date those cards`
+          : `ended ${money(b.end)} · next started ${money(b.start)}`,
+        val:money(b.diff), neg:b.diff<0 })) });
 
     // 9) In-stock cards with no cost. Every one of these reports 100% margin when it sells, so
     // they quietly inflate profit until a real cost is entered.
