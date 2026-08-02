@@ -1596,7 +1596,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v60</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v61</strong>
   </footer>
 </div>
 
@@ -1775,7 +1775,7 @@ class Dashboard {
     // CSV export intentionally ignores this and always exports every column.
     this.hiddenColumns = { inventory:new Set(), sales:new Set(), trades:new Set(), expenses:new Set(), cashflow:new Set() };
     this.data = {
-      inventory: raw.inventory.map(r=>({...r, _id:this.nextId++})),
+      inventory: this.normalizeInventory(raw.inventory),
       sales: this.normalizeSales(raw.sales),
       trades: this.normalizeTrades(raw.trades),
       expenses: raw.expenses.map(r=>({...r, uid:r.uid||this._uid(), _id:this.nextId++})),
@@ -1864,6 +1864,20 @@ class Dashboard {
     return (arr||[]).map(r=>{
       const row = {...r};
       if(!row['Sale ID']){ maxSaleId += 1; row['Sale ID'] = 'SALE'+String(maxSaleId).padStart(3,'0'); }
+      row._id = this.nextId++;
+      return row;
+    });
+  }
+
+  // Inventory gained a 'Date Acquired' so stock can be valued as it stood on a past show date.
+  // Rows from before the field existed leave it blank, which reads as "already on hand when the
+  // records begin" — the only safe assumption, since undating them would drop them out of every
+  // historical valuation.
+  normalizeInventory(arr){
+    return (arr||[]).map(r=>{
+      const row = {...r};
+      const d = String(row['Date Acquired']||'').slice(0,10);
+      row['Date Acquired'] = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
       row._id = this.nextId++;
       return row;
     });
@@ -2659,7 +2673,7 @@ class Dashboard {
       const show = c['Show Name'];
       if(this._isBookkeepingBucket(show)) return;
       const n = v=>Number(v)||0;
-      const hasCount = (n(c['Starting Cash'])+n(c['Starting Inventory Value'])+n(c['Ending Cash'])+n(c['Ending Inventory Value'])) !== 0;
+      const hasCount = (n(c['Starting Cash'])+n(c['Ending Cash'])) !== 0;
       if(!hasCount) return;
       const margin = this.data.sales.filter(s=>s['Show Name']===show).reduce((a,s)=>a+n(s['Profit (auto)']),0);
       const tp = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+n(t['Trade Profit (auto)']),0);
@@ -2674,23 +2688,22 @@ class Dashboard {
         name:g.show, detail:`count says ${money(g.shown)} · records say ${money(g.records)}`,
         val:money(g.diff), neg:true })) });
 
-    // 8) The inventory count chain breaking. One show's ending value should be the next show's
-    // starting value — a jump between them is stock that appeared or vanished with nothing
-    // recorded to explain it.
-    const dated = this.data.cashflow
-      .filter(c=>!this._isBookkeepingBucket(c['Show Name']) && c['Date'])
-      .filter(c=>((Number(c['Starting Inventory Value'])||0)+(Number(c['Ending Inventory Value'])||0))!==0)
-      .sort((a,b)=>String(a['Date']).localeCompare(String(b['Date'])));
-    const breaks = [];
-    for(let i=0;i<dated.length-1;i++){
-      const end = Number(dated[i]['Ending Inventory Value'])||0;
-      const start = Number(dated[i+1]['Starting Inventory Value'])||0;
-      if(Math.abs(start-end) >= 50) breaks.push({ from:dated[i]['Show Name'], to:dated[i+1]['Show Name'], end, start, diff:start-end });
-    }
-    if(breaks.length) findings.push({ sev:'warn', icon:'🔗', title:'Inventory jumps between shows',
-      desc:'One show’s ending inventory value should carry into the next show’s starting value. A gap means stock appeared or disappeared without a purchase or sale explaining it.',
-      items: breaks.map(b=>({ table:'cashflow', search:b.to, name:`${b.from} → ${b.to}`,
-        detail:`ended ${money(b.end)} · next started ${money(b.start)}`, val:money(b.diff), neg:b.diff<0 })) });
+    // 8) Where the old hand-typed inventory figure sat versus the value now read off the stock
+    // list. Kept as a check rather than dropped silently: a big gap usually means the typed
+    // number was a retail estimate, or that stock is missing from the list.
+    const typedGaps = [];
+    this.data.cashflow.forEach(c=>{
+      if(this._isBookkeepingBucket(c['Show Name'])) return;
+      const typed = c['Ending Inventory Value (typed)'];
+      if(typed==null || typed==='') return;
+      const t = Number(typed)||0, auto = Number(c['Ending Inventory Value'])||0;
+      if(Math.abs(t-auto) >= 100) typedGaps.push({ show:c['Show Name'], typed:t, auto, diff:t-auto });
+    });
+    if(typedGaps.length) findings.push({ sev:'warn', icon:'📐', title:'Old typed inventory value differs from the stock list',
+      desc:'Inventory value is now read off your actual cards, at cost. These shows had a hand-typed figure that was well away from it — usually because the estimate was at retail, or stock is missing from the list. Nothing was lost; the old numbers are kept on the row.',
+      items: typedGaps.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff)).map(g=>({ table:'show', search:g.show,
+        name:g.show, detail:`you typed ${money(g.typed)} · stock list says ${money(g.auto)}`,
+        val:money(g.diff), neg:true })) });
 
     // 9) In-stock cards with no cost. Every one of these reports 100% margin when it sells, so
     // they quietly inflate profit until a real cost is entered.
@@ -2860,6 +2873,8 @@ class Dashboard {
       row['Cost'] = round2((Number(l.market)||0)*rate);
       row['Retail Price'] = Number(l.market)||0;
       row['Qty Purchased'] = 1;
+      // Arrived today, via this trade — so historical stock valuations place it correctly.
+      row['Date Acquired'] = this.todayStr();
       row._id = this.nextId++;
       this.data.inventory.push(row);
       receivedIds.push(row['Item ID']);
@@ -3571,6 +3586,52 @@ class Dashboard {
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
   }
 
+  // The earliest date any card records having been acquired. Before this, the stock list can't
+  // show purchases, so a rebuilt inventory value would be missing everything bought back then.
+  // Returns '' when nothing is dated yet — meaning no historical value can be trusted.
+  _purchaseTrackingStart(){
+    let earliest = '';
+    this.data.inventory.forEach(i=>{
+      const d = String(i['Date Acquired']||'').slice(0,10);
+      if(/^\d{4}-\d{2}-\d{2}$/.test(d) && (!earliest || d < earliest)) earliest = d;
+    });
+    return earliest;
+  }
+
+  // What the stock was worth at the END of a given day, rebuilt from the records.
+  //
+  // Valued at COST, not retail, and that matters: with retail, buying a $60 card you price at
+  // $100 would move cash −$60 and inventory +$100, inventing $40 of profit out of a purchase.
+  // At cost the two cancel, and profit appears only when the card actually sells.
+  //
+  // A row held on `date` is what you bought (if acquired by then) plus anything taken in by a
+  // trade on or before that day, minus everything sold or traded away by then. Rows with no
+  // acquisition date count as already on hand — they predate the field.
+  _inventoryValueOn(date){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))) return 0;
+    const upto = s => { const v=String(s||'').slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(v) && v <= date; };
+    const soldBy = {}, outBy = {}, inBy = {};
+    this.data.sales.forEach(s=>{
+      if(!upto(s['Date'])) return;
+      soldBy[s['Item ID']] = (soldBy[s['Item ID']]||0) + (Number(s['Quantity Sold'])||0);
+    });
+    this.data.trades.forEach(t=>{
+      if(!upto(t['Date'])) return;
+      (Array.isArray(t['Items Traded Out'])?t['Items Traded Out']:[]).forEach(id=>{ outBy[id]=(outBy[id]||0)+1; });
+      (Array.isArray(t['Items Received'])?t['Items Received']:[]).forEach(id=>{ inBy[id]=(inBy[id]||0)+1; });
+    });
+    let total = 0;
+    this.data.inventory.forEach(i=>{
+      const id = i['Item ID'];
+      const acquired = String(i['Date Acquired']||'');
+      // Blank = on hand from the start. A dated row only counts once that date has passed.
+      const owned = (!acquired || acquired <= date) ? (Number(i['Qty Purchased'])||0) : 0;
+      const held = owned + (inBy[id]||0) - (soldBy[id]||0) - (outBy[id]||0);
+      if(held > 0) total += held * (Number(i['Cost'])||0);
+    });
+    return round2(total);
+  }
+
   // ---------------- live recalculation engine (mirrors the workbook's formulas) ----------------
   recalcAll(){
     const nameById = {}, catById = {}, costById = {}, retailById = {};
@@ -3672,8 +3733,38 @@ class Dashboard {
       const showTrades = this.data.trades.filter(t=>t['Show Name']===show);
       const totalTradeCash = showTrades.reduce((a,t)=>a+(Number(t['Cash Settled'])||0),0);
       const totalTradeProfit = showTrades.reduce((a,t)=>a+(Number(t['Trade Profit (auto)'])||0),0);
-      const startCash=Number(c['Starting Cash'])||0, startInv=Number(c['Starting Inventory Value'])||0;
-      const endCash=Number(c['Ending Cash'])||0, endInv=Number(c['Ending Inventory Value'])||0;
+      const startCash=Number(c['Starting Cash'])||0;
+      const endCash=Number(c['Ending Cash'])||0;
+      // Inventory value is read off the stock list as it stood on the day, at cost, instead of
+      // being typed in. Typing it was the biggest single source of wrong show profits: a
+      // remembered estimate that silently overrode everything the records said.
+      //
+      // But the reconstruction can only see a purchase if the card carries a Date Acquired.
+      // Cards from before that field existed read as always-owned, so at a show where you BOUGHT
+      // stock the cash would drop with no matching rise in inventory and the show would look
+      // like a loss it never made. So auto only takes over from the date purchases actually
+      // start being dated; older shows keep whatever was typed, and Data Health reports the gap.
+      const showDate = String(c['Date']||'').slice(0,10);
+      const dayBefore = showDate ? (dd=>{ const t=new Date(dd+'T00:00:00Z'); t.setUTCDate(t.getUTCDate()-1);
+        return t.toISOString().slice(0,10); })(showDate) : '';
+      const autoStart = this._inventoryValueOn(dayBefore);
+      const autoEnd   = this._inventoryValueOn(showDate);
+      c['Starting Inventory Value (auto)'] = autoStart;
+      c['Ending Inventory Value (auto)'] = autoEnd;
+      // Preserve anything hand-entered once, so nothing is lost when auto takes over.
+      if(c['Starting Inventory Value']!=null && c['Starting Inventory Value']!=='' && c['Starting Inventory Value (typed)']==null)
+        c['Starting Inventory Value (typed)'] = c['Starting Inventory Value'];
+      if(c['Ending Inventory Value']!=null && c['Ending Inventory Value']!=='' && c['Ending Inventory Value (typed)']==null)
+        c['Ending Inventory Value (typed)'] = c['Ending Inventory Value'];
+      const typedStart = Number(c['Starting Inventory Value (typed)']);
+      const typedEnd   = Number(c['Ending Inventory Value (typed)']);
+      const trackedFrom = this._purchaseTrackingStart();
+      const canTrust = !!showDate && !!trackedFrom && showDate >= trackedFrom;
+      const startInv = (canTrust || !Number.isFinite(typedStart)) ? autoStart : typedStart;
+      const endInv   = (canTrust || !Number.isFinite(typedEnd))   ? autoEnd   : typedEnd;
+      c['Starting Inventory Value'] = startInv;
+      c['Ending Inventory Value'] = endInv;
+      c['Inventory Value Source (auto)'] = canTrust ? 'auto' : (Number.isFinite(typedEnd) ? 'typed' : 'auto');
       const invChg = endInv-startInv;
       // Realized margin from cards actually sold at this show — the basis for the estimated
       // Actual Profit used when no cash count was recorded.
@@ -3692,7 +3783,10 @@ class Dashboard {
       // margin + trade profit − expenses. The flag lets the ledger / leaderboard mark the value
       // as estimated. Bookkeeping buckets keep the literal cash-count value (they're overhead,
       // not shows) and are never flagged.
-      const hasCount = (startCash+startInv+endCash+endInv) !== 0;
+      // Inventory is computed now, so the only thing left to record by hand is the cash in the
+      // box. Cash entered => full count (cash movement + the stock change the records show).
+      // No cash entered => fall back to the estimate from sales, trades and expenses.
+      const hasCount = (startCash+endCash) !== 0;
       const isBucket = this._isBookkeepingBucket(show);
       const trueActual = (endCash+endInv)-(startCash+startInv);
       const estActual = salesProfit + totalTradeProfit - totalExpenses;
@@ -5668,6 +5762,7 @@ class Dashboard {
       inventory: [
         {field:'Item ID', label:'ID', editable:false},
         {field:'Item Name', label:'Item', editable:true, type:'text', primary:true},
+        {field:'Date Acquired', label:'Acquired', editable:true, type:'date'},
         {field:'Category', label:'Category', editable:true, type:'select', options:invCategories},
         {field:'SKU', label:'SKU', editable:true, type:'text', required:true},
         {field:'Set / Expansion', label:'Set', editable:true, type:'text'},
@@ -5725,9 +5820,9 @@ class Dashboard {
         {field:'Show Name', label:'Show', editable:true, type:'text', primary:true},
         {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Starting Cash', label:'Start Cash', editable:true, type:'money', money:true},
-        {field:'Starting Inventory Value', label:'Start Inv Value', editable:true, type:'money', money:true},
+        {field:'Starting Inventory Value', label:'Start Inv (auto)', editable:false, money:true},
         {field:'Ending Cash', label:'End Cash', editable:true, type:'money', money:true},
-        {field:'Ending Inventory Value', label:'End Inv Value', editable:true, type:'money', money:true},
+        {field:'Ending Inventory Value', label:'End Inv (auto)', editable:false, money:true},
         {field:'Total Sales (auto)', label:'Sales', editable:false, money:true},
         {field:'Total Expenses (auto)', label:'Expenses', editable:false, money:true},
         {field:'Total Trade Cash (auto)', label:'Trade Cash', editable:false, money:true},
@@ -5841,7 +5936,7 @@ class Dashboard {
 
   blankRow(table){
     switch(table){
-      case 'inventory': return {'Item ID':this.nextItemId(), 'Item Name':'New Item', 'Category':(this.data.lists['Inventory Categories']||[])[0]||'', 'SKU':'', 'Set / Expansion':'', 'Condition / Grade':(this.data.lists['Card Condition / Grade']||[])[0]||'', 'Cost':0, 'Retail Price':0, 'Qty Purchased':0, 'Reorder Level':0};
+      case 'inventory': return {'Item ID':this.nextItemId(), 'Date Acquired':this.todayStr(), 'Item Name':'New Item', 'Category':(this.data.lists['Inventory Categories']||[])[0]||'', 'SKU':'', 'Set / Expansion':'', 'Condition / Grade':(this.data.lists['Card Condition / Grade']||[])[0]||'', 'Cost':0, 'Retail Price':0, 'Qty Purchased':0, 'Reorder Level':0};
       case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstInStockItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||''};
       case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Trade Rate %':Number(this.data.settings.tradeRatePct)||85, 'Cash Settled':0};
       case 'expenses': return {'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0, 'uid':this._uid()};
