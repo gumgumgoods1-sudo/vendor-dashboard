@@ -1602,7 +1602,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v64</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v65</strong>
   </footer>
 </div>
 
@@ -3802,20 +3802,26 @@ class Dashboard {
       const autoEnd   = this._inventoryValueOn(showDate);
       c['Starting Inventory Value (auto)'] = autoStart;
       c['Ending Inventory Value (auto)'] = autoEnd;
-      // Preserve anything hand-entered once, so nothing is lost when auto takes over.
-      if(c['Starting Inventory Value']!=null && c['Starting Inventory Value']!=='' && c['Starting Inventory Value (typed)']==null)
+      // Preserve anything hand-entered once, so nothing is lost when auto takes over — but a
+      // ZERO is not a hand-entered figure. Nobody records walking into a show with an empty
+      // case, and every new show row is created holding zeros, so capturing those as "typed"
+      // pinned each new show's stock at $0 and made its profit the bare cash change with the
+      // whole case ignored. Zero therefore always defers to the reconstruction, which returns
+      // 0 of its own accord when there genuinely is no stock.
+      const typed = v => { const n = Number(v); return Number.isFinite(n) && n !== 0 ? n : null; };
+      if(typed(c['Starting Inventory Value'])!=null && c['Starting Inventory Value (typed)']==null)
         c['Starting Inventory Value (typed)'] = c['Starting Inventory Value'];
-      if(c['Ending Inventory Value']!=null && c['Ending Inventory Value']!=='' && c['Ending Inventory Value (typed)']==null)
+      if(typed(c['Ending Inventory Value'])!=null && c['Ending Inventory Value (typed)']==null)
         c['Ending Inventory Value (typed)'] = c['Ending Inventory Value'];
-      const typedStart = Number(c['Starting Inventory Value (typed)']);
-      const typedEnd   = Number(c['Ending Inventory Value (typed)']);
+      const typedStart = typed(c['Starting Inventory Value (typed)']);
+      const typedEnd   = typed(c['Ending Inventory Value (typed)']);
       const trackedFrom = this._purchaseTrackingStart();
       const canTrust = !!showDate && !!trackedFrom && showDate >= trackedFrom;
-      const startInv = (canTrust || !Number.isFinite(typedStart)) ? autoStart : typedStart;
-      const endInv   = (canTrust || !Number.isFinite(typedEnd))   ? autoEnd   : typedEnd;
+      const startInv = (canTrust || typedStart==null) ? autoStart : typedStart;
+      const endInv   = (canTrust || typedEnd==null)   ? autoEnd   : typedEnd;
       c['Starting Inventory Value'] = startInv;
       c['Ending Inventory Value'] = endInv;
-      c['Inventory Value Source (auto)'] = canTrust ? 'auto' : (Number.isFinite(typedEnd) ? 'typed' : 'auto');
+      c['Inventory Value Source (auto)'] = canTrust ? 'auto' : (typedEnd!=null ? 'typed' : 'auto');
       const invChg = endInv-startInv;
       // Realized margin from cards actually sold at this show — the basis for the estimated
       // Actual Profit used when no cash count was recorded.
@@ -6017,7 +6023,9 @@ class Dashboard {
       case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstInStockItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||''};
       case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Trade Rate %':Number(this.data.settings.tradeRatePct)||85, 'Cash Settled':0};
       case 'expenses': return {'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0, 'uid':this._uid()};
-      case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Owner Cash In':0, 'Notes':''};
+      // Inventory values are read off the stock list, so a new show is deliberately created
+      // without them — seeding zeros here is what used to make it look like an empty case.
+      case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Ending Cash':0, 'Owner Cash In':0, 'Notes':''};
     }
   }
 
