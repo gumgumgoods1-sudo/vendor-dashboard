@@ -1596,7 +1596,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v59</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v60</strong>
   </footer>
 </div>
 
@@ -2650,6 +2650,81 @@ class Dashboard {
       items: noRetail.map(i=>({ table:'inventory', search:i['Item ID']||i['Item Name']||'',
         name:i['Item Name']||i['Item ID']||'—', detail:`cost ${money(Number(i['Cost'])||0)} · no retail`, val:'—' })) });
 
+    // 7) A show's headline profit disagreeing with its own records. Two formulas can produce it
+    // — the start/end count, or sales margin + trade profit − expenses — and the count wins
+    // whenever it exists. When they diverge, the count is usually a remembered guess while the
+    // records are what you actually rang up, and the tab shows the guess.
+    const gaps = [];
+    this.data.cashflow.forEach(c=>{
+      const show = c['Show Name'];
+      if(this._isBookkeepingBucket(show)) return;
+      const n = v=>Number(v)||0;
+      const hasCount = (n(c['Starting Cash'])+n(c['Starting Inventory Value'])+n(c['Ending Cash'])+n(c['Ending Inventory Value'])) !== 0;
+      if(!hasCount) return;
+      const margin = this.data.sales.filter(s=>s['Show Name']===show).reduce((a,s)=>a+n(s['Profit (auto)']),0);
+      const tp = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+n(t['Trade Profit (auto)']),0);
+      const ex = this.data.expenses.filter(e=>e['Show Name']===show).reduce((a,e)=>a+n(e['Amount']),0);
+      const records = margin + tp - ex;
+      const shown = n(c['Actual Profit (auto)']);
+      if(Math.abs(shown-records) >= 50) gaps.push({ show, shown, records, diff:shown-records });
+    });
+    if(gaps.length) findings.push({ sev:'error', icon:'⚖️', title:'Show profit doesn’t match its records',
+      desc:'The cash count and your sales/expenses disagree. The tab shows the count. Re-check the four start/end figures for these shows — usually the ending inventory value is an estimate rather than a real count.',
+      items: gaps.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff)).map(g=>({ table:'show', search:g.show,
+        name:g.show, detail:`count says ${money(g.shown)} · records say ${money(g.records)}`,
+        val:money(g.diff), neg:true })) });
+
+    // 8) The inventory count chain breaking. One show's ending value should be the next show's
+    // starting value — a jump between them is stock that appeared or vanished with nothing
+    // recorded to explain it.
+    const dated = this.data.cashflow
+      .filter(c=>!this._isBookkeepingBucket(c['Show Name']) && c['Date'])
+      .filter(c=>((Number(c['Starting Inventory Value'])||0)+(Number(c['Ending Inventory Value'])||0))!==0)
+      .sort((a,b)=>String(a['Date']).localeCompare(String(b['Date'])));
+    const breaks = [];
+    for(let i=0;i<dated.length-1;i++){
+      const end = Number(dated[i]['Ending Inventory Value'])||0;
+      const start = Number(dated[i+1]['Starting Inventory Value'])||0;
+      if(Math.abs(start-end) >= 50) breaks.push({ from:dated[i]['Show Name'], to:dated[i+1]['Show Name'], end, start, diff:start-end });
+    }
+    if(breaks.length) findings.push({ sev:'warn', icon:'🔗', title:'Inventory jumps between shows',
+      desc:'One show’s ending inventory value should carry into the next show’s starting value. A gap means stock appeared or disappeared without a purchase or sale explaining it.',
+      items: breaks.map(b=>({ table:'cashflow', search:b.to, name:`${b.from} → ${b.to}`,
+        detail:`ended ${money(b.end)} · next started ${money(b.start)}`, val:money(b.diff), neg:b.diff<0 })) });
+
+    // 9) In-stock cards with no cost. Every one of these reports 100% margin when it sells, so
+    // they quietly inflate profit until a real cost is entered.
+    const noCost = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0)>0 && (Number(i['Cost'])||0)===0);
+    if(noCost.length) findings.push({ sev:'warn', icon:'💸', title:'In stock with no cost recorded',
+      desc:'These will report 100% margin the moment they sell, overstating profit. Enter what you paid — a rough figure beats $0.',
+      items: noCost.map(i=>({ table:'inventory', search:i['Item ID']||i['Item Name']||'',
+        name:i['Item Name']||i['Item ID']||'—',
+        detail:`${Number(i['Remaining Inventory (auto)'])||0} in stock · retail ${money(Number(i['Retail Price'])||0)}`,
+        val:'$0 cost', neg:true })) });
+
+    // 10) Cards priced below what they cost — a guaranteed loss at the till.
+    const underwater = this.data.inventory.filter(i=>{
+      const c=Number(i['Cost'])||0, r=Number(i['Retail Price'])||0;
+      return (Number(i['Remaining Inventory (auto)'])||0)>0 && r>0 && c>r;
+    });
+    if(underwater.length) findings.push({ sev:'error', icon:'📉', title:'Priced below cost',
+      desc:'The retail price is under what the card cost you, so every sale books a loss. Re-price them, or correct the cost if it was mistyped.',
+      items: underwater.map(i=>({ table:'inventory', search:i['Item ID']||i['Item Name']||'',
+        name:i['Item Name']||i['Item ID']||'—',
+        detail:`cost ${money(Number(i['Cost'])||0)} · priced ${money(Number(i['Retail Price'])||0)}`,
+        val:money((Number(i['Retail Price'])||0)-(Number(i['Cost'])||0)), neg:true })) });
+
+    // 11) Trades whose two sides don't reconcile — a mistyped price or cash figure rather than a
+    // real result. Selling and buying balance differently, so the explanation differs too.
+    const offTrades = this.data.trades.filter(t=>Math.abs(Number(t['Balance (auto)'])||0) >= 1);
+    if(offTrades.length) findings.push({ sev:'warn', icon:'⚖️', title:'Trades that don’t balance',
+      desc:'What changed hands doesn’t add up. On a trade where you gave cards, their retail should equal the credit you gave plus any cash. On a pure purchase, the value you took in should equal the cash you paid. Most often the "You Gave" side is missing.',
+      items: offTrades.map(t=>({ table:'trades', search:t['Trade ID']||'',
+        name:`${t['Trade ID']} · ${t['Trade Kind (auto)']||'Trade'}`,
+        detail:`${(Array.isArray(t['Items Traded Out'])?t['Items Traded Out'].length:0)} out / ${(Array.isArray(t['Items Received'])?t['Items Received'].length:0)} in`
+          + ` · credit ${money(Number(t['Credit Given (auto)'])||0)} · cash ${money(Number(t['Cash Settled'])||0)}`,
+        val:money(Number(t['Balance (auto)'])||0), neg:true })) });
+
     return findings;
   }
   // Groups records by a signature; returns [{count, sample}] for signatures seen more than once.
@@ -3530,15 +3605,27 @@ class Dashboard {
       const marketIn = round2(inIds.reduce((a,id)=>a+(retailById[id]||0),0));
       const creditGiven = round2(marketIn * rate/100);
       const cashSettled = Number(t['Cash Settled'])||0;
-      const paidToYou = round2(creditGiven + cashSettled);
+      // A trade with nothing on the "You Gave" side is an ACQUISITION, not a sale: cards came
+      // in and you paid for them. Nothing left your inventory, so nothing was sold and no
+      // profit is realised — that lands later, when those cards sell. Treating the credit you
+      // handed over as money paid TO you booked the entire purchase as income, which turned a
+      // $1,663 buy into $1,663 of profit.
+      const gaveCards = outIds.length > 0;
       const costOut = round2(outIds.reduce((a,id)=>a+(costById[id]||0),0));
+      const paidToYou = gaveCards ? round2(creditGiven + cashSettled) : 0;
+      t['Trade Kind (auto)'] = gaveCards ? 'Sale' : 'Purchase';
       t['Market Value Out (auto)'] = marketOut;
       t['Market Value In (auto)'] = marketIn;
       t['Credit Given (auto)'] = creditGiven;
       t['Paid To You (auto)'] = paidToYou;
       t['Cost Basis Out (auto)'] = costOut;
-      t['Balance (auto)'] = round2(marketOut - creditGiven - cashSettled);
-      t['Trade Profit (auto)'] = round2(paidToYou - costOut);
+      // Balance means different things on each side of that split. Selling: what you gave at
+      // retail should equal the credit plus the cash. Buying: the value you took in should
+      // equal the cash you paid out (cash is negative when you pay).
+      t['Balance (auto)'] = gaveCards
+        ? round2(marketOut - creditGiven - cashSettled)
+        : round2(creditGiven + cashSettled);
+      t['Trade Profit (auto)'] = gaveCards ? round2(paidToYou - costOut) : 0;
     });
     this.data.sales.forEach(s=>{
       s['Item Name (auto)'] = nameById[s['Item ID']] || '';
@@ -5624,6 +5711,7 @@ class Dashboard {
         {field:'Cash Settled', label:'Cash +/-', editable:true, type:'money', money:true},
         {field:'Paid To You (auto)', label:'Paid To You', editable:false, money:true},
         {field:'Balance (auto)', label:'Balance', editable:false, money:true},
+        {field:'Trade Kind (auto)', label:'Kind', editable:false},
         {field:'Trade Profit (auto)', label:'Profit', editable:false, money:true, primary:true},
       ],
       expenses: [
