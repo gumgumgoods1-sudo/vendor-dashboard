@@ -1272,6 +1272,11 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <div class="kpi-label">Expenses</div>
         <div class="kpi-value" id="kpi-cs-expenses">$0</div>
       </div>
+      <div class="kpi-card" id="kpi-cs-owner-card" hidden style="--dot:var(--muted)" title="Money you've put in from your own pocket, less anything you've taken back out. This is capital, not profit — it's backed out of every show's Net Profit so topping up the float never looks like earnings.">
+        <div class="kpi-label">Your Money In</div>
+        <div class="kpi-value" id="kpi-cs-owner">$0</div>
+        <div class="kpi-sub" id="kpi-cs-owner-sub"></div>
+      </div>
     </div>
     <section class="chart-row">
       <div class="chart-container tall" style="grid-column:1/-1;">
@@ -1597,7 +1602,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v63</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v64</strong>
   </footer>
 </div>
 
@@ -2466,13 +2471,20 @@ class Dashboard {
       const sc=n(c['Starting Cash']), si=n(c['Starting Inventory Value']);
       const ec=n(c['Ending Cash']), ei=n(c['Ending Inventory Value']);
       const cashChg = ec-sc, invChg = ei-si;
+      const ownerIn = n(c['Owner Cash In']);
       const blanks = [['Starting Cash',sc],['Starting Inventory Value',si],['Ending Cash',ec],['Ending Inventory Value',ei]]
         .filter(([,v])=>v===0).map(([k])=>k);
       inner =
           `<div class="sd-work-note">From your start/end count — everything that changed hands, including cards you bought here.</div>`
         + row(`Cash: ${money(sc)} &rarr; ${money(ec)}`, cashChg)
         + row(`Inventory: ${money(si)} &rarr; ${money(ei)}`, invChg)
+        + (ownerIn!==0
+            ? row(ownerIn>0 ? 'Less your own money put in' : 'Add back money you took out', -ownerIn)
+            : '')
         + row('<b>Net profit</b>', net, ' total')
+        + (ownerIn>0
+            ? `<div class="sd-work-note">${money(ownerIn)} of the cash here came from your own pocket, not from trading, so it is taken back out before profit.</div>`
+            : '')
         + `<div class="sd-work-note">Cash profit (money in the drawer) is the cash line: <b class="${cls(cashChg)}">${money(cashChg)}</b>.`
         + (invChg!==0 ? ` The rest is stock ${invChg>0?'gained':'sold down'} — ${money(Math.abs(invChg))} of value ${invChg>0?'sitting in cards instead of cash':'converted from cards into cash'}.` : '')
         + `</div>`
@@ -2720,7 +2732,11 @@ class Dashboard {
       const start = Number(dated[i+1]['Starting Inventory Value'])||0;
       const diff = start-end;
       if(Math.abs(diff) < 50) continue;
-      const cashOut = (Number(dated[i]['Ending Cash'])||0) - (Number(dated[i+1]['Starting Cash'])||0);
+      // Cash the business actually spent. Money put in from outside arrives in the drawer between
+      // the two shows, so without adding it back a lot part-funded from your own pocket reads as
+      // costing less than it did — and a lot funded entirely that way reads as costing nothing.
+      const ownerIn = Number(dated[i+1]['Owner Cash In'])||0;
+      const cashOut = (Number(dated[i]['Ending Cash'])||0) - (Number(dated[i+1]['Starting Cash'])||0) + ownerIn;
       // Stock up and cash down by a comparable amount = a purchase between the two shows.
       const looksLikePurchase = diff > 0 && cashOut > 0 && cashOut >= diff*0.5;
       jumps.push({ from:dated[i]['Show Name'], to:dated[i+1]['Show Name'], end, start, diff, cashOut, looksLikePurchase });
@@ -3823,7 +3839,13 @@ class Dashboard {
       // No cash entered => fall back to the estimate from sales, trades and expenses.
       const hasCount = (startCash+endCash) !== 0;
       const isBucket = this._isBookkeepingBucket(show);
-      const trueActual = (endCash+endInv)-(startCash+startInv);
+      // Money you put in from your own pocket (or took out for yourself) is NOT trading profit.
+      // A cash count can't tell the two apart: top the float up by $1,775 to afford a lot and the
+      // drawer ends $1,775 fatter, which the count reads as $1,775 earned. Backing it out here is
+      // what keeps "profit" meaning money the business made. Positive = you put money in,
+      // negative = you took money out, so the sign works for draws without a second field.
+      const ownerIn = Number(c['Owner Cash In'])||0;
+      const trueActual = (endCash+endInv)-(startCash+startInv) - ownerIn;
       const estActual = salesProfit + totalTradeProfit - totalExpenses;
       c['Actual Profit (auto)'] = (hasCount || isBucket) ? trueActual : estActual;
       c['Actual Profit Estimated (auto)'] = !hasCount && !isBucket;
@@ -3874,6 +3896,10 @@ class Dashboard {
       netTradeCash: netTradeCash,
       tradeProfit: tradeProfit,
       netCashflow: sum(this.data.cashflow,'Ending Cash') - sum(this.data.cashflow,'Starting Cash'),
+      // Your own money in the business: everything you've topped the float up with, less anything
+      // you've drawn back out. Not profit and not a loss — it's what you're owed before a single
+      // dollar of what's left counts as earnings.
+      ownerCapital: sum(this.data.cashflow,'Owner Cash In'),
       // Cash on Hand — the cash you're physically holding right now (e.g. what you walk into a
       // show with). A manually maintained figure you set in Settings; not auto-computed.
       cashOnHand: Number(this.data.settings.baseCashOnHand)||0,
@@ -4774,6 +4800,19 @@ class Dashboard {
     tp.textContent = fmtMoney(k.tradeProfit);
     tp.classList.toggle('neg', (k.tradeProfit||0) < 0);
     document.getElementById('kpi-cs-expenses').textContent = fmtMoney(k.totalExpenses);
+    // Only worth a tile once there's something to show — most vendors never put outside money in.
+    const oc = k.ownerCapital||0;
+    const ocCard = document.getElementById('kpi-cs-owner-card');
+    if(ocCard){
+      ocCard.hidden = oc===0;
+      const val = document.getElementById('kpi-cs-owner');
+      val.textContent = fmtMoney(oc);
+      val.classList.toggle('neg', oc<0);
+      const ocSub = document.getElementById('kpi-cs-owner-sub');
+      if(ocSub) ocSub.textContent = oc>0
+        ? 'Capital, not profit — earn this back first'
+        : 'Net of what you’ve taken back out';
+    }
   }
 
   _setSpcOpen(open){
@@ -5860,6 +5899,7 @@ class Dashboard {
         {field:'Starting Inventory Value', label:'Start Inv (auto)', editable:false, money:true},
         {field:'Ending Cash', label:'End Cash', editable:true, type:'money', money:true},
         {field:'Ending Inventory Value', label:'End Inv (auto)', editable:false, money:true},
+        {field:'Owner Cash In', label:'Owner $ In/Out', editable:true, type:'money', money:true},
         {field:'Total Sales (auto)', label:'Sales', editable:false, money:true},
         {field:'Total Expenses (auto)', label:'Expenses', editable:false, money:true},
         {field:'Total Trade Cash (auto)', label:'Trade Cash', editable:false, money:true},
@@ -5977,7 +6017,7 @@ class Dashboard {
       case 'sales': return {'Sale ID':this.nextSaleId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Item ID':this.firstInStockItemId(), 'Quantity Sold':1, 'Sale Price':0, 'Payment Method':(this.data.lists['Payment Methods']||[])[0]||''};
       case 'trades': return {'Trade ID':this.nextTradeId(), 'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Items Traded Out':[this.firstItemId()], 'Items Received':[], 'Trade Rate %':Number(this.data.settings.tradeRatePct)||85, 'Cash Settled':0};
       case 'expenses': return {'Date':this.todayStr(), 'Show Name':this._defaultShow(), 'Category':(this.data.lists['Expense Categories']||[])[0]||'', 'Description':'', 'Amount':0, 'uid':this._uid()};
-      case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Notes':''};
+      case 'cashflow': return {'Show Name':'New Show', 'Date':this.todayStr(), 'Starting Cash':0, 'Starting Inventory Value':0, 'Ending Cash':0, 'Ending Inventory Value':0, 'Owner Cash In':0, 'Notes':''};
     }
   }
 
