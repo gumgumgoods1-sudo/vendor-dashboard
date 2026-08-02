@@ -503,7 +503,8 @@ body {
 .data-table tbody tr:hover { background:var(--bg-inset); }
 .badge { display:inline-block; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:700; }
 .badge.ok { background:var(--positive-tint); color:var(--positive); }
-.badge.low { background:var(--negative-tint); color:var(--negative); }
+/* Low stock is a heads-up (amber); sold out is the hard stop (red, .badge.neg). */
+.badge.low { background:#fdf0d2; color:#93690a; }
 .badge.pos { background:var(--positive-tint); color:var(--positive); }
 .badge.neg { background:var(--negative-tint); color:var(--negative); }
 .rank { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:8px; background:#eef0f8; color:#3d477d; font-weight:800; font-size:11px; margin-right:8px; }
@@ -1596,7 +1597,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v61</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v62</strong>
   </footer>
 </div>
 
@@ -3039,7 +3040,7 @@ class Dashboard {
     const current = (this.tableFilters[table] && this.tableFilters[table][col.field]) || '';
     const label = this._esc(col.label);
     if(col.badge){
-      const labels = ['In Stock','Sold'];
+      const labels = ['In Stock','Low stock','Sold out'];
       return `<th data-label="${label}"><select class="filter-input" data-filter data-table="${table}" data-field="${this._esc(col.field)}"><option value="">All ${label}</option>${labels.map(o=>`<option value="${this._esc(o)}" ${o===current?'selected':''}>${this._esc(o)}</option>`).join('')}</select></th>`;
     }
     if(col.type==='select' || col.type==='multiselect'){
@@ -3064,7 +3065,8 @@ class Dashboard {
       const col = colByField[field];
       const cellVal = row[field];
       if(col && col.badge){
-        const label = cellVal==='LOW STOCK' ? 'Sold' : 'In Stock';
+        const label = cellVal==='SOLD OUT' ? 'Sold out'
+          : cellVal==='LOW STOCK' ? 'Low stock' : 'In Stock';
         return label === val;
       }
       if(col && col.type==='multiselect'){
@@ -3721,7 +3723,12 @@ class Dashboard {
       // Per-card potential profit = Retail − Cost (what you'd make selling this card at retail).
       // $0 once sold out, matching the Total Cost / Value basis above.
       i['Card Potential Profit (auto)'] = inStock ? ((Number(i['Retail Price'])||0) - (Number(i['Cost'])||0)) : 0;
-      i['Stock Status (auto)'] = remaining <= (Number(i['Reorder Level'])||0) ? 'LOW STOCK' : 'OK';
+      // Three distinct states. These used to be two, with 'LOW STOCK' covering both "running
+      // low" and "none left" — and the badge printed that as "Sold". A card with one copy on
+      // hand and a reorder level of 1 therefore read as Sold while sitting in the box.
+      const reorder = Number(i['Reorder Level'])||0;
+      i['Stock Status (auto)'] = remaining <= 0 ? 'SOLD OUT'
+        : (remaining <= reorder ? 'LOW STOCK' : 'OK');
     });
 
     this.data.cashflow.forEach(c=>{
@@ -5652,7 +5659,9 @@ class Dashboard {
     if(!isEditable){
       if(col.badge){
         const status = row[col.field];
-        const badge = status==='LOW STOCK' ? '<span class="badge low">Sold</span>' : '<span class="badge ok">In Stock</span>';
+        const badge = status==='SOLD OUT' ? '<span class="badge neg">Sold out</span>'
+          : status==='LOW STOCK' ? '<span class="badge low">Low stock</span>'
+          : '<span class="badge ok">In Stock</span>';
         return `<td class="${cardCls}" data-label="${label}">${badge}</td>`;
       }
       // Quick stock adjuster: −/+ buttons bump the on-hand count by changing Qty Purchased, so
