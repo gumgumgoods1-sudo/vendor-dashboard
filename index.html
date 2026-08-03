@@ -190,6 +190,19 @@ body {
 .more-row.active .more-sub { color:rgba(255,255,255,0.72); }
 .more-name { font-size:16px; font-weight:800; color:var(--text-primary); }
 .more-sub { font-size:12px; color:var(--text-muted); }
+.ds-field { display:flex; flex-direction:column; gap:5px; margin-bottom:12px; }
+.ds-field span { font-size:12px; font-weight:700; color:var(--text-secondary); }
+.ds-field input { padding:12px; font-size:15px; border:1px solid var(--border-subtle); border-radius:10px; background:var(--bg-inset); color:var(--text-primary); font-family:inherit; }
+.ds-scope { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+.ds-opt { display:flex; align-items:flex-start; gap:10px; padding:12px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:12px; cursor:pointer; }
+.ds-opt input { margin-top:2px; flex:0 0 auto; }
+.ds-opt.sel { border-color:var(--action); }
+.ds-opt-main { min-width:0; }
+.ds-opt-name { display:block; font-size:13.5px; font-weight:700; color:var(--text-primary); }
+.ds-opt-sub { display:block; font-size:11.5px; color:var(--text-muted); margin-top:2px; line-height:1.45; }
+.ds-check { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-secondary); margin-bottom:12px; }
+.ds-preview { font-size:12px; color:var(--text-secondary); background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; padding:10px 12px; margin-bottom:12px; line-height:1.5; }
+.ds-preview b { color:var(--text-primary); }
 .qa-modal { background:var(--bg-card); border-radius:22px 22px 0 0; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; padding:20px 22px 26px; box-shadow:var(--shadow-md); }
 @media (min-width:640px){
   .qa-overlay { align-items:center; }
@@ -945,6 +958,20 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <button class="tab-btn" id="nav-more-btn" onclick="dash.openMoreSheet()">More</button>
   </nav>
 
+  <!-- Bulk Date Acquired. Cards bought as a lot all share one date, so stamping them one at a
+       time is the reason none of them have one. -->
+  <div class="qa-overlay hidden" id="dateset-overlay">
+    <div class="more-sheet">
+      <div class="more-head"><h2>Set Purchase Date</h2><button type="button" class="qa-close" id="dateset-close" title="Close">&times;</button></div>
+      <div class="edit-note" style="margin:0 0 12px" id="dateset-why"></div>
+      <label class="ds-field"><span>Date acquired</span><input type="date" id="dateset-date"></label>
+      <div class="ds-scope" id="dateset-scope"></div>
+      <label class="ds-check"><input type="checkbox" id="dateset-overwrite"> Also change cards that already have a date</label>
+      <div class="ds-preview" id="dateset-preview"></div>
+      <button type="button" class="btn-sm btn-add" id="dateset-apply" style="width:100%;margin-top:4px">Set date</button>
+    </div>
+  </div>
+
   <!-- The tabs that aren't in the bar, in the same order they appear on desktop. Full-width rows
        so they are far easier to hit than a slice of a nav bar. -->
   <div class="qa-overlay hidden" id="more-overlay">
@@ -1484,6 +1511,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
             <button class="btn-sm" data-columns-toggle data-table="inventory">&#9776; Columns</button>
             <div class="col-toggle-panel hidden" id="colpanel-inventory"></div>
           </div>
+          <button class="btn-sm" id="inv-date-btn" title="Stamp a purchase date onto many cards at once — needed before the app can value your stock at any past date.">&#128197; Set Purchase Date</button>
           <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
           <button class="btn-sm btn-add" data-addrow data-table="inventory">+ Add Item</button>
           <div data-sku-lookup-slot="inventory"></div>
@@ -1679,7 +1707,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v78</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v79</strong>
   </footer>
 </div>
 
@@ -2065,6 +2093,8 @@ class Dashboard {
       if(e.target.matches('[data-multi-add]')){ this.handleMultiAdd(e.target); return; }
       if(e.target.matches('[data-list-rename]')){ this.handleListRename(e.target); return; }
       if(e.target.matches('select.filter-input[data-filter]')){ this.handleFilterChange(e.target); return; }
+      if(e.target.matches('input[name="ds-scope"]')){ this._dsScope = e.target.value; this._renderDateSet(); return; }
+      if(e.target.id === 'dateset-overwrite' || e.target.id === 'dateset-date'){ this._renderDateSet(); return; }
       if(e.target.matches('[data-pref]')){ this.handlePrefChange(e.target); return; }
       if(e.target.matches('[data-pref-num]')){ this.handlePrefNumChange(e.target); return; }
       if(e.target.matches('[data-pref-cash]')){ this.handlePrefCashChange(e.target); return; }
@@ -2083,6 +2113,10 @@ class Dashboard {
       if(mt){ this.showTab(mt.dataset.moreTab); return; }
       if(e.target.closest('#more-close')){ this.closeMoreSheet(); return; }
       if(e.target.id === 'more-overlay'){ this.closeMoreSheet(); return; }
+      if(e.target.closest('#inv-date-btn')){ this.openDateSet(); return; }
+      if(e.target.closest('#dateset-close')){ this.closeDateSet(); return; }
+      if(e.target.id === 'dateset-overlay'){ this.closeDateSet(); return; }
+      if(e.target.closest('#dateset-apply')){ this.applyDateSet(); return; }
       const mr = e.target.closest('[data-merge-run]');
       if(mr){ this.mergeShowRun(mr.dataset.mergeRun); return; }
       const sd = e.target.closest('[data-show-detail]');
@@ -2290,6 +2324,7 @@ class Dashboard {
       if(!document.getElementById('scan-overlay').classList.contains('hidden')){ this.closeScanner(); return; }
       if(!document.getElementById('sku-pick-overlay').classList.contains('hidden')){ this.closeSkuPicker(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
+      if(!document.getElementById('dateset-overlay').classList.contains('hidden')){ this.closeDateSet(); return; }
       if(!document.getElementById('more-overlay').classList.contains('hidden')){ this.closeMoreSheet(); return; }
       if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
       if(!document.getElementById('new-show-overlay').classList.contains('hidden')){ this.closeNewShow(); return; }
@@ -5146,6 +5181,93 @@ class Dashboard {
       const days = agg.days>1 ? ` <span class="run-days">${agg.days} days</span>` : '';
       return `<tr class="top-show-row" data-show-detail="${this._esc(run.rows[0]['Show Name']||'')}" title="View show details"><td><span class="rank">${i+1}</span></td><td>${this._esc(run.name)}${days}</td><td>${fmtMoney(agg.sales)}</td><td>${fmtMoney(agg.expenses)}</td><td>${fmtMoney(agg.net)}${est}</td>${roiCell(agg)}</tr>`;
     }).join('');
+  }
+
+  // ---------------- Bulk "Date Acquired" ----------------
+  // Cards bought as a lot all share one purchase date, so stamping them individually is exactly
+  // why none of them carry one — and without dates the app cannot value stock at any past date,
+  // which is what gates automatic inventory valuation for older shows.
+  //
+  // The scope reuses the Inventory tab's own search and filters rather than adding checkboxes:
+  // search the lot, then stamp what you see. It is the selection mechanism that already exists.
+  _inventoryInView(){
+    const cols = this._visibleColumns('inventory');
+    const base = this.showSoldOut
+      ? this.data.inventory
+      : this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
+    return this._applyTableFilter('inventory', cols, this._applyInventorySearch(base));
+  }
+  _isUndated(i){ return !/^\d{4}-\d{2}-\d{2}$/.test(String(i['Date Acquired']||'').slice(0,10)); }
+
+  openDateSet(){
+    const el = document.getElementById('dateset-overlay');
+    if(!el) return;
+    this._dsScope = 'view';
+    const d = document.getElementById('dateset-date');
+    if(d && !d.value) d.value = this.todayStr();
+    const ow = document.getElementById('dateset-overwrite');
+    if(ow) ow.checked = false;
+    this._renderDateSet();
+    el.classList.remove('hidden');
+  }
+  closeDateSet(){ document.getElementById('dateset-overlay').classList.add('hidden'); }
+
+  _dateSetTargets(){
+    const scope = this._dsScope === 'all' ? this.data.inventory : this._inventoryInView();
+    const overwrite = !!(document.getElementById('dateset-overwrite')||{}).checked;
+    return overwrite ? scope.slice() : scope.filter(i=>this._isUndated(i));
+  }
+
+  _renderDateSet(){
+    const view = this._inventoryInView();
+    const undatedAll = this.data.inventory.filter(i=>this._isUndated(i)).length;
+    const why = document.getElementById('dateset-why');
+    if(why) why.innerHTML = undatedAll
+      ? `<b>${undatedAll}</b> of ${this.data.inventory.length} cards have no purchase date. Until they do, the app can&rsquo;t work out what your stock was worth on a past date, so older shows fall back to whatever inventory value was typed in.`
+      : `Every card has a purchase date. Stock value is computed automatically for every show.`;
+
+    const scope = document.getElementById('dateset-scope');
+    if(scope){
+      const opt = (key, name, sub) =>
+        `<label class="ds-opt${this._dsScope===key?' sel':''}"><input type="radio" name="ds-scope" value="${key}"${this._dsScope===key?' checked':''}>`
+        + `<span class="ds-opt-main"><span class="ds-opt-name">${name}</span><span class="ds-opt-sub">${sub}</span></span></label>`;
+      scope.innerHTML =
+          opt('view', `The ${view.length} card${view.length!==1?'s':''} shown now`,
+              'Whatever the Inventory tab is currently listing. Search or filter first to pick out one lot, then come back here.')
+        + opt('all', `All ${this.data.inventory.length} cards`,
+              'Everything in the stock list, including sold-out items.');
+    }
+
+    const n = this._dateSetTargets().length;
+    const date = (document.getElementById('dateset-date')||{}).value || '';
+    const prev = document.getElementById('dateset-preview');
+    // An empty scope and a fully-dated one both leave nothing to do, but for opposite reasons —
+    // saying "already dated" when the search simply matched nothing sends you looking for a
+    // problem that isn't there.
+    const scopeSize = this._dsScope === 'all' ? this.data.inventory.length : view.length;
+    if(prev) prev.innerHTML = !date
+      ? 'Pick a date first.'
+      : (n ? `Will set <b>${date}</b> on <b>${n}</b> card${n!==1?'s':''}.`
+             + (scopeSize !== n ? ` ${scopeSize-n} of those already have a date and will be left alone.` : '')
+           : (scopeSize === 0
+              ? 'No cards are shown &mdash; clear the search or filters on the Inventory tab, or switch to all cards.'
+              : 'Nothing to change &mdash; every card in this scope already has a date. Tick the box above to overwrite them.'));
+    const btn = document.getElementById('dateset-apply');
+    if(btn) btn.disabled = !date || !n;
+  }
+
+  applyDateSet(){
+    const date = (document.getElementById('dateset-date')||{}).value || '';
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const targets = this._dateSetTargets();
+    if(!targets.length) return;
+    this._pushUndoSnapshot();
+    targets.forEach(i=>{ i['Date Acquired'] = date; });
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.closeDateSet();
+    this.showToast(`Purchase date set on ${targets.length} card${targets.length!==1?'s':''}.`);
   }
 
   // Where the money actually is, as opposed to what it earned.
