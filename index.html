@@ -207,6 +207,7 @@ body {
 .show-picker-preview[hidden] { display:none; }
 .show-picker-preview b { color:var(--text-primary); }
 .new-show-activate { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); margin:2px 0 6px; cursor:pointer; }
+.run-days { display:inline-block; font-size:10px; font-weight:700; color:var(--text-muted); background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:5px; padding:1px 5px; margin-left:6px; vertical-align:middle; white-space:nowrap; }
 .est-tag { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--text-muted); background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:5px; padding:1px 4px; vertical-align:middle; }
 .row-detail { border:none; background:transparent; cursor:pointer; font-size:15px; line-height:1; padding:0 2px; opacity:.75; }
 .row-detail:hover { opacity:1; }
@@ -1613,7 +1614,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v66</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v67</strong>
   </footer>
 </div>
 
@@ -2462,6 +2463,83 @@ class Dashboard {
       : `Will be saved as: <b>${this._esc(name)}</b>`;
   }
 
+  // ---------------- multi-day shows ----------------
+  // A two-day show gets logged a day at a time — one ledger row per day, same venue, consecutive
+  // dates — because that is how the cash count works. But it is one show, and summarising it as
+  // two halves both understates each day and makes the same event appear twice in every ranking.
+  //
+  // Runs collapse those rows back into one entry. The touching-dates test is what keeps a venue
+  // you return to next month from collapsing into a single months-long block: only dates that
+  // touch or overlap merge. Same rule the calendar already uses for bookings.
+  _showBaseName(name){ return String(name||'').split(' · ')[0].trim(); }
+
+  _showRunDayMs(ds){
+    const p = String(ds||'').slice(0,10).split('-').map(Number);
+    return (p.length===3 && p.every(Number.isFinite)) ? Date.UTC(p[0],p[1]-1,p[2]) : NaN;
+  }
+
+  _showRuns(rows){
+    const dayMs = 86400000;
+    const sorted = [...rows].sort((a,b)=>String(a['Date']||'').localeCompare(String(b['Date']||'')));
+    const runs = [];
+    sorted.forEach(c=>{
+      const base = this._showBaseName(c['Show Name']);
+      const key = base.toLowerCase();
+      const t = this._showRunDayMs(c['Date']);
+      // Undated rows can't be placed on the timeline, so they join a same-named run rather than
+      // inventing a separate show out of a missing field.
+      const prev = runs.find(r => r.key===key &&
+        (!Number.isFinite(t) || !Number.isFinite(r.endMs) || (t - r.endMs) <= dayMs));
+      if(prev){
+        prev.rows.push(c);
+        if(Number.isFinite(t) && (!Number.isFinite(prev.endMs) || t > prev.endMs)){
+          prev.endMs = t; prev.end = String(c['Date']).slice(0,10);
+        }
+        return;
+      }
+      const d = String(c['Date']||'').slice(0,10);
+      runs.push({ key, name: base || String(c['Show Name']||'—'), rows:[c], start:d, end:d, endMs:t });
+    });
+    return runs;
+  }
+
+  // Totals for a run. Per-day Actual Profit is summed rather than recomputed from the span's
+  // start and end figures: each day's count is its own closed book, and the two only agree when
+  // every day's starting cash exactly matches the previous day's ending cash.
+  _runAgg(run){
+    const n = v => Number(v)||0;
+    const rows = run.rows, first = rows[0];
+    return {
+      rows,
+      names: rows.map(c=>c['Show Name']),
+      days: rows.length,
+      sales: rows.reduce((a,c)=>a+n(c['Total Sales (auto)']),0),
+      expenses: rows.reduce((a,c)=>a+n(c['Total Expenses (auto)']),0),
+      net: rows.reduce((a,c)=>a+n(c['Actual Profit (auto)']),0),
+      // A run is only as solid as its weakest day: one uncounted day makes the total an estimate.
+      estimated: rows.some(c=>!!c['Actual Profit Estimated (auto)']),
+      basis: n(first['Starting Cash']) + n(first['Starting Inventory Value']),
+    };
+  }
+
+  _runDateLabel(run){
+    const a = this._fmtShowDate(run.start), b = this._fmtShowDate(run.end);
+    if(!a) return '';
+    if(!b || a===b) return a;
+    // Within one month, "Aug 1–2, 2026" reads better than repeating the month and year.
+    const p = /^([A-Za-z]+) (\d+), (\d+)$/.exec(a), q = /^([A-Za-z]+) (\d+), (\d+)$/.exec(b);
+    if(p && q && p[1]===q[1] && p[3]===q[3]) return `${p[1]} ${p[2]}–${q[2]}, ${p[3]}`;
+    return `${a} – ${b}`;
+  }
+
+  // The run a given ledger row belongs to, found by its full show name — lets a click handler go
+  // on passing the row's own name while the panel it opens covers the whole show.
+  _runForShow(showName){
+    const runs = this._showRuns(this.data.cashflow);
+    return runs.find(r => r.names ? r.names.includes(showName)
+      : r.rows.some(c=>c['Show Name']===showName)) || null;
+  }
+
   // Shows the arithmetic behind a show's headline profit, line by line.
   //
   // A show's profit is worked out one of two ways, and which one runs is decided purely by
@@ -2517,6 +2595,29 @@ class Dashboard {
     return `<div class="sd-section sd-working"><h4>How this number is worked out</h4>${inner}</div>`;
   }
 
+  // The arithmetic behind a multi-day show: one line per day, then the total. Deliberately not
+  // the single-show version applied to the whole span — that would read the first day's opening
+  // figures against the last day's closing ones, silently swallowing anything that happened to
+  // the float overnight. Showing the days lets a bad day inside a good show be seen.
+  _runProfitWorking(run, agg){
+    const cls = n => n<0 ? 'neg' : '';
+    const rows = run.rows.map(c=>{
+      const v = Number(c['Actual Profit (auto)'])||0;
+      const est = c['Actual Profit Estimated (auto)']
+        ? ` <span class="est-tag" title="Estimated — no cash count recorded for this day.">est</span>` : '';
+      const d = this._fmtShowDate(c['Date']) || this._esc(c['Show Name']||'');
+      return `<div class="sd-work-row"><span>${this._esc(d)}${est}</span><span class="${cls(v)}">${fmtMoney(v)}</span></div>`;
+    }).join('');
+    return `<div class="sd-section sd-working"><h4>How this number is worked out</h4>`
+      + `<div class="sd-work-note">This show ran ${agg.days} days. Each day is counted on its own and the days are added &mdash; a day's profit never depends on the day before it.</div>`
+      + rows
+      + `<div class="sd-work-row total"><span><b>Net profit</b></span><span class="${cls(agg.net)}">${fmtMoney(agg.net)}</span></div>`
+      + (agg.estimated
+          ? `<div class="sd-work-warn">&#9888; At least one day has no cash count, so its share is estimated from sales and expenses. Fill in that day's start/end cash to firm the total up.</div>`
+          : '')
+      + `</div>`;
+  }
+
   // ---------------- Per-show drill-down ----------------
   // Everything tied to one show, pulled from the same records the ledger totals from, so the
   // numbers here always reconcile with the Card Show ledger row.
@@ -2524,10 +2625,17 @@ class Dashboard {
     const el = document.getElementById('show-detail-overlay');
     const body = document.getElementById('show-detail-body');
     if(!el || !body || !showName) return;
+    // Opened by any one day's name, but a show is the whole run: pull in every day's records so
+    // the panel reconciles with the merged figure that was tapped, not with one day of it.
+    const run = this._runForShow(showName);
+    const names = run ? run.rows.map(x=>x['Show Name']) : [showName];
+    const inRun = v => names.includes(v);
     const c = this.data.cashflow.find(x=>x['Show Name']===showName);
-    const sales = this.data.sales.filter(s=>s['Show Name']===showName);
-    const expenses = this.data.expenses.filter(e=>e['Show Name']===showName);
-    const trades = this.data.trades.filter(t=>t['Show Name']===showName);
+    const sales = this.data.sales.filter(s=>inRun(s['Show Name']));
+    const expenses = this.data.expenses.filter(e=>inRun(e['Show Name']));
+    const trades = this.data.trades.filter(t=>inRun(t['Show Name']));
+    const agg = run ? this._runAgg(run) : null;
+    const multiDay = !!agg && agg.days > 1;
 
     const totalSales = sales.reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
     const salesProfit = sales.reduce((a,s)=>a+(Number(s['Profit (auto)'])||0),0);
@@ -2538,16 +2646,23 @@ class Dashboard {
     // Use the ledger's Actual Profit when start/end cash+inventory were recorded; otherwise fall
     // back to an estimate from the records: cash sales margin + trade profit − expenses.
     const ledgerBasis = c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)+(Number(c['Ending Cash'])||0)+(Number(c['Ending Inventory Value'])||0)) : 0;
-    const usingLedger = ledgerBasis!==0;
-    const net = usingLedger ? (Number(c['Actual Profit (auto)'])||0) : (salesProfit + tradeProfit - totalExpenses);
-    const netNote = usingLedger
-      ? 'From your start/end cash + inventory count.'
-      : 'Estimated: sales margin + trade profit − expenses (no cash count recorded for this show).';
-    const startBasis = c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)) : 0;
+    const usingLedger = multiDay ? !agg.estimated : ledgerBasis!==0;
+    // Across a run the days are added, never re-derived from the span's first and last figures:
+    // each day closes its own books, and the two only agree if every day opened on exactly what
+    // the day before closed with.
+    const net = multiDay ? agg.net
+      : (usingLedger ? (Number(c['Actual Profit (auto)'])||0) : (salesProfit + tradeProfit - totalExpenses));
+    const netNote = multiDay
+      ? `${agg.days} days, each counted separately and added together.`
+      : (usingLedger
+        ? 'From your start/end cash + inventory count.'
+        : 'Estimated: sales margin + trade profit − expenses (no cash count recorded for this show).');
+    const startBasis = multiDay ? agg.basis
+      : (c ? ((Number(c['Starting Cash'])||0)+(Number(c['Starting Inventory Value'])||0)) : 0);
     const roi = startBasis>0 ? (net/startBasis*100) : null;
-    const date = c ? this._fmtShowDate(c['Date']) : '';
+    const date = run ? this._runDateLabel(run) : (c ? this._fmtShowDate(c['Date']) : '');
 
-    document.getElementById('show-detail-title').textContent = showName;
+    document.getElementById('show-detail-title').textContent = run ? run.name : showName;
 
     const byItem = {};
     sales.forEach(s=>{
@@ -2580,7 +2695,9 @@ class Dashboard {
     // Where the headline number actually came from. Two different formulas can produce it, and
     // which one ran depends on whether ANY start/end figure was entered — the commonest source
     // of a surprising show total, so it's spelled out rather than left to be inferred.
-    html += this._showProfitWorking(c, usingLedger, salesProfit, tradeProfit, totalExpenses, net);
+    html += multiDay
+      ? this._runProfitWorking(run, agg)
+      : this._showProfitWorking(c, usingLedger, salesProfit, tradeProfit, totalExpenses, net);
 
     html += `<div class="sd-section"><h4>Top Sellers <span>${topSellers.length?'by revenue':''}</span></h4>`;
     html += topSellers.length
@@ -3998,15 +4115,17 @@ class Dashboard {
   renderCharts(){
     // Exclude bookkeeping buckets (Start up cost / General Expense) and order the shows
     // chronologically by their date so the bars read left-to-right in date order.
-    const cf = [...this.filteredCashflow]
-      .filter(c=>!this._isBookkeepingBucket(c['Show Name']))
-      .sort((a,b)=>String(a['Date']||'').localeCompare(String(b['Date']||'')));
-    const labels = cf.map(c=>c['Show Name']);
+    // One bar per show, not per day — a multi-day show that appears twice reads as two smaller
+    // shows and flattens the very peaks the chart exists to surface.
+    const cf = this._showRuns([...this.filteredCashflow].filter(c=>!this._isBookkeepingBucket(c['Show Name'])))
+      .map(r=>({ run:r, agg:this._runAgg(r) }))
+      .sort((a,b)=>String(a.run.start||'').localeCompare(String(b.run.start||'')));
+    const labels = cf.map(({run,agg})=>agg.days>1 ? `${run.name} (${agg.days}d)` : run.name);
 
     this._barLine('chart-shows', labels, [
-      {type:'bar', label:'Total Sales', data:cf.map(c=>c['Total Sales (auto)']), color:PALETTE[0]},
-      {type:'bar', label:'Total Expenses', data:cf.map(c=>c['Total Expenses (auto)']), color:PALETTE[5]},
-      {type:'line', label:'Actual Profit', data:cf.map(c=>Number(c['Actual Profit (auto)'])||0), color:PALETTE[2]},
+      {type:'bar', label:'Total Sales', data:cf.map(x=>x.agg.sales), color:PALETTE[0]},
+      {type:'bar', label:'Total Expenses', data:cf.map(x=>x.agg.expenses), color:PALETTE[5]},
+      {type:'line', label:'Actual Profit', data:cf.map(x=>x.agg.net), color:PALETTE[2]},
     ]);
 
     // Monthly revenue + profit trend (Dashboard tab) — grouped by the sale's YYYY-MM.
@@ -4779,21 +4898,23 @@ class Dashboard {
   }
 
   renderTopShows(){
-    const top = this.data.cashflow
-      .filter(c=>!this._isBookkeepingBucket(c['Show Name']))
-      .sort((a,b)=>(Number(b['Actual Profit (auto)'])||0)-(Number(a['Actual Profit (auto)'])||0))
+    // Ranked by the whole show, not by its best day — a two-day show that made $400 and $350
+    // beats a one-day show that made $500, and splitting it would hide that.
+    const runs = this._showRuns(this.data.cashflow.filter(c=>!this._isBookkeepingBucket(c['Show Name'])))
+      .map(r=>({ run:r, agg:this._runAgg(r) }))
+      .sort((a,b)=>b.agg.net-a.agg.net)
       .slice(0,5);
     const body = document.getElementById('top-shows-body');
-    const roiCell = (c)=>{
-      const basis = (Number(c['Starting Cash'])||0) + (Number(c['Starting Inventory Value'])||0);
-      if(basis<=0) return '<td>&mdash;</td>';
-      const roi = (Number(c['Actual Profit (auto)'])||0)/basis*100;
+    const roiCell = (agg)=>{
+      if(agg.basis<=0) return '<td>&mdash;</td>';
+      const roi = agg.net/agg.basis*100;
       return `<td><span class="badge ${roi>=0?'pos':'neg'}">${roi>=0?'+':''}${roi.toFixed(1)}%</span></td>`;
     };
-    body.innerHTML = top.map((c,i)=>{
-      const est = c['Actual Profit Estimated (auto)']
-        ? ` <span class="est-tag" title="Estimated — no cash count recorded for this show.">est</span>` : '';
-      return `<tr class="top-show-row" data-show-detail="${this._esc(c['Show Name']||'')}" title="View show details"><td><span class="rank">${i+1}</span></td><td>${c['Show Name']}</td><td>${fmtMoney(c['Total Sales (auto)'])}</td><td>${fmtMoney(c['Total Expenses (auto)'])}</td><td>${fmtMoney(c['Actual Profit (auto)'])}${est}</td>${roiCell(c)}</tr>`;
+    body.innerHTML = runs.map(({run,agg},i)=>{
+      const est = agg.estimated
+        ? ` <span class="est-tag" title="Estimated — at least one day of this show has no cash count recorded.">est</span>` : '';
+      const days = agg.days>1 ? ` <span class="run-days">${agg.days} days</span>` : '';
+      return `<tr class="top-show-row" data-show-detail="${this._esc(run.rows[0]['Show Name']||'')}" title="View show details"><td><span class="rank">${i+1}</span></td><td>${this._esc(run.name)}${days}</td><td>${fmtMoney(agg.sales)}</td><td>${fmtMoney(agg.expenses)}</td><td>${fmtMoney(agg.net)}${est}</td>${roiCell(agg)}</tr>`;
     }).join('');
   }
 
@@ -4904,19 +5025,19 @@ class Dashboard {
   renderNetByShow(){
     const el = document.getElementById('net-by-show');
     if(!el) return;
-    const shows = this.data.cashflow
-      .filter(c=>!this._isBookkeepingBucket(c['Show Name']))
-      .sort((a,b)=>String(b['Date']||'').localeCompare(String(a['Date']||'')));
-    if(!shows.length){ el.innerHTML = `<div class="qt-empty">No shows yet — add one from the ledger below.</div>`; return; }
-    el.innerHTML = shows.map(c=>{
-      const net = Number(c['Actual Profit (auto)'])||0;
-      const est = c['Actual Profit Estimated (auto)']
-        ? ` <span class="est-tag" title="Estimated — no cash count recorded for this show.">est</span>` : '';
-      const date = c['Date'] ? this._fmtShowDate(c['Date']) : '';
-      return `<button type="button" class="nbs-row" data-show-detail="${this._esc(c['Show Name']||'')}" title="View show details">`
-        + `<span class="nbs-main"><span class="nbs-name">${this._esc(c['Show Name']||'—')}</span>`
-        + `<span class="nbs-sub">${this._esc(date)} &middot; ${fmtMoney(c['Total Sales (auto)'])} sales</span></span>`
-        + `<span class="nbs-net ${net<0?'neg':'pos'}">${fmtMoney(net)}${est}</span></button>`;
+    const runs = this._showRuns(this.data.cashflow.filter(c=>!this._isBookkeepingBucket(c['Show Name'])))
+      .map(r=>({ run:r, agg:this._runAgg(r) }))
+      .sort((a,b)=>String(b.run.start||'').localeCompare(String(a.run.start||'')));
+    if(!runs.length){ el.innerHTML = `<div class="qt-empty">No shows yet — add one from the ledger below.</div>`; return; }
+    el.innerHTML = runs.map(({run,agg})=>{
+      const est = agg.estimated
+        ? ` <span class="est-tag" title="Estimated — at least one day of this show has no cash count recorded.">est</span>` : '';
+      const date = this._runDateLabel(run);
+      const days = agg.days>1 ? ` &middot; ${agg.days} days` : '';
+      return `<button type="button" class="nbs-row" data-show-detail="${this._esc(run.rows[0]['Show Name']||'')}" title="View show details">`
+        + `<span class="nbs-main"><span class="nbs-name">${this._esc(run.name||'—')}</span>`
+        + `<span class="nbs-sub">${this._esc(date)}${days} &middot; ${fmtMoney(agg.sales)} sales</span></span>`
+        + `<span class="nbs-net ${agg.net<0?'neg':'pos'}">${fmtMoney(agg.net)}${est}</span></button>`;
     }).join('');
   }
 
@@ -4933,33 +5054,49 @@ class Dashboard {
     const el = document.getElementById('cash-by-show');
     if(!el) return;
     const n = v => Number(v)||0;
+    // Sales are recorded against a single day's ledger row, so a two-day show's takings arrive
+    // split across two names. Map each name onto its run first, then group, so the show appears
+    // once with both days added together.
+    const runOf = new Map();
+    this._showRuns(this.data.cashflow).forEach(run=>{
+      run.rows.forEach(c=>{ if(c['Show Name']) runOf.set(c['Show Name'], run); });
+    });
     const byShow = new Map();
     this.data.sales.forEach(s=>{
-      const show = String(s['Show Name']||'').trim() || 'No show recorded';
-      const row = byShow.get(show) || { show, qty:0, revenue:0, profit:0 };
+      const raw = String(s['Show Name']||'').trim();
+      const run = raw ? runOf.get(raw) : null;
+      // Sales against a show with no ledger row keep their own name rather than being dropped.
+      const key = run ? run.key : (raw.toLowerCase() || ' none');
+      const row = byShow.get(key) || {
+        show: run ? run.name : (raw || 'No show recorded'),
+        detail: raw,
+        date: run ? run.start : '',
+        days: run ? run.rows.length : 1,
+        dateLabel: run ? this._runDateLabel(run) : '',
+        qty:0, revenue:0, profit:0,
+      };
       row.qty += n(s['Quantity Sold']);
       row.revenue += n(s['Total Sale Amount (auto)']);
       row.profit += n(s['Profit (auto)']);
-      byShow.set(show, row);
+      byShow.set(key, row);
     });
     if(!byShow.size){
       el.innerHTML = `<div class="qt-empty">No cash sales recorded yet.</div>`;
       return;
     }
-    const dateOf = {};
-    this.data.cashflow.forEach(c=>{ if(c['Show Name']) dateOf[c['Show Name']] = String(c['Date']||''); });
     const rows = [...byShow.values()].sort((a,b)=>
-      String(dateOf[b.show]||'').localeCompare(String(dateOf[a.show]||'')) || b.profit-a.profit);
+      String(b.date||'').localeCompare(String(a.date||'')) || b.profit-a.profit);
     const total = rows.reduce((a,r)=>a+r.profit,0);
     const totalRev = rows.reduce((a,r)=>a+r.revenue,0);
     const totalQty = rows.reduce((a,r)=>a+r.qty,0);
     el.innerHTML = rows.map(r=>{
-      const date = dateOf[r.show] ? this._fmtShowDate(dateOf[r.show]) : '';
+      const date = r.dateLabel;
       // Margin is what makes two shows with the same profit comparable — $300 on $600 of takings
       // is a different day from $300 on $3,000.
       const margin = r.revenue>0 ? ` &middot; ${(r.profit/r.revenue*100).toFixed(0)}% margin` : '';
-      const sub = `${date ? this._esc(date)+' &middot; ' : ''}${r.qty} card${r.qty!==1?'s':''} &middot; ${fmtMoney(r.revenue)} taken${margin}`;
-      return `<button type="button" class="nbs-row" data-show-detail="${this._esc(r.show)}" title="View show details">`
+      const days = r.days>1 ? ` &middot; ${r.days} days` : '';
+      const sub = `${date ? this._esc(date)+days+' &middot; ' : ''}${r.qty} card${r.qty!==1?'s':''} &middot; ${fmtMoney(r.revenue)} taken${margin}`;
+      return `<button type="button" class="nbs-row" data-show-detail="${this._esc(r.detail||r.show)}" title="View show details">`
         + `<span class="nbs-main"><span class="nbs-name">${this._esc(r.show)}</span>`
         + `<span class="nbs-sub">${sub}</span></span>`
         + `<span class="nbs-net ${r.profit<0?'neg':'pos'}">${fmtMoney(r.profit)}</span></button>`;
