@@ -180,6 +180,16 @@ body {
 .fab-calc:hover { background:#f4f5fa; }
 .qa-overlay { position:fixed; inset:0; background:rgba(16,18,34,0.5); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); z-index:1500; display:flex; align-items:flex-end; justify-content:center; }
 .qa-overlay.hidden { display:none; }
+.more-sheet { width:100%; max-width:520px; background:var(--bg-card); border-radius:20px 20px 0 0; padding:6px 14px calc(18px + env(safe-area-inset-bottom, 0px)); box-shadow:0 -12px 40px rgba(16,18,34,0.28); }
+.more-head { display:flex; align-items:center; justify-content:space-between; padding:12px 4px 8px; }
+.more-head h2 { margin:0; font-size:17px; }
+.more-row { display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; min-height:60px; justify-content:center; text-align:left; padding:12px 14px; margin-bottom:8px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:14px; cursor:pointer; font-family:inherit; }
+.more-row:active { border-color:var(--action); }
+.more-row.active { background:var(--bg-header); }
+.more-row.active .more-name { color:#fff; }
+.more-row.active .more-sub { color:rgba(255,255,255,0.72); }
+.more-name { font-size:16px; font-weight:800; color:var(--text-primary); }
+.more-sub { font-size:12px; color:var(--text-muted); }
 .qa-modal { background:var(--bg-card); border-radius:22px 22px 0 0; width:100%; max-width:480px; max-height:88vh; overflow-y:auto; padding:20px 22px 26px; box-shadow:var(--shadow-md); }
 @media (min-width:640px){
   .qa-overlay { align-items:center; }
@@ -616,8 +626,11 @@ body {
      whole time you scrolled; text alone is roughly half that, and reads faster than guessing at
      an emoji. --nav-h is measured from the real bar at runtime so the space reserved below the
      page always matches it exactly, whatever the labels or the phone's safe-area inset. */
-  .bottom-nav { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:850; background:rgba(255,255,255,0.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-top:1px solid var(--border-subtle); box-shadow:0 -6px 20px rgba(24,27,40,0.08); padding:5px 3px calc(5px + env(safe-area-inset-bottom, 0px)); gap:1px; transition:transform .22s ease; }
-  .bottom-nav .tab-btn { flex:1 1 auto; min-width:0; display:flex; align-items:center; justify-content:center; padding:13px 1px; font-size:12px; font-weight:700; letter-spacing:-0.2px; border-radius:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bottom-nav { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:850; background:rgba(255,255,255,0.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-top:1px solid var(--border-subtle); box-shadow:0 -6px 20px rgba(24,27,40,0.08); padding:5px 3px calc(5px + env(safe-area-inset-bottom, 0px)); gap:3px; transition:transform .22s ease; }
+  /* Equal widths again now there are five: each label fits its share, and equal targets are
+     more predictable to aim at than ones that vary with how long a word happens to be.
+     min-height 52 keeps every target comfortably past the 44pt guideline. */
+  .bottom-nav .tab-btn { flex:1 1 0; min-width:0; min-height:58px; display:flex; align-items:center; justify-content:center; padding:18px 2px; font-size:14px; font-weight:700; letter-spacing:-0.2px; border-radius:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .bottom-nav .tab-btn.active { background:var(--bg-header); color:#fff; box-shadow:none; }
   /* Slide it away while you scroll down into content, bring it straight back on any scroll up. */
   .bottom-nav.nav-hidden { transform:translateY(calc(100% + 8px)); }
@@ -632,7 +645,9 @@ body {
   body.nav-tucked .fab, body.nav-tucked .fab-calc { transform:translateY(140%); opacity:0; pointer-events:none; }
   /* Narrow phones give each of seven tabs ~44px, which 13px bold overflows — step it down
      rather than let a label clip. */
-  @media (max-width:359px){ .bottom-nav .tab-btn { font-size:11px; letter-spacing:-0.3px; padding:12px 0; } }
+  /* "Card Show" is the longest label and sets the ceiling; step the size down before it clips. */
+  @media (max-width:389px){ .bottom-nav .tab-btn { font-size:13px; } }
+  @media (max-width:339px){ .bottom-nav .tab-btn { font-size:12px; letter-spacing:-0.3px; padding:18px 0; } }
 
   /* ---------- Card-list view for the 5 editable data tables ---------- */
   /* Scoped to .table-cards (not every .data-table) so the small read-only summary tables
@@ -906,14 +921,28 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        dash.showTab() keeps every nav in sync automatically with zero extra JS. Hidden on desktop,
        shown in place of .tab-bar under the max-width:768px media query. -->
   <nav class="bottom-nav">
-    <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Dashboard</button>
+    <!-- Five slots, which is the cap both iOS and Android design guidelines set for a bottom bar
+         and, more practically, what a phone's width allows without shrinking targets. Seven tabs
+         left each one 67px wide with a 1px gap between them, which is what made them easy to miss.
+         Five gives ~108px each. Everything not here lives one tap away behind More. -->
     <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')">Card Show</button>
     <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')">Inventory</button>
     <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')">Sales</button>
     <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')">Trades</button>
-    <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')">Expenses</button>
-    <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')">Settings</button>
+    <button class="tab-btn" id="nav-more-btn" onclick="dash.openMoreSheet()">More</button>
   </nav>
+
+  <!-- The tabs that aren't in the bar. Full-width rows so they are far easier to hit than a
+       seventh of a nav bar ever was. -->
+  <div class="qa-overlay hidden" id="more-overlay">
+    <div class="more-sheet">
+      <div class="more-head"><h2>More</h2><button type="button" class="qa-close" id="more-close" title="Close">&times;</button></div>
+      <button type="button" class="more-row" data-more-tab="dashboard"><span class="more-name">Dashboard</span><span class="more-sub">Overview, charts and totals</span></button>
+      <button type="button" class="more-row" data-more-tab="expenses"><span class="more-name">Expenses</span><span class="more-sub">Booth fees, travel, supplies</span></button>
+      <button type="button" class="more-row" data-more-tab="calendar"><span class="more-name">Calendar</span><span class="more-sub">Upcoming shows and bookings</span></button>
+      <button type="button" class="more-row" data-more-tab="settings"><span class="more-name">Settings</span><span class="more-sub">Cash on hand, lists, backup</span></button>
+    </div>
+  </div>
 
   <!-- Quick Add floating button + modal (Inventory / Sale / Trade / Expense) — visible on every tab. -->
   <button class="fab" id="qa-fab" title="Quick Add an inventory item, sale, trade, or expense">+</button>
@@ -1628,7 +1657,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v71</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v72</strong>
   </footer>
 </div>
 
@@ -1995,6 +2024,7 @@ class Dashboard {
   }
 
   init(){
+    this.MORE_TABS = ['dashboard','expenses','calendar','settings'];
     this._initBottomNav();
     document.addEventListener('input', e=>{
       if(e.target.matches('input.filter-input[data-filter]')){ this.handleFilterChange(e.target); }
@@ -2027,6 +2057,10 @@ class Dashboard {
       if(qa){ this.adjustQty(Number(qa.dataset.id), Number(qa.dataset.delta)); return; }
       // Checked before [data-show-detail] — the merge button lives inside the detail panel and
       // must not be swallowed by an ancestor that opens it.
+      const mt = e.target.closest('[data-more-tab]');
+      if(mt){ this.showTab(mt.dataset.moreTab); return; }
+      if(e.target.closest('#more-close')){ this.closeMoreSheet(); return; }
+      if(e.target.id === 'more-overlay'){ this.closeMoreSheet(); return; }
       const mr = e.target.closest('[data-merge-run]');
       if(mr){ this.mergeShowRun(mr.dataset.mergeRun); return; }
       const sd = e.target.closest('[data-show-detail]');
@@ -2234,6 +2268,7 @@ class Dashboard {
       if(!document.getElementById('scan-overlay').classList.contains('hidden')){ this.closeScanner(); return; }
       if(!document.getElementById('sku-pick-overlay').classList.contains('hidden')){ this.closeSkuPicker(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
+      if(!document.getElementById('more-overlay').classList.contains('hidden')){ this.closeMoreSheet(); return; }
       if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
       if(!document.getElementById('new-show-overlay').classList.contains('hidden')){ this.closeNewShow(); return; }
       if(!document.getElementById('show-detail-overlay').classList.contains('hidden')){ this.closeShowDetail(); return; }
@@ -3913,7 +3948,23 @@ class Dashboard {
     document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
     document.getElementById('tab-'+name).classList.add('active');
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+    // Tabs that live behind More have no button of their own, so More carries the active state —
+    // otherwise nothing in the bar looks selected and you can't tell where you are.
+    const moreBtn = document.getElementById('nav-more-btn');
+    if(moreBtn) moreBtn.classList.toggle('active', this.MORE_TABS.includes(name));
+    document.querySelectorAll('[data-more-tab]').forEach(b=>b.classList.toggle('active', b.dataset.moreTab===name));
+    this.closeMoreSheet();
     if(this._revealBottomNav) this._revealBottomNav();
+  }
+
+  // ---------------- "More" sheet ----------------
+  openMoreSheet(){
+    const el = document.getElementById('more-overlay');
+    if(el) el.classList.remove('hidden');
+  }
+  closeMoreSheet(){
+    const el = document.getElementById('more-overlay');
+    if(el) el.classList.add('hidden');
   }
 
   // The earliest date any card records having been acquired. Before this, the stock list can't
