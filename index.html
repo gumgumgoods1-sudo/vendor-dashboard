@@ -620,34 +620,41 @@ body {
   .hero-band { grid-template-columns:1fr; padding:22px; gap:16px; }
   .hero-value { font-size:34px; }
 
-  /* ---------- Bottom nav replaces the top tab bar ---------- */
+  /* ---------- Side rail replaces the top tab bar ---------- */
   .tab-bar { display:none; }
-  /* Labels only. The icon+label stack stood 69px tall and sat over the bottom of the screen the
-     whole time you scrolled; text alone is roughly half that, and reads faster than guessing at
-     an emoji. --nav-h is measured from the real bar at runtime so the space reserved below the
-     page always matches it exactly, whatever the labels or the phone's safe-area inset. */
-  .bottom-nav { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:850; background:rgba(255,255,255,0.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-top:1px solid var(--border-subtle); box-shadow:0 -6px 20px rgba(24,27,40,0.08); padding:5px 3px calc(5px + env(safe-area-inset-bottom, 0px)); gap:3px; transition:transform .22s ease; }
-  /* Equal widths again now there are five: each label fits its share, and equal targets are
-     more predictable to aim at than ones that vary with how long a word happens to be.
-     min-height 52 keeps every target comfortably past the 44pt guideline. */
-  .bottom-nav .tab-btn { flex:1 1 0; min-width:0; min-height:58px; display:flex; align-items:center; justify-content:center; padding:18px 2px; font-size:14px; font-weight:700; letter-spacing:-0.2px; border-radius:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* Down the left edge rather than across the bottom. The bottom bar had to ration a phone's
+     width between however many tabs there were — five was already the limit, and the other three
+     lived behind a More sheet. Vertically there is room for all eight at a comfortable size, so
+     every tab is one tap again and the sheet is gone.
+     --rail-w is measured from the real rail at runtime, so the space reserved beside the page
+     always matches it, whatever the labels or the safe-area inset. */
+  .bottom-nav { display:flex; flex-direction:column; position:fixed; left:0; top:0; bottom:0;
+    width:84px; z-index:850; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    background:rgba(255,255,255,0.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    border-right:1px solid var(--border-subtle); box-shadow:6px 0 20px rgba(24,27,40,0.08);
+    padding:calc(8px + env(safe-area-inset-top, 0px)) 5px calc(8px + env(safe-area-inset-bottom, 0px));
+    padding-left:calc(5px + env(safe-area-inset-left, 0px)); gap:4px; transition:transform .22s ease; }
+  /* Full rail width and 58px tall: a bigger target than the bottom bar managed, and stacked so
+     the labels never have to compete with each other for room. */
+  .bottom-nav .tab-btn { flex:0 0 auto; width:100%; min-height:58px; display:flex; align-items:center;
+    justify-content:center; text-align:center; padding:8px 2px; font-size:12px; font-weight:700;
+    letter-spacing:-0.2px; border-radius:12px; white-space:normal; line-height:1.2; }
   .bottom-nav .tab-btn.active { background:var(--bg-header); color:#fff; box-shadow:none; }
-  /* Slide it away while you scroll down into content, bring it straight back on any scroll up. */
-  .bottom-nav.nav-hidden { transform:translateY(calc(100% + 8px)); }
-  .dashboard-container { padding-bottom:calc(var(--nav-h, 52px) + 14px); }
-  .fab { bottom:calc(var(--nav-h, 52px) + 14px); transition:bottom .22s ease, transform .15s, box-shadow .15s; }
-  .fab-calc { bottom:calc(var(--nav-h, 52px) + 84px); }
-  /* The floating buttons go with the bar. They are the worst offenders for covering content —
-     two opaque circles parked over the right-hand side of every table and chart — and simply
-     moving them down still leaves them on top of something. Scrolling down clears the screen
-     completely; scrolling up brings the bar and both buttons back together. */
-  .fab, .fab-calc { transition:bottom .22s ease, transform .22s ease, opacity .18s ease, box-shadow .15s; }
+  /* Slides left out of the way while you scroll down, back on any scroll up. */
+  .bottom-nav.nav-hidden { transform:translateX(calc(-100% - 8px)); }
+  .dashboard-container { padding-left:calc(var(--rail-w, 84px) + 10px); padding-right:10px; }
+  /* Nothing sits above the page any more, so the floating buttons return to the corner. They
+     still clear off on scroll — two opaque circles over a table is the same nuisance wherever
+     the nav happens to be. */
+  .fab { bottom:calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .fab-calc { bottom:calc(88px + env(safe-area-inset-bottom, 0px)); }
+  .fab, .fab-calc { transition:transform .22s ease, opacity .18s ease, box-shadow .15s; }
   body.nav-tucked .fab, body.nav-tucked .fab-calc { transform:translateY(140%); opacity:0; pointer-events:none; }
-  /* Narrow phones give each of seven tabs ~44px, which 13px bold overflows — step it down
-     rather than let a label clip. */
-  /* "Card Show" is the longest label and sets the ceiling; step the size down before it clips. */
-  @media (max-width:389px){ .bottom-nav .tab-btn { font-size:13px; } }
-  @media (max-width:339px){ .bottom-nav .tab-btn { font-size:12px; letter-spacing:-0.3px; padding:18px 0; } }
+  /* Eight 58px rows plus gaps come to 492px, so they fit even a 568px-tall screen without the
+     rail needing to scroll — no reason to shrink the targets, which are the whole point. The
+     rail keeps its width on narrow phones for the same reason; it can scroll if a screen is
+     ever genuinely too short. */
+  @media (max-width:339px){ .bottom-nav .tab-btn { font-size:11px; letter-spacing:-0.3px; } }
 
   /* ---------- Card-list view for the 5 editable data tables ---------- */
   /* Scoped to .table-cards (not every .data-table) so the small read-only summary tables
@@ -921,28 +928,17 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        dash.showTab() keeps every nav in sync automatically with zero extra JS. Hidden on desktop,
        shown in place of .tab-bar under the max-width:768px media query. -->
   <nav class="bottom-nav">
-    <!-- Five slots, which is the cap both iOS and Android design guidelines set for a bottom bar
-         and, more practically, what a phone's width allows without shrinking targets. Seven tabs
-         left each one 67px wide with a 1px gap between them, which is what made them easy to miss.
-         Five gives ~108px each. Everything not here lives one tap away behind More. -->
+    <!-- All eight tabs. The rail has vertical room the bottom bar never had horizontally, so
+         nothing needs hiding behind a More sheet any more. -->
+    <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Dashboard</button>
     <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')">Card Show</button>
     <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')">Inventory</button>
     <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')">Sales</button>
     <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')">Trades</button>
-    <button class="tab-btn" id="nav-more-btn" onclick="dash.openMoreSheet()">More</button>
+    <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')">Expenses</button>
+    <button class="tab-btn" data-tab="calendar" onclick="dash.showTab('calendar')">Calendar</button>
+    <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')">Settings</button>
   </nav>
-
-  <!-- The tabs that aren't in the bar. Full-width rows so they are far easier to hit than a
-       seventh of a nav bar ever was. -->
-  <div class="qa-overlay hidden" id="more-overlay">
-    <div class="more-sheet">
-      <div class="more-head"><h2>More</h2><button type="button" class="qa-close" id="more-close" title="Close">&times;</button></div>
-      <button type="button" class="more-row" data-more-tab="dashboard"><span class="more-name">Dashboard</span><span class="more-sub">Overview, charts and totals</span></button>
-      <button type="button" class="more-row" data-more-tab="expenses"><span class="more-name">Expenses</span><span class="more-sub">Booth fees, travel, supplies</span></button>
-      <button type="button" class="more-row" data-more-tab="calendar"><span class="more-name">Calendar</span><span class="more-sub">Upcoming shows and bookings</span></button>
-      <button type="button" class="more-row" data-more-tab="settings"><span class="more-name">Settings</span><span class="more-sub">Cash on hand, lists, backup</span></button>
-    </div>
-  </div>
 
   <!-- Quick Add floating button + modal (Inventory / Sale / Trade / Expense) — visible on every tab. -->
   <button class="fab" id="qa-fab" title="Quick Add an inventory item, sale, trade, or expense">+</button>
@@ -1657,7 +1653,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v72</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v73</strong>
   </footer>
 </div>
 
@@ -1973,7 +1969,7 @@ class Dashboard {
     });
   }
 
-  // Keeps the space reserved under the page equal to the bar's real height, and tucks the bar
+  // Keeps the space reserved beside the page equal to the rail's real width, and tucks the rail
   // out of the way while you scroll down through content.
   //
   // Measuring beats hard-coding: the old 78px was a guess that had to be re-guessed every time a
@@ -1985,46 +1981,47 @@ class Dashboard {
     const nav = document.querySelector('.bottom-nav');
     if(!nav) return;
     const measure = () => {
-      // Read it un-tucked, or a hidden bar would measure its slid-out position.
+      // Read it un-tucked, or a hidden rail would measure its slid-out position.
       const hidden = nav.classList.contains('nav-hidden');
       if(hidden) nav.classList.remove('nav-hidden');
-      const h = Math.round(nav.getBoundingClientRect().height);
+      const w = Math.round(nav.getBoundingClientRect().width);
       if(hidden) nav.classList.add('nav-hidden');
-      if(h > 0) document.documentElement.style.setProperty('--nav-h', h+'px');
+      if(w > 0) document.documentElement.style.setProperty('--rail-w', w+'px');
     };
     measure();
     window.addEventListener('resize', measure);
     window.addEventListener('orientationchange', ()=>setTimeout(measure, 250));
 
-    let last = window.scrollY, ticking = false;
-    const apply = () => {
-      ticking = false;
-      const y = Math.max(0, window.scrollY);
-      const atBottom = (window.innerHeight + y) >= (document.body.scrollHeight - 24);
-      const delta = y - last;
-      // A dead zone stops the bar flickering on the small jitters that come from scroll momentum
-      // and from tapping into an input, which nudges the page.
-      if(Math.abs(delta) < 8) return;
-      // Never hide near the top or at the very bottom: those are the two places you are most
-      // likely to want to switch tabs.
-      const hide = delta > 0 && y > 120 && !atBottom;
+    // Hidden whenever the page is moving, back as soon as it settles. Direction is deliberately
+    // ignored: a rail down the side is in the way of the text you are reading regardless of which
+    // way you scrolled to reach it, and a scroll-up rule meant it reappeared mid-read every time
+    // you nudged backwards. Momentum scrolling keeps firing events, so it stays away for the
+    // whole glide and returns when the page actually stops.
+    const SETTLE_MS = 320;
+    let ticking = false, idle = null, suppressUntil = 0;
+    const setHidden = (hide) => {
       nav.classList.toggle('nav-hidden', hide);
       document.body.classList.toggle('nav-tucked', hide);
-      last = y;
+    };
+    const apply = () => {
+      ticking = false;
+      // Switching tabs swaps the whole page, which changes its height and fires scroll events of
+      // its own. Those aren't you scrolling, and without this the rail would vanish the instant
+      // after a tab tap brought it back.
+      if(Date.now() < suppressUntil) return;
+      // Parked at the very top isn't "scrolling" — never hide there.
+      setHidden(Math.max(0, window.scrollY) > 80);
+      clearTimeout(idle);
+      idle = setTimeout(()=>setHidden(false), SETTLE_MS);
     };
     window.addEventListener('scroll', ()=>{
       if(!ticking){ ticking = true; requestAnimationFrame(apply); }
     }, {passive:true});
-    // Switching tabs scrolls you back up; the bar must be there when you arrive.
-    this._revealBottomNav = () => {
-      nav.classList.remove('nav-hidden');
-      document.body.classList.remove('nav-tucked');
-      last = window.scrollY;
-    };
+    // Switching tabs must never leave you looking at a hidden rail.
+    this._revealBottomNav = () => { clearTimeout(idle); suppressUntil = Date.now() + 350; setHidden(false); };
   }
 
   init(){
-    this.MORE_TABS = ['dashboard','expenses','calendar','settings'];
     this._initBottomNav();
     document.addEventListener('input', e=>{
       if(e.target.matches('input.filter-input[data-filter]')){ this.handleFilterChange(e.target); }
@@ -2057,10 +2054,6 @@ class Dashboard {
       if(qa){ this.adjustQty(Number(qa.dataset.id), Number(qa.dataset.delta)); return; }
       // Checked before [data-show-detail] — the merge button lives inside the detail panel and
       // must not be swallowed by an ancestor that opens it.
-      const mt = e.target.closest('[data-more-tab]');
-      if(mt){ this.showTab(mt.dataset.moreTab); return; }
-      if(e.target.closest('#more-close')){ this.closeMoreSheet(); return; }
-      if(e.target.id === 'more-overlay'){ this.closeMoreSheet(); return; }
       const mr = e.target.closest('[data-merge-run]');
       if(mr){ this.mergeShowRun(mr.dataset.mergeRun); return; }
       const sd = e.target.closest('[data-show-detail]');
@@ -2268,7 +2261,6 @@ class Dashboard {
       if(!document.getElementById('scan-overlay').classList.contains('hidden')){ this.closeScanner(); return; }
       if(!document.getElementById('sku-pick-overlay').classList.contains('hidden')){ this.closeSkuPicker(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
-      if(!document.getElementById('more-overlay').classList.contains('hidden')){ this.closeMoreSheet(); return; }
       if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
       if(!document.getElementById('new-show-overlay').classList.contains('hidden')){ this.closeNewShow(); return; }
       if(!document.getElementById('show-detail-overlay').classList.contains('hidden')){ this.closeShowDetail(); return; }
@@ -3948,24 +3940,9 @@ class Dashboard {
     document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
     document.getElementById('tab-'+name).classList.add('active');
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
-    // Tabs that live behind More have no button of their own, so More carries the active state —
-    // otherwise nothing in the bar looks selected and you can't tell where you are.
-    const moreBtn = document.getElementById('nav-more-btn');
-    if(moreBtn) moreBtn.classList.toggle('active', this.MORE_TABS.includes(name));
-    document.querySelectorAll('[data-more-tab]').forEach(b=>b.classList.toggle('active', b.dataset.moreTab===name));
-    this.closeMoreSheet();
     if(this._revealBottomNav) this._revealBottomNav();
   }
 
-  // ---------------- "More" sheet ----------------
-  openMoreSheet(){
-    const el = document.getElementById('more-overlay');
-    if(el) el.classList.remove('hidden');
-  }
-  closeMoreSheet(){
-    const el = document.getElementById('more-overlay');
-    if(el) el.classList.add('hidden');
-  }
 
   // The earliest date any card records having been acquired. Before this, the stock list can't
   // show purchases, so a rebuilt inventory value would be missing everything bought back then.
