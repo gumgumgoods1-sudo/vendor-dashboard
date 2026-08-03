@@ -226,6 +226,8 @@ body {
 .sd-stat .sd-stat-value.pos { color:var(--positive); }
 .sd-stat .sd-stat-value.neg { color:var(--negative); }
 .sd-section { margin:0 0 14px; }
+.sd-merge { border-top:1px solid var(--border-subtle); padding-top:12px; }
+.sd-merge .btn-sm { width:100%; }
 .sd-section h4 { margin:0 0 7px; font-size:13px; font-weight:800; color:var(--text-primary); display:flex; justify-content:space-between; align-items:baseline; }
 .sd-section h4 span { font-weight:600; font-size:11.5px; color:var(--text-muted); }
 .sd-list { display:flex; flex-direction:column; gap:6px; }
@@ -1614,7 +1616,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v67</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v68</strong>
   </footer>
 </div>
 
@@ -1960,6 +1962,10 @@ class Dashboard {
     document.addEventListener('click', e=>{
       const qa = e.target.closest('[data-qty-adjust]');
       if(qa){ this.adjustQty(Number(qa.dataset.id), Number(qa.dataset.delta)); return; }
+      // Checked before [data-show-detail] — the merge button lives inside the detail panel and
+      // must not be swallowed by an ancestor that opens it.
+      const mr = e.target.closest('[data-merge-run]');
+      if(mr){ this.mergeShowRun(mr.dataset.mergeRun); return; }
       const sd = e.target.closest('[data-show-detail]');
       if(sd){ this.openShowDetail(sd.dataset.showDetail); return; }
       const ag = e.target.closest('[data-audit-goto]');
@@ -2618,6 +2624,64 @@ class Dashboard {
       + `</div>`;
   }
 
+  // Collapse a multi-day show's ledger rows into a single row.
+  //
+  // Distinct from the display-level merging above: that leaves the days intact and only presents
+  // them as one show. This rewrites the data, and is for when you'd rather keep one row per show
+  // than one per day — a single cash count spanning the whole event.
+  //
+  // Cash spans the show: the first day's opening float against the last day's closing one. Owner
+  // contributions add. Inventory is deliberately NOT carried over from either row — it is dropped
+  // so the value is read off the stock list at cost, which is both the correct basis and immune
+  // to a stale figure typed on a day that was recorded before inventory became automatic.
+  //
+  // Sales, expenses and trades reference a show by name, so every record pointing at any of the
+  // merged days is repointed first. Miss that and the show's own takings orphan themselves.
+  mergeShowRun(showName){
+    const run = this._runForShow(showName);
+    if(!run || run.rows.length < 2) return;
+    const names = run.rows.map(c=>c['Show Name']);
+    const n = v => Number(v)||0;
+    const linked = ['sales','expenses','trades'].reduce((a,t)=>
+      a + this.data[t].filter(r=>names.includes(r['Show Name'])).length, 0);
+    const label = this._runDateLabel(run);
+    this._confirmDelete(
+      `Merge the ${run.rows.length} days of <b>${this._esc(run.name)}</b> (${this._esc(label)}) into one show?`
+      + `<br><br>Cash will run from day one's starting float to the last day's ending float, and inventory `
+      + `will be read from your stock list. ${linked} linked record${linked!==1?'s':''} will move to the merged show.`
+      + `<br><br>This replaces ${run.rows.length} ledger rows with one. You can undo it.`,
+      ()=>{
+        this._pushUndoSnapshot();
+        const rows = run.rows;               // already date-sorted by _showRuns
+        const first = rows[0], last = rows[rows.length-1];
+        const merged = first;
+        merged['Show Name'] = run.name;
+        merged['Date'] = run.start;
+        merged['Starting Cash'] = n(first['Starting Cash']);
+        merged['Ending Cash'] = n(last['Ending Cash']);
+        merged['Owner Cash In'] = rows.reduce((a,c)=>a+n(c['Owner Cash In']),0);
+        // Hand inventory back to the stock list rather than inheriting a typed figure.
+        ['Starting Inventory Value','Ending Inventory Value'].forEach(f=>{
+          delete merged[f]; delete merged[f+' (typed)'];
+        });
+        const notes = rows.map(c=>String(c['Notes']||'').trim()).filter(Boolean);
+        merged['Notes'] = [...new Set(notes)].join(' · ');
+        // Repoint every record that named one of the days.
+        ['sales','expenses','trades'].forEach(t=>{
+          this.data[t].forEach(r=>{ if(names.includes(r['Show Name'])) r['Show Name'] = run.name; });
+        });
+        rows.slice(1).forEach(c=>{
+          this._tombstone('cashflow', c);
+          this.data.cashflow = this.data.cashflow.filter(x=>x!==c);
+        });
+        this.recalcAll();
+        this.renderAll();
+        this.markDirty();
+        this.closeShowDetail();
+        this.showToast(`Merged ${rows.length} days into one show.`);
+      });
+  }
+
   // ---------------- Per-show drill-down ----------------
   // Everything tied to one show, pulled from the same records the ledger totals from, so the
   // numbers here always reconcile with the Card Show ledger row.
@@ -2698,6 +2762,13 @@ class Dashboard {
     html += multiDay
       ? this._runProfitWorking(run, agg)
       : this._showProfitWorking(c, usingLedger, salesProfit, tradeProfit, totalExpenses, net);
+    if(multiDay){
+      html += `<div class="sd-section sd-merge">`
+        + `<button type="button" class="btn-sm" data-merge-run="${this._esc(run.rows[0]['Show Name']||'')}">`
+        + `&#128279; Merge these ${agg.days} days into one show</button>`
+        + `<div class="sd-work-note">Replaces the ${agg.days} ledger rows with a single row: cash from day one's opening float to the last day's closing one, inventory read from your stock list. Undoable.</div>`
+        + `</div>`;
+    }
 
     html += `<div class="sd-section"><h4>Top Sellers <span>${topSellers.length?'by revenue':''}</span></h4>`;
     html += topSellers.length
