@@ -1493,8 +1493,6 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
   <!-- ===================== TRADES TAB ===================== -->
   <section class="tab-panel" id="tab-trades">
-    <div id="trade-conflict-alert" class="alert-banner hidden"></div>
-    <div id="trade-balance-alert" class="alert-banner hidden"></div>
     <div class="kpi-row" style="margin-bottom:var(--gap)">
       <div class="kpi-card" style="--dot:var(--accent2)" title="Retail of every card you handed over across all trades — what you sold, at sticker price.">
         <div class="kpi-label">Sold via Trade</div>
@@ -1630,7 +1628,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v70</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v71</strong>
   </footer>
 </div>
 
@@ -3013,6 +3011,27 @@ class Dashboard {
           ? `stock +${money(b.diff)} while cash fell ${money(b.cashOut)} — looks like a bulk buy; date those cards`
           : `ended ${money(b.end)} · next started ${money(b.start)}`,
         val:money(b.diff), neg:b.diff<0 })) });
+
+    // 8c) A card recorded as leaving through BOTH a Sale and a trade's "You Gave" list. It sold
+    // once — for cash on the Sales tab, or for cards on the Trades tab — so counting both
+    // subtracts it from stock twice and books its profit twice.
+    //
+    // Lives here rather than as a banner on the Trades tab, and it is not covered by the
+    // negative-stock check above: that only fires once the quantity actually goes below zero, so
+    // a card bought two-up and then both sold and traded lands on zero and passes silently while
+    // still double-counting the money.
+    const soldIds = new Set(this.data.sales.filter(s=>(Number(s['Quantity Sold'])||0)>0).map(s=>s['Item ID']));
+    const tradedOutBy = new Map();
+    this.data.trades.forEach(t=>(Array.isArray(t['Items Traded Out'])?t['Items Traded Out']:[]).forEach(id=>{
+      if(!tradedOutBy.has(id)) tradedOutBy.set(id, t['Trade ID']||'');
+    }));
+    const nameOf = {}; this.data.inventory.forEach(i=>{ nameOf[i['Item ID']] = i['Item Name']; });
+    const dbl = [...tradedOutBy.keys()].filter(id=>soldIds.has(id));
+    if(dbl.length) findings.push({ sev:'error', icon:'\u{1F501}', title:'Counted as sold twice',
+      desc:'These cards appear in both a Sale and a trade\u2019s \u201cYou Gave\u201d list, so stock is subtracted twice and the profit is counted twice. A card sells once \u2014 for cash on the Sales tab, or for cards on the Trades tab. Delete whichever record didn\u2019t happen.',
+      items: dbl.map(id=>({ table:'inventory', search:id,
+        name:nameOf[id]||id, detail:`sold on the Sales tab and given away in ${tradedOutBy.get(id)||'a trade'}`,
+        val:'x2', neg:true })) });
 
     // 9) In-stock cards with no cost. Every one of these reports 100% margin when it sells, so
     // they quietly inflate profit until a real cost is entered.
@@ -7042,41 +7061,8 @@ class Dashboard {
     document.getElementById('kpi-trade-paid').textContent = fmtMoney(sumT('Paid To You (auto)'));
     document.getElementById('kpi-trade-cash-net').textContent = fmtMoney(sumT('Cash Settled'));
     document.getElementById('kpi-trade-profit').textContent = fmtMoney(sumT('Trade Profit (auto)'));
-    // Trades whose two sides don't reconcile — a mistyped price or cash figure, not a real result.
-    const off = this.data.trades.filter(t=>Math.abs(Number(t['Balance (auto)'])||0) >= 0.01);
-    const el = document.getElementById('trade-balance-alert');
-    if(el){
-      if(!off.length){ el.classList.add('hidden'); el.innerHTML=''; }
-      else {
-        el.classList.remove('hidden');
-        el.innerHTML = `<strong>&#9888; ${off.length} trade${off.length>1?'s don\'t':' doesn\'t'} balance:</strong> `
-          + `${off.slice(0,4).map(t=>`${this._esc(t['Trade ID'])} (${fmtMoney(t['Balance (auto)'])} off)`).join(', ')}`
-          + `${off.length>4?`, +${off.length-4} more`:''}. Market Out should equal Credit Given + Cash. Check the card prices and the cash figure.`;
-      }
-    }
-    this._renderTradeConflictAlert();
   }
 
-  // Warn when a card is recorded as leaving inventory through BOTH a Sale and a trade's
-  // "You Gave" list — that double-counts its departure and drives Remaining Inventory negative,
-  // and books its profit twice. A card leaves exactly once: sold for cash (Sales) or sold for
-  // cards (Trades), never both.
-  _renderTradeConflictAlert(){
-    const el = document.getElementById('trade-conflict-alert');
-    if(!el) return;
-    const soldIds = new Set(this.data.sales.filter(s=>(Number(s['Quantity Sold'])||0)>0).map(s=>s['Item ID']));
-    const tradedOut = new Set();
-    this.data.trades.forEach(t=>(Array.isArray(t['Items Traded Out'])?t['Items Traded Out']:[]).forEach(id=>tradedOut.add(id)));
-    const nameById = {}; this.data.inventory.forEach(i=>{ nameById[i['Item ID']] = i['Item Name']; });
-    const conflicts = [...tradedOut].filter(id=>soldIds.has(id));
-    if(!conflicts.length){ el.classList.add('hidden'); el.innerHTML=''; return; }
-    const names = conflicts.map(id=>this._esc(nameById[id]||id)).join(', ');
-    el.classList.remove('hidden');
-    el.innerHTML = `<strong>&#9888; Double-counted item${conflicts.length>1?'s':''}:</strong> ${names} `
-      + `${conflicts.length>1?'are':'is'} in both a Sale and a trade's "You Gave" list, so `
-      + `inventory is subtracted twice and the profit is counted twice. A card sells once — for cash on the Sales tab, `
-      + `or for cards here. Delete whichever record didn't happen.`;
-  }
   sortTrades(field){ this._sortBy('trades', field, 'asc'); this.renderTrades(); }
 
   renderExpenses(skipHead){
