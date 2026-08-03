@@ -352,7 +352,8 @@ body {
 .spc-total { margin-top:5px; background:var(--bg-card); border:2px solid var(--border-subtle); }
 .spc-total .spc-name { font-size:14px; }
 .spc-total .spc-profit { font-size:19px; }
-#net-by-show { display:flex; flex-direction:column; gap:6px; }
+#net-by-show, #cash-by-show { display:flex; flex-direction:column; gap:6px; }
+.section-caption { font-size:11.5px; color:var(--text-muted); margin:0 0 10px; }
 .nbs-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; padding:9px 12px; cursor:pointer; font-family:inherit; }
 .nbs-row:hover { border-color:var(--action); }
 .nbs-main { min-width:0; }
@@ -1300,6 +1301,16 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </div>
 
     <div class="table-section">
+      <h3 style="margin:0 0 2px">&#128181; Cash Profit by Show</h3>
+      <!-- Short enough to survive on a phone, where .table-section .edit-note is hidden. The
+           trades-excluded caveat is the whole distinction this section draws, so it cannot be
+           desktop-only. -->
+      <div class="section-caption">Cards sold for money only &mdash; trades and expenses excluded</div>
+      <div class="edit-note" style="margin:0 0 12px">What you actually made on cards sold <strong>for money</strong>, show by show &mdash; sale price minus what each card cost you. <strong>Trades are excluded</strong>, and so are expenses and stock movement, so this is purely the margin on what you rang up. Tap a show for its full breakdown.</div>
+      <div id="cash-by-show"></div>
+    </div>
+
+    <div class="table-section">
       <button type="button" class="section-toggle" id="spc-toggle" aria-expanded="false" aria-controls="spc-panel">
         <span class="section-toggle-main">
           <span class="section-toggle-title">&#127183; Profit by Card Sold</span>
@@ -1602,7 +1613,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v65</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v66</strong>
   </footer>
 </div>
 
@@ -3929,6 +3940,7 @@ class Dashboard {
     this.renderCardShowKpis();
     this.renderSalesProfitByCard();
     this.renderNetByShow();
+    this.renderCashProfitByShow();
     this.renderCalendar();
     this.renderInventory();
     this.renderSales();
@@ -4906,6 +4918,55 @@ class Dashboard {
         + `<span class="nbs-sub">${this._esc(date)} &middot; ${fmtMoney(c['Total Sales (auto)'])} sales</span></span>`
         + `<span class="nbs-net ${net<0?'neg':'pos'}">${fmtMoney(net)}${est}</span></button>`;
     }).join('');
+  }
+
+  // Cash profit per show: the margin on cards sold for money, and nothing else.
+  //
+  // Deliberately narrower than Net Profit by Show above. That figure is the whole day — trades,
+  // expenses and stock movement included — and it answers "did the show pay off". This one
+  // answers "what did I make selling cards", so it is built from the Sales rows alone. Trades
+  // never appear on the Sales tab, so they are excluded by construction rather than filtered.
+  //
+  // Grouped from the sales themselves rather than read off the ledger's Sales Margin, so takings
+  // recorded against a show with no ledger row still show up instead of silently vanishing.
+  renderCashProfitByShow(){
+    const el = document.getElementById('cash-by-show');
+    if(!el) return;
+    const n = v => Number(v)||0;
+    const byShow = new Map();
+    this.data.sales.forEach(s=>{
+      const show = String(s['Show Name']||'').trim() || 'No show recorded';
+      const row = byShow.get(show) || { show, qty:0, revenue:0, profit:0 };
+      row.qty += n(s['Quantity Sold']);
+      row.revenue += n(s['Total Sale Amount (auto)']);
+      row.profit += n(s['Profit (auto)']);
+      byShow.set(show, row);
+    });
+    if(!byShow.size){
+      el.innerHTML = `<div class="qt-empty">No cash sales recorded yet.</div>`;
+      return;
+    }
+    const dateOf = {};
+    this.data.cashflow.forEach(c=>{ if(c['Show Name']) dateOf[c['Show Name']] = String(c['Date']||''); });
+    const rows = [...byShow.values()].sort((a,b)=>
+      String(dateOf[b.show]||'').localeCompare(String(dateOf[a.show]||'')) || b.profit-a.profit);
+    const total = rows.reduce((a,r)=>a+r.profit,0);
+    const totalRev = rows.reduce((a,r)=>a+r.revenue,0);
+    const totalQty = rows.reduce((a,r)=>a+r.qty,0);
+    el.innerHTML = rows.map(r=>{
+      const date = dateOf[r.show] ? this._fmtShowDate(dateOf[r.show]) : '';
+      // Margin is what makes two shows with the same profit comparable — $300 on $600 of takings
+      // is a different day from $300 on $3,000.
+      const margin = r.revenue>0 ? ` &middot; ${(r.profit/r.revenue*100).toFixed(0)}% margin` : '';
+      const sub = `${date ? this._esc(date)+' &middot; ' : ''}${r.qty} card${r.qty!==1?'s':''} &middot; ${fmtMoney(r.revenue)} taken${margin}`;
+      return `<button type="button" class="nbs-row" data-show-detail="${this._esc(r.show)}" title="View show details">`
+        + `<span class="nbs-main"><span class="nbs-name">${this._esc(r.show)}</span>`
+        + `<span class="nbs-sub">${sub}</span></span>`
+        + `<span class="nbs-net ${r.profit<0?'neg':'pos'}">${fmtMoney(r.profit)}</span></button>`;
+    }).join('')
+      + `<div class="spc-total"><span class="spc-main"><span class="spc-name">Total cash profit</span>`
+      + `<span class="spc-sub">${totalQty} card${totalQty!==1?'s':''} sold for ${fmtMoney(totalRev)} across ${rows.length} show${rows.length!==1?'s':''}</span></span>`
+      + `<span class="spc-profit ${total<0?'neg':'pos'}">${fmtMoney(total)}</span></div>`;
   }
 
   // ---- generic sortable / editable table renderer ----
