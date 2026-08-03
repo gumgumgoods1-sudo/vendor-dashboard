@@ -922,21 +922,22 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        shown in place of .tab-bar under the max-width:768px media query. -->
   <nav class="bottom-nav">
     <!-- Five slots, which is the cap both iOS and Android design guidelines set for a bottom bar
-         and, more practically, what a phone's width allows without shrinking targets. Four tabs
-         plus More; everything else lives one tap away behind it. -->
-    <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Dashboard</button>
+         and, more practically, what a phone's width allows without shrinking targets. Seven tabs
+         left each one 67px wide with a 1px gap between them, which is what made them easy to miss.
+         Five gives ~108px each. Everything not here lives one tap away behind More. -->
     <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')">Card Show</button>
     <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')">Inventory</button>
     <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')">Sales</button>
+    <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')">Trades</button>
     <button class="tab-btn" id="nav-more-btn" onclick="dash.openMoreSheet()">More</button>
   </nav>
 
-  <!-- The tabs that aren't in the bar, in the same order they appear on desktop. Full-width rows
-       so they are far easier to hit than a fifth of a nav bar. -->
+  <!-- The tabs that aren't in the bar. Full-width rows so they are far easier to hit than a
+       seventh of a nav bar ever was. -->
   <div class="qa-overlay hidden" id="more-overlay">
     <div class="more-sheet">
       <div class="more-head"><h2>More</h2><button type="button" class="qa-close" id="more-close" title="Close">&times;</button></div>
-      <button type="button" class="more-row" data-more-tab="trades"><span class="more-name">Trades</span><span class="more-sub">Card-for-card deals</span></button>
+      <button type="button" class="more-row" data-more-tab="dashboard"><span class="more-name">Dashboard</span><span class="more-sub">Overview, charts and totals</span></button>
       <button type="button" class="more-row" data-more-tab="expenses"><span class="more-name">Expenses</span><span class="more-sub">Booth fees, travel, supplies</span></button>
       <button type="button" class="more-row" data-more-tab="calendar"><span class="more-name">Calendar</span><span class="more-sub">Upcoming shows and bookings</span></button>
       <button type="button" class="more-row" data-more-tab="settings"><span class="more-name">Settings</span><span class="more-sub">Cash on hand, lists, backup</span></button>
@@ -1656,7 +1657,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v75</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v76</strong>
   </footer>
 </div>
 
@@ -2023,7 +2024,7 @@ class Dashboard {
   }
 
   init(){
-    this.MORE_TABS = ['trades','expenses','calendar','settings'];
+    this.MORE_TABS = ['dashboard','expenses','calendar','settings'];
     this._initBottomNav();
     document.addEventListener('input', e=>{
       if(e.target.matches('input.filter-input[data-filter]')){ this.handleFilterChange(e.target); }
