@@ -612,13 +612,25 @@ body {
 
   /* ---------- Bottom nav replaces the top tab bar ---------- */
   .tab-bar { display:none; }
-  .bottom-nav { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:850; background:rgba(255,255,255,0.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-top:1px solid var(--border-subtle); box-shadow:0 -6px 20px rgba(24,27,40,0.08); padding:4px 2px calc(4px + env(safe-area-inset-bottom, 0px)); gap:2px; }
-  .bottom-nav .tab-btn { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:8px 2px 7px; font-size:10.5px; border-radius:11px; white-space:normal; }
+  /* Labels only. The icon+label stack stood 69px tall and sat over the bottom of the screen the
+     whole time you scrolled; text alone is roughly half that, and reads faster than guessing at
+     an emoji. --nav-h is measured from the real bar at runtime so the space reserved below the
+     page always matches it exactly, whatever the labels or the phone's safe-area inset. */
+  .bottom-nav { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:850; background:rgba(255,255,255,0.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-top:1px solid var(--border-subtle); box-shadow:0 -6px 20px rgba(24,27,40,0.08); padding:5px 3px calc(5px + env(safe-area-inset-bottom, 0px)); gap:2px; transition:transform .22s ease; }
+  .bottom-nav .tab-btn { flex:1 1 0; min-width:0; display:flex; align-items:center; justify-content:center; padding:10px 1px; font-size:11.5px; font-weight:700; letter-spacing:-0.1px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .bottom-nav .tab-btn.active { background:var(--bg-header); color:#fff; box-shadow:none; }
-  .bottom-nav .tab-btn .nav-ico { font-size:19px; line-height:1; }
-  .dashboard-container { padding-bottom:78px; }
-  .fab { bottom:80px; }
-  .fab-calc { bottom:150px; }
+  /* Slide it away while you scroll down into content, bring it straight back on any scroll up. */
+  .bottom-nav.nav-hidden { transform:translateY(calc(100% + 8px)); }
+  .dashboard-container { padding-bottom:calc(var(--nav-h, 52px) + 14px); }
+  .fab { bottom:calc(var(--nav-h, 52px) + 14px); transition:bottom .22s ease, transform .15s, box-shadow .15s; }
+  .fab-calc { bottom:calc(var(--nav-h, 52px) + 84px); }
+  /* The floating buttons go with the bar. They are the worst offenders for covering content —
+     two opaque circles parked over the right-hand side of every table and chart — and simply
+     moving them down still leaves them on top of something. Scrolling down clears the screen
+     completely; scrolling up brings the bar and both buttons back together. */
+  .fab, .fab-calc { transition:bottom .22s ease, transform .22s ease, opacity .18s ease, box-shadow .15s; }
+  body.nav-tucked .fab, body.nav-tucked .fab-calc { transform:translateY(140%); opacity:0; pointer-events:none; }
+  @media (max-width:359px){ .bottom-nav .tab-btn { font-size:10px; letter-spacing:-0.3px; } }
 
   /* ---------- Card-list view for the 5 editable data tables ---------- */
   /* Scoped to .table-cards (not every .data-table) so the small read-only summary tables
@@ -892,13 +904,16 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        dash.showTab() keeps every nav in sync automatically with zero extra JS. Hidden on desktop,
        shown in place of .tab-bar under the max-width:768px media query. -->
   <nav class="bottom-nav">
-    <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')"><span class="nav-ico">&#128202;</span>Dashboard</button>
-    <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')"><span class="nav-ico">&#127914;</span>Card Show</button>
-    <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')"><span class="nav-ico">&#128230;</span>Inventory</button>
-    <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')"><span class="nav-ico">&#128181;</span>Sales</button>
-    <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')"><span class="nav-ico">&#128257;</span>Trades</button>
-    <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')"><span class="nav-ico">&#128179;</span>Expenses</button>
-    <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')"><span class="nav-ico">&#9881;</span>Settings</button>
+    <!-- Short labels here only. The bar gives each of seven tabs about a seventh of the screen,
+         and "Dashboard"/"Card Show" overflowed that at a readable size. The desktop tab bar above
+         keeps the full names, where there is room for them. -->
+    <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Home</button>
+    <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')">Shows</button>
+    <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')">Stock</button>
+    <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')">Sales</button>
+    <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')">Trades</button>
+    <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')">Costs</button>
+    <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')">More</button>
   </nav>
 
   <!-- Quick Add floating button + modal (Inventory / Sale / Trade / Expense) — visible on every tab. -->
@@ -1616,7 +1631,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v68</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v69</strong>
   </footer>
 </div>
 
@@ -1932,7 +1947,58 @@ class Dashboard {
     });
   }
 
+  // Keeps the space reserved under the page equal to the bar's real height, and tucks the bar
+  // out of the way while you scroll down through content.
+  //
+  // Measuring beats hard-coding: the old 78px was a guess that had to be re-guessed every time a
+  // label or the safe-area inset changed, and being wrong either clipped the last row or left a
+  // dead gap. Hiding is driven by direction rather than position, so the bar is one short swipe
+  // up away at any point — and it always returns at the very bottom, where the Add buttons and
+  // the last row of a table live.
+  _initBottomNav(){
+    const nav = document.querySelector('.bottom-nav');
+    if(!nav) return;
+    const measure = () => {
+      // Read it un-tucked, or a hidden bar would measure its slid-out position.
+      const hidden = nav.classList.contains('nav-hidden');
+      if(hidden) nav.classList.remove('nav-hidden');
+      const h = Math.round(nav.getBoundingClientRect().height);
+      if(hidden) nav.classList.add('nav-hidden');
+      if(h > 0) document.documentElement.style.setProperty('--nav-h', h+'px');
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', ()=>setTimeout(measure, 250));
+
+    let last = window.scrollY, ticking = false;
+    const apply = () => {
+      ticking = false;
+      const y = Math.max(0, window.scrollY);
+      const atBottom = (window.innerHeight + y) >= (document.body.scrollHeight - 24);
+      const delta = y - last;
+      // A dead zone stops the bar flickering on the small jitters that come from scroll momentum
+      // and from tapping into an input, which nudges the page.
+      if(Math.abs(delta) < 8) return;
+      // Never hide near the top or at the very bottom: those are the two places you are most
+      // likely to want to switch tabs.
+      const hide = delta > 0 && y > 120 && !atBottom;
+      nav.classList.toggle('nav-hidden', hide);
+      document.body.classList.toggle('nav-tucked', hide);
+      last = y;
+    };
+    window.addEventListener('scroll', ()=>{
+      if(!ticking){ ticking = true; requestAnimationFrame(apply); }
+    }, {passive:true});
+    // Switching tabs scrolls you back up; the bar must be there when you arrive.
+    this._revealBottomNav = () => {
+      nav.classList.remove('nav-hidden');
+      document.body.classList.remove('nav-tucked');
+      last = window.scrollY;
+    };
+  }
+
   init(){
+    this._initBottomNav();
     document.addEventListener('input', e=>{
       if(e.target.matches('input.filter-input[data-filter]')){ this.handleFilterChange(e.target); }
       // Typing again after a no-match message clears the stale message immediately, so the box
@@ -3829,6 +3895,7 @@ class Dashboard {
     document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
     document.getElementById('tab-'+name).classList.add('active');
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+    if(this._revealBottomNav) this._revealBottomNav();
   }
 
   // The earliest date any card records having been acquired. Before this, the stock list can't
