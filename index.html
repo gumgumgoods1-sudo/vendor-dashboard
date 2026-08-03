@@ -367,6 +367,21 @@ body {
 .spc-total .spc-profit { font-size:19px; }
 #net-by-show, #cash-by-show { display:flex; flex-direction:column; gap:6px; }
 .section-caption { font-size:11.5px; color:var(--text-muted); margin:0 0 10px; }
+.wmm-split { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+.wmm-bar { display:flex; height:26px; border-radius:8px; overflow:hidden; background:var(--bg-inset); border:1px solid var(--border-subtle); }
+.wmm-seg { display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:800; color:#fff; white-space:nowrap; overflow:hidden; }
+.wmm-seg.cash { background:var(--positive); }
+.wmm-seg.stock { background:var(--bg-header); }
+.wmm-legend { display:flex; flex-wrap:wrap; gap:14px; font-size:12px; color:var(--text-secondary); }
+.wmm-legend b { color:var(--text-primary); font-variant-numeric:tabular-nums; }
+.wmm-dot { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; vertical-align:middle; }
+.wmm-head { font-size:13px; font-weight:800; color:var(--text-primary); margin:16px 0 4px; }
+.wmm-sub { font-size:11.5px; color:var(--text-muted); margin-bottom:8px; line-height:1.5; }
+.wmm-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; margin-bottom:6px; }
+.wmm-name { font-size:13px; font-weight:700; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wmm-meta { font-size:11px; color:var(--text-muted); }
+.wmm-val { font-size:14px; font-weight:800; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.wmm-flag { background:var(--negative-tint); border-color:var(--negative); }
 .nbs-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:10px; padding:9px 12px; cursor:pointer; font-family:inherit; }
 .nbs-row:hover { border-color:var(--action); }
 .nbs-main { min-width:0; }
@@ -1234,6 +1249,14 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <div class="hero-stat"><div class="hero-stat-label">Total Expenses</div><div class="hero-stat-value" id="kpi-expenses">$0</div></div>
       </div>
     </section>
+    <div class="section-title">Where&rsquo;s My Money</div>
+    <div class="table-section" id="wmm">
+      <div class="section-caption">Not what you&rsquo;ve earned &mdash; where the money you&rsquo;ve put in is sitting right now.</div>
+      <div class="wmm-split" id="wmm-split"></div>
+      <div id="wmm-conc"></div>
+      <div id="wmm-cats"></div>
+    </div>
+
     <div class="kpi-group">
       <div class="kpi-group-title">Sales Performance</div>
       <section class="kpi-row">
@@ -1656,7 +1679,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v77</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v78</strong>
   </footer>
 </div>
 
@@ -4261,6 +4284,7 @@ class Dashboard {
     this.renderCharts();
     this.renderTopShows();
     this.renderCardShowKpis();
+    this.renderWheresMyMoney();
     this.renderSalesProfitByCard();
     this.renderNetByShow();
     this.renderCashProfitByShow();
@@ -5122,6 +5146,107 @@ class Dashboard {
       const days = agg.days>1 ? ` <span class="run-days">${agg.days} days</span>` : '';
       return `<tr class="top-show-row" data-show-detail="${this._esc(run.rows[0]['Show Name']||'')}" title="View show details"><td><span class="rank">${i+1}</span></td><td>${this._esc(run.name)}${days}</td><td>${fmtMoney(agg.sales)}</td><td>${fmtMoney(agg.expenses)}</td><td>${fmtMoney(agg.net)}${est}</td>${roiCell(agg)}</tr>`;
     }).join('');
+  }
+
+  // Where the money actually is, as opposed to what it earned.
+  //
+  // Net Profit answers "did this work"; this answers "where is it", which is a different and,
+  // when most of your capital is sitting in cards, a more useful question. Three things it shows
+  // that nothing else does: the split between cash you can spend and stock you cannot, how few
+  // cards that stock value is concentrated in, and how much of it has never sold a copy.
+  //
+  // Valued at cost per unit, quantity not counted — the same basis as the Total Cost tile, so the
+  // figures here reconcile with it rather than quietly using a second definition.
+  renderWheresMyMoney(){
+    const el = document.getElementById('wmm-split');
+    if(!el) return;
+    const n = v => Number(v)||0;
+    const k = this.computeKPIs();
+    const cash = n(k.cashOnHand), stock = n(k.totalCost), total = cash + stock;
+    const owner = n(k.ownerCapital);
+
+    const held = this.data.inventory
+      .filter(i=>n(i['Remaining Inventory (auto)']) > 0)
+      .map(i=>({ id:i['Item ID'], name:i['Item Name']||i['Item ID']||'\u2014',
+                 cat:i['Category']||'Uncategorised', value:n(i['Cost']) }));
+
+    // --- the split ---
+    if(total <= 0){
+      el.innerHTML = `<div class="qt-empty">No stock or cash recorded yet.</div>`;
+    } else {
+      const pc = v => Math.round(v/total*100);
+      const seg = (cls,v,label) => v<=0 ? '' :
+        `<div class="wmm-seg ${cls}" style="width:${v/total*100}%" title="${label}">${pc(v)>=12?pc(v)+'%':''}</div>`;
+      el.innerHTML =
+          `<div class="wmm-bar">${seg('cash',cash,'Cash')}${seg('stock',stock,'Stock at cost')}</div>`
+        + `<div class="wmm-legend">`
+        + `<span><span class="wmm-dot" style="background:var(--positive)"></span>Cash you can spend <b>${fmtMoney(cash)}</b></span>`
+        + `<span><span class="wmm-dot" style="background:var(--bg-header)"></span>Tied up in cards <b>${fmtMoney(stock)}</b></span>`
+        + (owner ? `<span>Of it, your own money <b>${fmtMoney(owner)}</b></span>` : '')
+        + `</div>`
+        + (cash===0 ? `<div class="wmm-sub">Cash on Hand is $0 &mdash; set it in Settings or this split only shows half the picture.</div>` : '')
+        + (stock>0 && cash/total < 0.15
+            ? `<div class="wmm-sub">${100-pc(cash)}% of your capital is in cards, not cash. That is the money you can&rsquo;t spend until it sells.</div>` : '');
+    }
+
+    // --- concentration: how few cards hold the value ---
+    const conc = document.getElementById('wmm-conc');
+    if(conc){
+      if(!held.length){ conc.innerHTML = ''; }
+      else {
+        const sorted = [...held].sort((a,b)=>b.value-a.value);
+        let cum = 0, count = 0;
+        for(const r of sorted){ cum += r.value; count++; if(cum >= stock*0.7) break; }
+        const top = sorted.slice(0,5);
+        conc.innerHTML = `<div class="wmm-head">Where it&rsquo;s concentrated</div>`
+          + `<div class="wmm-sub"><b>${count} of ${held.length} cards</b> hold 70% of your stock value. `
+          + `Those are the ones whose selling actually moves your position; the rest is a long tail.</div>`
+          + top.map(r=>`<div class="wmm-row"><span class="wmm-name">${this._esc(r.name)}`
+              + `<span class="wmm-meta"> &middot; ${this._esc(r.cat)}</span></span>`
+              + `<span class="wmm-val">${fmtMoney(r.value)}</span></div>`).join('');
+      }
+    }
+
+    // --- what has never moved, and how each category sells ---
+    const cats = document.getElementById('wmm-cats');
+    if(cats){
+      const gone = new Set(this.data.sales.filter(s=>n(s['Quantity Sold'])>0).map(s=>s['Item ID']));
+      this.data.trades.forEach(t=>(Array.isArray(t['Items Traded Out'])?t['Items Traded Out']:[])
+        .forEach(id=>gone.add(id)));
+      const idle = held.filter(x=>!gone.has(x.id));
+      const idleVal = idle.reduce((a,x)=>a+x.value,0);
+
+      const byCat = new Map();
+      this.data.inventory.forEach(i=>{
+        const c = i['Category']||'Uncategorised';
+        const row = byCat.get(c) || { c, bought:0, sold:0, heldVal:0 };
+        const q = n(i['Qty Purchased']), rem = n(i['Remaining Inventory (auto)']);
+        row.bought += q;
+        row.sold += Math.max(0, q - rem);      // covers cash sales and trades alike
+        if(rem > 0) row.heldVal += n(i['Cost']);
+        byCat.set(c, row);
+      });
+      const rows = [...byCat.values()].filter(r=>r.bought>0).sort((a,b)=>b.heldVal-a.heldVal);
+
+      cats.innerHTML =
+        (idle.length
+          ? `<div class="wmm-head">Never sold a copy</div>`
+            + `<div class="wmm-sub">${idle.length} card${idle.length!==1?'s':''} worth <b>${fmtMoney(idleVal)}</b> at cost `
+            + `${idle.length!==1?'have':'has'} never sold once. `
+            + `${stock>0?`That is ${Math.round(idleVal/stock*100)}% of your stock value doing nothing yet.`:''}</div>`
+          : '')
+        + (rows.length
+          ? `<div class="wmm-head">How each category sells</div>`
+            + `<div class="wmm-sub">Share of what you bought that has since sold. Low rates with a lot still held are where your money keeps getting stuck.</div>`
+            + rows.map(r=>{
+                const pct = r.bought>0 ? Math.round(r.sold/r.bought*100) : 0;
+                const stuck = pct < 20 && r.heldVal > stock*0.15;
+                return `<div class="wmm-row${stuck?' wmm-flag':''}"><span class="wmm-name">${this._esc(r.c)}`
+                  + `<span class="wmm-meta"> &middot; ${r.sold} of ${r.bought} sold &middot; ${fmtMoney(r.heldVal)} still held</span></span>`
+                  + `<span class="wmm-val">${pct}%</span></div>`;
+              }).join('')
+          : '');
+    }
   }
 
   // Card Show tab summary boxes. Sales profit is the headline — the sum of Profit (auto) across
