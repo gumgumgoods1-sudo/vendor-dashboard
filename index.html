@@ -821,6 +821,8 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .checkout-stock-warn { color:var(--negative); font-weight:700; }
 @media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
 
+.qa-binder-btn { width:100%; min-height:46px; margin:-2px 0 8px; padding:10px; font-size:13.5px; font-weight:700; font-family:inherit; color:var(--text-primary); background:var(--bg-inset); border:1px dashed var(--border-subtle); border-radius:10px; cursor:pointer; }
+.qa-binder-btn:active { border-style:solid; border-color:var(--action); }
 /* Inventory search inside Quick Add Sale. */
 .qa-pick { position:relative; display:flex; align-items:center; margin-bottom:6px; }
 .qa-pick-icon { position:absolute; left:11px; font-size:13px; opacity:.65; pointer-events:none; }
@@ -990,6 +992,18 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')"><span class="nav-ico" aria-hidden="true">&#9881;</span>Settings</button>
   </nav>
 
+  <!-- First-run setup for the binder pseudo-item. -->
+  <div class="qa-overlay hidden" id="binder-overlay">
+    <div class="more-sheet">
+      <div class="more-head"><h2>Set up your binder</h2><button type="button" class="qa-close" id="binder-close" title="Close">&times;</button></div>
+      <div class="edit-note" style="margin:0 0 12px">The binder is one stock item standing in for all the cheap singles in it, so a binder sale books a real cost instead of counting the whole price as profit. You only do this once.</div>
+      <label class="ds-field"><span>Cost per card</span><input type="number" id="binder-cost" min="0" step="0.01" placeholder="e.g. 0.25"></label>
+      <label class="ds-field"><span>Roughly how many cards are in it</span><input type="number" id="binder-qty" min="1" step="1" placeholder="e.g. 800"></label>
+      <div class="ds-preview" id="binder-preview"></div>
+      <button type="button" class="btn-sm btn-add" id="binder-create" style="width:100%;margin-top:4px">Create binder</button>
+    </div>
+  </div>
+
   <!-- Bulk Date Acquired. Cards bought as a lot all share one date, so stamping them one at a
        time is the reason none of them have one. -->
   <div class="qa-overlay hidden" id="dateset-overlay">
@@ -1059,6 +1073,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
             <button type="button" class="qa-pick-clear hidden" id="qa-sale-search-clear" title="Clear">&times;</button>
           </div>
           <div class="qa-pick-results hidden" id="qa-sale-results"></div>
+          <button type="button" class="qa-binder-btn" id="qa-binder-btn" title="Sell a card out of the binder without searching for it">&#128194; Binder sale</button>
           <select name="Item ID" id="qa-sale-select"></select>
         </div>
         <!-- Live cost/margin readout for the selected item — updates as you pick an item and
@@ -1737,7 +1752,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v84</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v85</strong>
   </footer>
 </div>
 
@@ -2117,6 +2132,7 @@ class Dashboard {
       // can drive the same handleFilterChange() the column-header SKU filter already uses.
       if(e.target.matches('[data-sku-lookup="inventory"]')){ this.handleFilterChange(e.target); }
       if(e.target.id === 'qa-sale-search'){ this.renderSalePicker(); }
+      if(e.target.id === 'binder-cost' || e.target.id === 'binder-qty'){ this._renderBinderSetup(); }
     });
     document.addEventListener('change', e=>{
       if(e.target.matches('[data-edit]')){ this.handleEdit(e.target); return; }
@@ -2139,6 +2155,10 @@ class Dashboard {
       if(qa){ this.adjustQty(Number(qa.dataset.id), Number(qa.dataset.delta)); return; }
       // Checked before [data-show-detail] — the merge button lives inside the detail panel and
       // must not be swallowed by an ancestor that opens it.
+      if(e.target.closest('#qa-binder-btn')){ this.useBinderForSale(); return; }
+      if(e.target.closest('#binder-close')){ this.closeBinderSetup(); return; }
+      if(e.target.id === 'binder-overlay'){ this.closeBinderSetup(); return; }
+      if(e.target.closest('#binder-create')){ this.createBinderItem(); return; }
       const sp = e.target.closest('[data-sale-pick]');
       if(sp){ this.pickSaleItem(sp.dataset.salePick); return; }
       if(e.target.closest('#qa-sale-search-clear')){ this.clearSalePicker(); return; }
@@ -2354,6 +2374,7 @@ class Dashboard {
       if(!document.getElementById('sku-pick-overlay').classList.contains('hidden')){ this.closeSkuPicker(); return; }
       if(!document.getElementById('sort-sheet-overlay').classList.contains('hidden')){ this.closeSortSheet(); return; }
       if(!document.getElementById('dateset-overlay').classList.contains('hidden')){ this.closeDateSet(); return; }
+      if(!document.getElementById('binder-overlay').classList.contains('hidden')){ this.closeBinderSetup(); return; }
       if(!document.getElementById('show-mode-overlay').classList.contains('hidden')){ this.closeShowMode(); return; }
       if(!document.getElementById('new-show-overlay').classList.contains('hidden')){ this.closeNewShow(); return; }
       if(!document.getElementById('show-detail-overlay').classList.contains('hidden')){ this.closeShowDetail(); return; }
@@ -7290,6 +7311,88 @@ class Dashboard {
     });
   }
   _applyInventorySearch(rows){ return this._matchInventory(rows, this.inventorySearch); }
+
+  // ---------------- the binder ----------------
+  // A binder of cheap singles is not worth listing card by card, but selling from it against no
+  // stock item at all books the whole sale price as profit, because cost comes from the linked
+  // item. One pseudo-item fixes that: it carries a blended cost per card, and every binder sale
+  // points at it.
+  //
+  // It identifies itself by category rather than by a stored id, so it survives an export/import
+  // round trip and is obvious in the stock list rather than being a hidden setting.
+  BINDER_CATEGORY = 'Binder';
+  _binderItem(){
+    const byCat = this.data.inventory.find(i=>String(i['Category']||'') === this.BINDER_CATEGORY);
+    if(byCat) return byCat;
+    // Falls back to a name match so a binder row made by hand before this existed still counts.
+    return this.data.inventory.find(i=>/\bbinder\b/i.test(String(i['Item Name']||''))) || null;
+  }
+
+  useBinderForSale(){
+    const it = this._binderItem();
+    if(!it){ this.openBinderSetup(); return; }
+    const sel = document.getElementById('qa-sale-select');
+    const search = document.getElementById('qa-sale-search');
+    if(!sel) return;
+    // The item dropdown is built when Quick Add opens, so a binder created just now isn't in it
+    // yet — and assigning a value with no matching <option> silently leaves the select empty.
+    if(!Array.from(sel.options).some(o=>o.value === it['Item ID'])) this.populateQuickAddForms();
+    sel.value = it['Item ID'];
+    if(search) search.value = it['Item Name'] || 'Binder';
+    const box = document.getElementById('qa-sale-results');
+    if(box){ box.classList.add('hidden'); box.innerHTML = ''; }
+    // Deliberately NOT itemChanged: a binder card's price is whatever you agreed, so prefilling
+    // the pseudo-item's retail would just be a number to delete. Show the readout, then put the
+    // cursor where the only thing left to type goes.
+    this.updateSaleInfo();
+    const price = document.querySelector('#qa-form-sales [name="Sale Price"]');
+    if(price){ price.focus(); price.select && price.select(); }
+  }
+
+  openBinderSetup(){
+    const el = document.getElementById('binder-overlay');
+    if(!el) return;
+    this._renderBinderSetup();
+    el.classList.remove('hidden');
+  }
+  closeBinderSetup(){ document.getElementById('binder-overlay').classList.add('hidden'); }
+
+  _renderBinderSetup(){
+    const cost = parseFloat((document.getElementById('binder-cost')||{}).value);
+    const qty = parseInt((document.getElementById('binder-qty')||{}).value, 10);
+    const prev = document.getElementById('binder-preview');
+    const btn = document.getElementById('binder-create');
+    const ok = Number.isFinite(cost) && cost >= 0 && Number.isFinite(qty) && qty > 0;
+    if(prev) prev.innerHTML = ok
+      ? `Adds one stock item worth <b>${fmtMoney(cost*qty)}</b> at cost &mdash; ${qty} cards at ${fmtMoney(cost)} each. `
+        + `Each binder sale then books ${fmtMoney(cost)} of cost instead of nothing.`
+      : 'Enter what the cards cost you each and roughly how many there are. A rough count is fine &mdash; it only sets the blended cost.';
+    if(btn) btn.disabled = !ok;
+  }
+
+  createBinderItem(){
+    const cost = parseFloat((document.getElementById('binder-cost')||{}).value);
+    const qty = parseInt((document.getElementById('binder-qty')||{}).value, 10);
+    if(!Number.isFinite(cost) || cost < 0 || !Number.isFinite(qty) || qty <= 0) return;
+    this._pushUndoSnapshot();
+    // Make the category real so the item is filterable and the next binder row lands in it too.
+    const cats = this.data.lists['Inventory Categories'] || (this.data.lists['Inventory Categories'] = []);
+    if(!cats.includes(this.BINDER_CATEGORY)) cats.push(this.BINDER_CATEGORY);
+    const row = this.blankRow('inventory');
+    row['Item Name'] = 'Binder \u2014 bulk singles';
+    row['Category'] = this.BINDER_CATEGORY;
+    row['Cost'] = cost;
+    row['Retail Price'] = 0;          // no single retail applies; the price is per sale
+    row['Qty Purchased'] = qty;
+    row._id = this.nextId++;
+    this.data.inventory.push(row);
+    this.recalcAll();
+    this.renderAll();
+    this.markDirty();
+    this.closeBinderSetup();
+    this.showToast('Binder created. Tap Binder sale to sell from it.');
+    this.useBinderForSale();
+  }
 
   // ---------------- item picker in Quick Add Sale ----------------
   // A 200-entry <select> is unusable on a phone at a show. The select stays as the field the form
