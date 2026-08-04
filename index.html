@@ -822,6 +822,10 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 @media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
 
 /* Inventory search inside Quick Add Sale. */
+.inv-closed { text-align:center; padding:26px 16px; }
+.inv-closed-n { font-size:34px; font-weight:800; color:var(--text-primary); line-height:1.1; }
+.inv-closed-t { font-size:13px; color:var(--text-secondary); margin-top:2px; }
+.inv-closed-s { font-size:12.5px; color:var(--text-muted); margin:10px 0 14px; }
 .qa-pick { position:relative; display:flex; align-items:center; margin-bottom:6px; }
 .qa-pick-icon { position:absolute; left:11px; font-size:13px; opacity:.65; pointer-events:none; }
 .qa-pick-input { width:100%; padding:11px 34px; font-size:15px; border:1px solid var(--border-subtle); border-radius:10px; background:var(--bg-inset); color:var(--text-primary); font-family:inherit; }
@@ -1737,7 +1741,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v89</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v90</strong>
   </footer>
 </div>
 
@@ -1873,7 +1877,9 @@ class Dashboard {
     };
     this.salesPageIndex = 0;
     this.salesPageSize = 10;
-    this.showSoldOut = false;   // Inventory tab hides sold-out items until this is toggled on
+    this.showSoldOut = false;
+    // Set once you ask to see the whole stock list on a phone; the list is closed until then.
+    this.showAllInventory = false;   // Inventory tab hides sold-out items until this is toggled on
     this.inventorySearch = '';  // universal search box text (matches name/SKU/set/category/…)
     this.salesSearch = '';      // universal search box text for the Sales tab
     // Show Mode: the show currently being worked. New sales/trades/expenses default to it and
@@ -1941,6 +1947,11 @@ class Dashboard {
       baseCashOnHand: Number.isFinite(cash) ? cash : 0,
       // Social handle printed on the promo poster; blank until you set one.
       promoHandle: settings && typeof settings.promoHandle==='string' ? settings.promoHandle : '',
+      // What the last sale was recorded against. Re-typing the same show and payment method for
+      // every card at the same table is the bulk of the work in adding a sale, and neither
+      // changes between them. Unknown keys are dropped here, so they have to be listed.
+      lastSaleShow: settings && typeof settings.lastSaleShow==='string' ? settings.lastSaleShow : '',
+      lastSalePayment: settings && typeof settings.lastSalePayment==='string' ? settings.lastSalePayment : '',
     };
   }
 
@@ -2142,6 +2153,7 @@ class Dashboard {
       const sp = e.target.closest('[data-sale-pick]');
       if(sp){ this.pickSaleItem(sp.dataset.salePick); return; }
       if(e.target.closest('#qa-sale-search-clear')){ this.clearSalePicker(); return; }
+      if(e.target.closest('#inv-show-all')){ this.showAllInventory = true; this.renderInventory(); return; }
       if(e.target.closest('#inv-date-btn')){ this.openDateSet(); return; }
       if(e.target.closest('#dateset-close')){ this.closeDateSet(); return; }
       if(e.target.id === 'dateset-overlay'){ this.closeDateSet(); return; }
@@ -7095,11 +7107,24 @@ class Dashboard {
 
     // Show Mode: preselect the active show in every Show dropdown (selects otherwise
     // default to their first option). No-op when Show Mode is off or the show vanished.
-    const defShow = this._defaultShow();
+    // Show Mode wins. Otherwise use whatever the last sale was recorded against, which for a day
+    // at a table is the same show every time — _defaultShow() falls back to the FIRST show ever
+    // added, which is almost never the one you're standing at.
+    const showModeOn = this.activeShow && this.data.cashflow.some(c=>c['Show Name']===this.activeShow);
+    const defShow = showModeOn ? this.activeShow
+      : (this.data.settings.lastSaleShow || this._defaultShow() || '');
     if(defShow){
-      salesForm.elements['Show Name'].value = defShow;
-      expensesForm.elements['Show Name'].value = defShow;
-      checkoutForm.elements['Show Name'].value = defShow;
+      const has = v => showOpts.includes(v);
+      if(has(defShow)){
+        salesForm.elements['Show Name'].value = defShow;
+        expensesForm.elements['Show Name'].value = defShow;
+        checkoutForm.elements['Show Name'].value = defShow;
+      }
+    }
+    const lastPay = this.data.settings.lastSalePayment;
+    if(lastPay && paymentOpts.includes(lastPay)){
+      salesForm.elements['Payment Method'].value = lastPay;
+      if(checkoutForm.elements['Payment Method']) checkoutForm.elements['Payment Method'].value = lastPay;
     }
     // Show the cost/margin readout for the default-selected item (and seed the sale price with
     // its retail) so opening the Sale tab already shows a meaningful margin.
@@ -7126,6 +7151,9 @@ class Dashboard {
       row['Quantity Sold'] = parseFloat(fd.get('Quantity Sold'))||1;
       row['Sale Price'] = parseFloat(fd.get('Sale Price'))||0;
       row['Payment Method'] = fd.get('Payment Method') || '';
+      // Carry these to the next sale. A run of sales at one table shares both.
+      this.data.settings.lastSaleShow = row['Show Name'] || '';
+      this.data.settings.lastSalePayment = row['Payment Method'] || '';
     } else if(table==='expenses'){
       row['Date'] = fd.get('Date') || this.todayStr();
       row['Show Name'] = fd.get('Show Name') || this._defaultShow();
@@ -7241,6 +7269,16 @@ class Dashboard {
     return shown===total ? base : `${base} (filtered from ${total})`;
   }
 
+  // Closed only when there is genuinely nothing to show you: a phone, no search, no column
+  // filter, and you haven't asked for the full list. Any of those and it behaves as before.
+  _inventoryListClosed(){
+    if(this.showAllInventory) return false;
+    if(String(this.inventorySearch||'').trim()) return false;
+    const f = this.tableFilters['inventory'];
+    if(f && Object.values(f).some(v=>v!=='' && v!=null)) return false;
+    return window.matchMedia('(max-width:768px)').matches;
+  }
+
   renderInventory(skipHead){
     const cols = this._visibleColumns('inventory');
     if(!skipHead) this._renderHead('inv-head', cols, 'inv', 'sortInventory', true, 'inventory');
@@ -7250,6 +7288,23 @@ class Dashboard {
     const inStock = this.showSoldOut
       ? this.data.inventory
       : this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
+    // On a phone the stock list is thirteen screens of cards you cannot usefully scan — the only
+    // way to reach one is to search. So it stays closed until you do, and rendering hundreds of
+    // editable rows nobody asked for stops being the cost of opening the tab.
+    if(this._inventoryListClosed()){
+      const n = inStock.length;
+      document.getElementById('inv-count').textContent = `${n} item${n!==1?'s':''} in stock`;
+      document.getElementById('inv-body').innerHTML =
+        `<tr><td colspan="99"><div class="inv-closed">`
+        + `<div class="inv-closed-n">${n}</div>`
+        + `<div class="inv-closed-t">card${n!==1?'s':''} in stock</div>`
+        + `<div class="inv-closed-s">Search above by name, SKU or set to find one.</div>`
+        + `<button type="button" class="btn-sm" id="inv-show-all">Show all ${n}</button>`
+        + `</div></td></tr>`;
+      const total = document.getElementById('inv-total');
+      if(total) total.innerHTML = '';
+      return;
+    }
     const searched = this._applyInventorySearch(inStock);
     const filtered = this._applyTableFilter('inventory', cols, searched);
     const data = this._sortData(filtered, this.sortStates.inv);
