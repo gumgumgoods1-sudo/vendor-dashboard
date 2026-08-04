@@ -825,6 +825,23 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .checkout-stock-warn { color:var(--negative); font-weight:700; }
 @media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
 
+/* Inventory search inside Quick Add Sale. */
+.qa-pick { position:relative; display:flex; align-items:center; margin-bottom:6px; }
+.qa-pick-icon { position:absolute; left:11px; font-size:13px; opacity:.65; pointer-events:none; }
+.qa-pick-input { width:100%; padding:11px 34px; font-size:15px; border:1px solid var(--border-subtle); border-radius:10px; background:var(--bg-inset); color:var(--text-primary); font-family:inherit; }
+.qa-pick-clear { position:absolute; right:8px; border:none; background:transparent; color:var(--text-secondary); font-size:18px; line-height:1; padding:4px 6px; cursor:pointer; border-radius:6px; }
+.qa-pick-results { max-height:46vh; overflow-y:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--border-subtle); border-radius:10px; margin-bottom:8px; }
+.qa-pick-results.hidden { display:none; }
+.qa-pick-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; min-height:52px; text-align:left; padding:9px 12px; background:var(--bg-card); border:none; border-bottom:1px solid var(--border-subtle); cursor:pointer; font-family:inherit; }
+.qa-pick-row:last-child { border-bottom:none; }
+.qa-pick-row:active { background:var(--bg-inset); }
+.qa-pick-main { min-width:0; }
+.qa-pick-name { display:block; font-size:13.5px; font-weight:700; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.qa-pick-meta { display:block; font-size:11px; color:var(--text-muted); margin-top:1px; }
+.qa-pick-right { flex-shrink:0; text-align:right; }
+.qa-pick-price { display:block; font-size:13.5px; font-weight:800; color:var(--text-primary); }
+.qa-pick-stock { display:block; font-size:11px; color:var(--text-muted); }
+.qa-pick-none { font-size:12.5px; color:var(--text-secondary); padding:12px; }
 /* Live cost/margin readout in the Quick Add Sale form. */
 .qa-sale-info { font-size:12.5px; color:var(--text-secondary); background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:9px; padding:8px 11px; margin:-4px 0 2px; line-height:1.5; }
 .qa-sale-info[hidden] { display:none; }
@@ -1037,7 +1054,18 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <div class="qa-field"><label>Show</label><select name="Show Name"></select></div>
         </div>
         <div data-sku-lookup-slot="qa-sales"></div>
-        <div class="qa-field"><label>Item</label><select name="Item ID"></select></div>
+        <!-- Search instead of hunting a 200-entry dropdown. The <select> is still the field the
+             form submits; this just sets it, so nothing downstream changes. -->
+        <div class="qa-field"><label>Item</label>
+          <div class="qa-pick">
+            <span class="qa-pick-icon" aria-hidden="true">&#128269;</span>
+            <input type="search" id="qa-sale-search" class="qa-pick-input" autocomplete="off"
+                   placeholder="Search inventory &mdash; name, SKU, set&hellip;">
+            <button type="button" class="qa-pick-clear hidden" id="qa-sale-search-clear" title="Clear">&times;</button>
+          </div>
+          <div class="qa-pick-results hidden" id="qa-sale-results"></div>
+          <select name="Item ID" id="qa-sale-select"></select>
+        </div>
         <!-- Live cost/margin readout for the selected item — updates as you pick an item and
              type the sale price, so you can see your profit before recording the sale. -->
         <div class="qa-sale-info" id="qa-sale-info" hidden></div>
@@ -1714,7 +1742,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v82</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v83</strong>
   </footer>
 </div>
 
@@ -2093,6 +2121,7 @@ class Dashboard {
       // The Inventory tab's lookup box has data-table/data-field set (see _initSkuLookup) so it
       // can drive the same handleFilterChange() the column-header SKU filter already uses.
       if(e.target.matches('[data-sku-lookup="inventory"]')){ this.handleFilterChange(e.target); }
+      if(e.target.id === 'qa-sale-search'){ this.renderSalePicker(); }
     });
     document.addEventListener('change', e=>{
       if(e.target.matches('[data-edit]')){ this.handleEdit(e.target); return; }
@@ -2115,6 +2144,9 @@ class Dashboard {
       if(qa){ this.adjustQty(Number(qa.dataset.id), Number(qa.dataset.delta)); return; }
       // Checked before [data-show-detail] — the merge button lives inside the detail panel and
       // must not be swallowed by an ancestor that opens it.
+      const sp = e.target.closest('[data-sale-pick]');
+      if(sp){ this.pickSaleItem(sp.dataset.salePick); return; }
+      if(e.target.closest('#qa-sale-search-clear')){ this.clearSalePicker(); return; }
       if(e.target.closest('#inv-date-btn')){ this.openDateSet(); return; }
       if(e.target.closest('#dateset-close')){ this.closeDateSet(); return; }
       if(e.target.id === 'dateset-overlay'){ this.closeDateSet(); return; }
@@ -7249,8 +7281,11 @@ class Dashboard {
   // Free-text search across the most useful inventory fields at once. Every whitespace-separated
   // word must appear somewhere in the row (AND), so "shanks wanted" finds the Wanted Poster Shanks
   // and "op09 parallel" narrows to OP09 parallels. Case-insensitive.
-  _applyInventorySearch(rows){
-    const q = this.inventorySearch.trim().toLowerCase();
+  // One matcher for every inventory search in the app, so the Sales picker finds a card on
+  // exactly the terms the Inventory tab would. Every word has to match somewhere, which is what
+  // lets "luffy op01" narrow to one card.
+  _matchInventory(rows, query){
+    const q = String(query||'').trim().toLowerCase();
     if(!q) return rows;
     const terms = q.split(/\s+/);
     const fields = ['Item Name','SKU','Set / Expansion','Category','Condition / Grade','Item ID'];
@@ -7258,6 +7293,58 @@ class Dashboard {
       const hay = fields.map(f=>String(r[f]==null?'':r[f])).join(' ').toLowerCase();
       return terms.every(t=>hay.includes(t));
     });
+  }
+  _applyInventorySearch(rows){ return this._matchInventory(rows, this.inventorySearch); }
+
+  // ---------------- item picker in Quick Add Sale ----------------
+  // A 200-entry <select> is unusable on a phone at a show. The select stays as the field the form
+  // submits — this only sets its value — so nothing downstream has to know the picker exists.
+  renderSalePicker(){
+    const box = document.getElementById('qa-sale-results');
+    const input = document.getElementById('qa-sale-search');
+    if(!box || !input) return;
+    const q = input.value.trim();
+    const clear = document.getElementById('qa-sale-search-clear');
+    if(clear) clear.classList.toggle('hidden', !q);
+    if(!q){ box.classList.add('hidden'); box.innerHTML = ''; return; }
+    // Sold-out cards are excluded: you cannot sell what you do not have, and leaving them in
+    // pushes the card you meant down the list.
+    const inStock = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
+    const hits = this._matchInventory(inStock, q).slice(0, 25);
+    box.classList.remove('hidden');
+    if(!hits.length){
+      box.innerHTML = `<div class="qa-pick-none">No card in stock matches &ldquo;${this._esc(q)}&rdquo;. Sold-out cards aren&rsquo;t listed.</div>`;
+      return;
+    }
+    box.innerHTML = hits.map(i=>{
+      const meta = [i['SKU'], i['Set / Expansion'], i['Category']].filter(Boolean).map(x=>this._esc(x)).join(' &middot; ');
+      return `<button type="button" class="qa-pick-row" data-sale-pick="${this._esc(i['Item ID'])}">`
+        + `<span class="qa-pick-main"><span class="qa-pick-name">${this._esc(i['Item Name']||i['Item ID'])}</span>`
+        + `<span class="qa-pick-meta">${meta||this._esc(i['Item ID'])}</span></span>`
+        + `<span class="qa-pick-right"><span class="qa-pick-price">${fmtMoney(i['Retail Price'])}</span>`
+        + `<span class="qa-pick-stock">${Number(i['Remaining Inventory (auto)'])||0} in stock</span></span></button>`;
+    }).join('');
+  }
+
+  pickSaleItem(id){
+    const sel = document.getElementById('qa-sale-select');
+    const input = document.getElementById('qa-sale-search');
+    if(!sel) return;
+    sel.value = id;
+    const it = this.data.inventory.find(i=>i['Item ID']===id);
+    // Leave the chosen card's name in the box so it reads as the current selection rather than a
+    // stale query, and close the list.
+    if(input && it) input.value = it['Item Name'] || id;
+    const box = document.getElementById('qa-sale-results');
+    if(box){ box.classList.add('hidden'); box.innerHTML = ''; }
+    // Same path a dropdown change takes, so the cost/margin readout and price prefill still run.
+    this.updateSaleInfo({itemChanged:true});
+  }
+
+  clearSalePicker(){
+    const input = document.getElementById('qa-sale-search');
+    if(input){ input.value = ''; input.focus(); }
+    this.renderSalePicker();
   }
 
   // Bump an item's on-hand quantity by ±1. "Qty Left" is auto (Purchased − Sold − Traded +
