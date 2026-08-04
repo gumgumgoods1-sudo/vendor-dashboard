@@ -1753,7 +1753,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v87</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v88</strong>
   </footer>
 </div>
 
@@ -1946,6 +1946,13 @@ class Dashboard {
     this.init();
   }
 
+  // 'Binder' is always available as a category so any row can be marked as binder stock from the
+  // Inventory tab, without needing the setup sheet.
+  _ensureBinderCategory(){
+    const cats = this.data.lists['Inventory Categories'] || (this.data.lists['Inventory Categories'] = []);
+    if(!cats.includes(this.BINDER_CATEGORY)) cats.push(this.BINDER_CATEGORY);
+  }
+
   normalizeSettings(settings){
     const buy = settings ? Number(settings.buyRatePct) : NaN;
     const trade = settings ? Number(settings.tradeRatePct) : NaN;
@@ -2123,6 +2130,7 @@ class Dashboard {
   }
 
   init(){
+    this._ensureBinderCategory();
     this._initBottomNav();
     document.addEventListener('input', e=>{
       if(e.target.matches('input.filter-input[data-filter]')){ this.handleFilterChange(e.target); }
@@ -4166,7 +4174,7 @@ class Dashboard {
         : round2(creditGiven + cashSettled);
       t['Trade Profit (auto)'] = gaveCards ? round2(paidToYou - costOut) : 0;
     });
-    const binderId = (this._binderItem()||{})['Item ID'] || '';
+    const binderIds = this._binderIds();
     this.data.sales.forEach(s=>{
       s['Item Name (auto)'] = nameById[s['Item ID']] || '';
       // No trade-financed branch here any more. A trade is itself the sale of the cards that
@@ -4177,7 +4185,7 @@ class Dashboard {
       // that lump against a single sale turned a $3 card into a $528 loss. A binder sale
       // therefore carries no per-card cost and its profit is simply the price agreed; the
       // binder's own cost stays on the stock list until the binder is empty, where it belongs.
-      const isBinder = binderId && s['Item ID'] === binderId;
+      const isBinder = binderIds.has(s['Item ID']);
       // Which binder card it was isn't recorded and isn't worth recording, so every binder sale
       // reads as "Binder" — on the Sales tab, in Profit by Card Sold, and in Top Sellers, where
       // they then group into one line instead of repeating the pseudo-item's full name.
@@ -4307,8 +4315,7 @@ class Dashboard {
     // Quantity can't express this. A binder entered as one item would read SOLD OUT after a
     // single card and drop off the Inventory tab with hundreds of cards still in it, so while
     // value remains the binder counts as in stock regardless of the quantity arithmetic.
-    const binder = this._binderItem();
-    if(binder){
+    this.data.inventory.filter(i=>this._isBinderItem(i)).forEach(binder=>{
       const soldValue = this.data.sales
         .filter(s=>s['Item ID']===binder['Item ID'])
         .reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0), 0);
@@ -4324,7 +4331,7 @@ class Dashboard {
         binder['Stock Status (auto)'] = left <= 0 ? 'SOLD OUT'
           : (left <= reorder ? 'LOW STOCK' : 'OK');
       }
-    }
+    });
 
     this.itemCat = catById;
   }
@@ -7377,8 +7384,22 @@ class Dashboard {
   }
   // Every row that could plausibly be the binder, for the chooser.
   _binderCandidates(){
-    return this.data.inventory.filter(i=>
-      String(i['Category']||'') === this.BINDER_CATEGORY || /\bbinder\b/i.test(String(i['Item Name']||'')));
+    return this.data.inventory.filter(i=>this._isBinderItem(i));
+  }
+  // Whether a row is binder stock at all — as opposed to _binderItem(), which picks the single
+  // row the button selects. Sales rules key off THIS, so every binder row behaves like a binder
+  // rather than only whichever one happened to sort first. Getting that wrong is why a binder
+  // sale could still be charged the whole binder's cost.
+  _isBinderItem(i){
+    if(!i) return false;
+    if(String(this.data.settings.binderItemId||'') === i['Item ID']) return true;
+    if(String(i['Category']||'') === this.BINDER_CATEGORY) return true;
+    return /\bbinder\b/i.test(String(i['Item Name']||''));
+  }
+  _binderIds(){
+    const ids = new Set();
+    this.data.inventory.forEach(i=>{ if(this._isBinderItem(i)) ids.add(i['Item ID']); });
+    return ids;
   }
   setBinderItem(id){
     this._pushUndoSnapshot();
