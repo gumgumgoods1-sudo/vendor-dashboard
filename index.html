@@ -1753,7 +1753,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v86</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v87</strong>
   </footer>
 </div>
 
@@ -4166,13 +4166,23 @@ class Dashboard {
         : round2(creditGiven + cashSettled);
       t['Trade Profit (auto)'] = gaveCards ? round2(paidToYou - costOut) : 0;
     });
+    const binderId = (this._binderItem()||{})['Item ID'] || '';
     this.data.sales.forEach(s=>{
       s['Item Name (auto)'] = nameById[s['Item ID']] || '';
       // No trade-financed branch here any more. A trade is itself the sale of the cards that
       // left, so it books its own profit on the Trades tab — recording those same cards as a
       // Sales row too would count one departure twice. That was the old "Trade Ref" path.
       const qty = Number(s['Quantity Sold'])||0, price = Number(s['Sale Price'])||0;
-      const unitCost = costById[s['Item ID']] || 0;
+      // The binder's Cost is what the whole binder cost, not what one card in it cost. Charging
+      // that lump against a single sale turned a $3 card into a $528 loss. A binder sale
+      // therefore carries no per-card cost and its profit is simply the price agreed; the
+      // binder's own cost stays on the stock list until the binder is empty, where it belongs.
+      const isBinder = binderId && s['Item ID'] === binderId;
+      // Which binder card it was isn't recorded and isn't worth recording, so every binder sale
+      // reads as "Binder" — on the Sales tab, in Profit by Card Sold, and in Top Sellers, where
+      // they then group into one line instead of repeating the pseudo-item's full name.
+      if(isBinder) s['Item Name (auto)'] = 'Binder';
+      const unitCost = isBinder ? 0 : (costById[s['Item ID']] || 0);
       s['Cost (auto)'] = unitCost;
       s['Total Cost (auto)'] = unitCost*qty;
       s['Total Sale Amount (auto)'] = qty*price;
