@@ -1786,7 +1786,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v95</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v96</strong>
   </footer>
 </div>
 
@@ -1965,7 +1965,7 @@ class Dashboard {
     this.columnWidths = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
     // Per-table sets of hidden column field names — view-only, like filters/widths above.
     // CSV export intentionally ignores this and always exports every column.
-    this.hiddenColumns = { inventory:new Set(), sales:new Set(), trades:new Set(), expenses:new Set(), cashflow:new Set() };
+    this.hiddenColumns = this._defaultHiddenColumns();
     this.data = {
       inventory: this.normalizeInventory(raw.inventory),
       sales: this.normalizeSales(raw.sales),
@@ -3969,7 +3969,7 @@ class Dashboard {
     // in-memory reset above.
     this._savePersistedFilters();
     this.columnWidths = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
-    this.hiddenColumns = { inventory:new Set(), sales:new Set(), trades:new Set(), expenses:new Set(), cashflow:new Set() };
+    this.hiddenColumns = this._defaultHiddenColumns();
     this.salesPageIndex = 0;
     this.recalcAll();
     this.renderAll();
@@ -5828,6 +5828,21 @@ class Dashboard {
       return dir==='asc'?cmp:-cmp;
     });
   }
+  // Which columns a table starts with hidden. Inventory carries fifteen, and all fifteen at once
+  // is unreadable — so it opens on the seven that answer "what is it, what did it cost, what does
+  // it sell for, what does that earn, how many left". The rest are one tap away under Columns.
+  //
+  // View-only and not persisted, like filters and column widths: revealing a column lasts for the
+  // session, and a reload returns to this set.
+  _defaultHiddenColumns(){
+    return {
+      inventory: new Set(['Date Acquired','Category','Set / Expansion','Condition / Grade',
+                          'Qty Purchased','Qty Sold (auto)','Total Inventory Value (auto)',
+                          'Stock Status (auto)']),
+      sales: new Set(), trades: new Set(), expenses: new Set(), cashflow: new Set(),
+    };
+  }
+
   // Columns not currently hidden for a table — used everywhere a table renders itself.
   // View-only: never affects KPIs, charts, or CSV export (handleExport reads this.columns directly).
   _visibleColumns(table){
@@ -6786,20 +6801,23 @@ class Dashboard {
     const conditions = () => this.data.lists['Card Condition / Grade']||[];
 
     this.columns = {
+      // Ordered as the working view: what a card is, what it cost, what it sells for, what that
+      // earns, and how many are left. Everything after Qty Left is hidden by default (see
+      // DEFAULT_HIDDEN_COLUMNS) and comes back from the Columns button when it's wanted.
       inventory: [
         {field:'Item ID', label:'ID', editable:false},
         {field:'Item Name', label:'Item', editable:true, type:'text', primary:true},
-        {field:'Date Acquired', label:'Acquired', editable:true, type:'date'},
-        {field:'Category', label:'Category', editable:true, type:'select', options:invCategories},
         {field:'SKU', label:'SKU', editable:true, type:'text', required:true},
-        {field:'Set / Expansion', label:'Set', editable:true, type:'text'},
-        {field:'Condition / Grade', label:'Cond', editable:true, type:'select', options:conditions},
         {field:'Cost', label:'Cost', editable:true, type:'money', money:true},
         {field:'Retail Price', label:'Retail', editable:true, type:'money', money:true, primary:true},
-        {field:'Qty Purchased', label:'Qty Purch.', editable:true, type:'number'},
         {field:'Card Potential Profit (auto)', label:'Potential Profit', editable:false, money:true},
-        {field:'Qty Sold (auto)', label:'Sold', editable:false},
         {field:'Remaining Inventory (auto)', label:'Qty Left', editable:false, qtyStepper:true},
+        {field:'Date Acquired', label:'Acquired', editable:true, type:'date'},
+        {field:'Category', label:'Category', editable:true, type:'select', options:invCategories},
+        {field:'Set / Expansion', label:'Set', editable:true, type:'text'},
+        {field:'Condition / Grade', label:'Cond', editable:true, type:'select', options:conditions},
+        {field:'Qty Purchased', label:'Qty Purch.', editable:true, type:'number'},
+        {field:'Qty Sold (auto)', label:'Sold', editable:false},
         {field:'Total Inventory Value (auto)', label:'Value', editable:false, money:true},
         {field:'Stock Status (auto)', label:'Status', editable:false, badge:true, primary:true},
       ],
