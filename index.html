@@ -188,6 +188,14 @@ body {
 /* Buy & Trade Calculator FAB stacks directly above the Quick Add FAB. */
 .fab-calc { bottom:92px; font-size:24px; background:#fff; color:var(--text-primary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-md); }
 .fab-calc:hover { background:#f4f5fa; }
+/* Collapse handle. The two floating buttons sit on top of whatever is in the bottom-right of
+   every table and chart; on mobile they tuck themselves while you scroll, but that only helps
+   mid-scroll. This puts it under your control — collapse them once and they stay gone, leaving
+   a slim tab at the edge to bring them back. The choice is remembered per device. */
+.fab-toggle { position:fixed; right:26px; bottom:158px; width:34px; height:34px; border-radius:12px; background:#fff; color:var(--text-secondary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:901; transition:right .22s ease, bottom .22s ease, width .22s ease, height .22s ease, border-radius .22s ease, transform .22s ease, opacity .18s ease; }
+.fab-toggle:hover { background:#f4f5fa; color:var(--text-primary); }
+body.fab-collapsed .fab, body.fab-collapsed .fab-calc { transform:translateX(calc(100% + 34px)); opacity:0; pointer-events:none; }
+body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px; border-radius:12px 0 0 12px; box-shadow:var(--shadow-md); }
 .qa-overlay { position:fixed; inset:0; background:rgba(16,18,34,0.5); -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); z-index:1500; display:flex; align-items:flex-end; justify-content:center; }
 .qa-overlay.hidden { display:none; }
 .more-sheet { width:100%; max-width:520px; background:var(--bg-card); border-radius:20px 20px 0 0; padding:6px 14px calc(18px + env(safe-area-inset-bottom, 0px)); box-shadow:0 -12px 40px rgba(16,18,34,0.28); }
@@ -684,6 +692,12 @@ body {
      completely; scrolling up brings the bar and both buttons back together. */
   .fab, .fab-calc { transition:bottom .22s ease, transform .22s ease, opacity .18s ease, box-shadow .15s; }
   body.nav-tucked .fab, body.nav-tucked .fab-calc { transform:translateY(140%); opacity:0; pointer-events:none; }
+  /* Sits above the calculator button, clear of the bottom bar. */
+  .fab-toggle { bottom:calc(var(--nav-h, 52px) + 150px); right:24px; }
+  body.fab-collapsed .fab-toggle { bottom:calc(var(--nav-h, 52px) + 90px); right:0; }
+  /* The handle rides along with the scroll-tuck while the buttons are out, so a lone floater
+     isn't left behind. Once collapsed it stays put — it is the only way back. */
+  body.nav-tucked:not(.fab-collapsed) .fab-toggle { transform:translateY(160%); opacity:0; pointer-events:none; }
   /* Narrow phones give each of seven tabs ~44px, which 13px bold overflows — step it down
      rather than let a label clip. */
   /* "Card Show" is the longest label and sets the ceiling; step the size down before it clips. */
@@ -1164,6 +1178,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        trade credit on the fly while talking to a customer. Deliberately never touches this.data
        or autosave/cloud sync; the running list lives only in memory for the current page load. -->
   <button class="fab fab-calc" id="calc-fab" title="Buy &amp; Trade Calculator">&#128290;</button>
+  <button class="fab-toggle" id="fab-toggle" aria-expanded="true" title="Hide the floating buttons">&#10095;</button>
   <div class="qa-overlay hidden" id="calc-overlay">
     <div class="qa-modal">
       <div class="qa-modal-head">
@@ -1805,7 +1820,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v97</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v98</strong>
   </footer>
 </div>
 
@@ -1915,6 +1930,8 @@ const FILTER_STORAGE_KEY = 'gumgumgoods-tcg-filters-v1';
 // A full copy of the data, written to this device after every change. The last line of
 // defence when the cloud save cannot run — see _saveLocalDraft.
 const LOCAL_DRAFT_KEY = 'gumgumgoods-tcg-draft-v1';
+// Whether the floating Quick Add / Calculator buttons are tucked away on this device.
+const FAB_COLLAPSED_KEY = 'gumgumgoods-tcg-fab-collapsed';
 
 class Dashboard {
   constructor(raw){
@@ -2465,6 +2482,7 @@ class Dashboard {
     });
     this._initColumnResize();
     this._initQuickAdd();
+    this._initFabToggle();
     this._initCalculator();
     this._initSkuLookup();
     this.recalcAll();
@@ -7401,6 +7419,31 @@ class Dashboard {
   // the per-tab "+ Add" buttons (handleAddRow above) — this is just a faster front door for the
   // four record types someone adds on the fly (including new stock, e.g. before or between
   // shows), not a separate code path.
+  // Collapse/restore the floating buttons. Device-local (localStorage, not the saved data) for
+  // the same reason Show Mode is: it describes this screen, not the business.
+  _initFabToggle(){
+    const btn = document.getElementById('fab-toggle');
+    if(!btn) return;
+    let collapsed = false;
+    try{ collapsed = localStorage.getItem(FAB_COLLAPSED_KEY) === '1'; }catch(e){}
+    this.setFabCollapsed(collapsed);
+    btn.addEventListener('click', ()=>{
+      this.setFabCollapsed(!document.body.classList.contains('fab-collapsed'));
+    });
+  }
+
+  setFabCollapsed(collapsed){
+    const btn = document.getElementById('fab-toggle');
+    document.body.classList.toggle('fab-collapsed', !!collapsed);
+    if(btn){
+      // The chevron points the way the buttons will move.
+      btn.innerHTML = collapsed ? '&#10094;' : '&#10095;';
+      btn.title = collapsed ? 'Show the Quick Add and Calculator buttons' : 'Hide the floating buttons';
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+    try{ localStorage.setItem(FAB_COLLAPSED_KEY, collapsed ? '1' : '0'); }catch(e){}
+  }
+
   _initQuickAdd(){
     document.getElementById('qa-fab').addEventListener('click', ()=>this.openQuickAdd());
     document.getElementById('qa-close').addEventListener('click', ()=>this.closeQuickAdd());
