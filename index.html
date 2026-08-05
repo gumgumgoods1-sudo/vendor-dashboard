@@ -1370,7 +1370,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <div class="kpi-group-title">Inventory &amp; Activity</div>
       <section class="kpi-row">
         <div class="kpi-card potential" title="Retail Price − Cost, added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Potential Profit</div><div class="kpi-value" id="kpi-potential">$0</div></div>
-        <div class="kpi-card cost" title="The Cost column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Total Cost (Inventory)</div><div class="kpi-value" id="kpi-cost">$0</div></div>
+        <div class="kpi-card cost" title="What the stock you still hold cost you, counting every copy — three of a $40 card is $120. Cards you've fully sold through contribute $0. This is the same figure a new show fills its Starting Inventory Value with."><div class="kpi-label">Total Cost (Inventory)</div><div class="kpi-value" id="kpi-cost">$0</div></div>
         <div class="kpi-card inv" title="The Retail Price column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Inventory Value</div><div class="kpi-value" id="kpi-inv">$0</div></div>
         <div class="kpi-card sold"><div class="kpi-label">Items Sold</div><div class="kpi-value" id="kpi-sold">0</div></div>
         <div class="kpi-card traded"><div class="kpi-label">Items Traded</div><div class="kpi-value" id="kpi-traded">0</div></div>
@@ -1786,7 +1786,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v93</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v94</strong>
   </footer>
 </div>
 
@@ -4259,11 +4259,16 @@ class Dashboard {
       i['Qty Traded Out (auto)'] = qtyTradedOut;
       i['Qty Received via Trade (auto)'] = qtyReceived;
       i['Remaining Inventory (auto)'] = remaining;
-      // Total Cost = the Cost column added up across everything still in stock (quantity is not
-      // factored in). Total Inventory Value = the Retail Price column added up the same way.
-      // Fully sold-out items contribute $0 to both.
+      // Total Cost = what the stock still on hand cost you, counting quantity — three copies of
+      // a $40 card is $120 of your money, not $40. This is deliberately the same basis as
+      // _inventoryValueOn(), so the Total Cost tile equals what a new show fills its Starting
+      // Inventory Value with. They used to disagree by whatever the multi-copy rows came to,
+      // with nothing on screen explaining why.
+      //
+      // Total Inventory Value stays per-row at retail: it answers "what is the case worth on the
+      // table", where a second copy of a card rarely means a second sale at full price.
       const inStock = remaining > 0;
-      i['Total Cost (auto)'] = inStock ? (Number(i['Cost'])||0) : 0;
+      i['Total Cost (auto)'] = inStock ? round2((Number(i['Cost'])||0) * remaining) : 0;
       i['Total Inventory Value (auto)'] = inStock ? (Number(i['Retail Price'])||0) : 0;
       // Per-card potential profit = Retail − Cost (what you'd make selling this card at retail).
       // $0 once sold out, matching the Total Cost / Value basis above.
@@ -5446,10 +5451,13 @@ class Dashboard {
     const cash = n(k.cashOnHand), stock = n(k.totalCost), total = cash + stock;
     const owner = n(k.ownerCapital);
 
+    // Counted per copy, matching the Total Cost figure above it \u2014 otherwise these parts are
+    // measured against a whole that includes quantity and every share reads too low.
     const held = this.data.inventory
       .filter(i=>n(i['Remaining Inventory (auto)']) > 0)
       .map(i=>({ id:i['Item ID'], name:i['Item Name']||i['Item ID']||'\u2014',
-                 cat:i['Category']||'Uncategorised', value:n(i['Cost']) }));
+                 cat:i['Category']||'Uncategorised',
+                 value:round2(n(i['Cost']) * n(i['Remaining Inventory (auto)'])) }));
 
     // --- the split ---
     if(total <= 0){
@@ -5504,7 +5512,7 @@ class Dashboard {
         const q = n(i['Qty Purchased']), rem = n(i['Remaining Inventory (auto)']);
         row.bought += q;
         row.sold += Math.max(0, q - rem);      // covers cash sales and trades alike
-        if(rem > 0) row.heldVal += n(i['Cost']);
+        if(rem > 0) row.heldVal += n(i['Cost']) * rem;
         byCat.set(c, row);
       });
       const rows = [...byCat.values()].filter(r=>r.bought>0).sort((a,b)=>b.heldVal-a.heldVal);
