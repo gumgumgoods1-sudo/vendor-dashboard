@@ -822,6 +822,16 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 @media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
 
 /* Inventory search inside Quick Add Sale. */
+.today-strip { display:flex; align-items:stretch; gap:8px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:14px; padding:12px 14px; margin-bottom:var(--gap); overflow-x:auto; }
+.today-lead { flex:0 0 auto; padding-right:14px; border-right:1px solid var(--border-subtle); }
+.today-label { font-size:10.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:var(--text-muted); }
+.today-value { font-size:26px; font-weight:800; color:var(--text-primary); line-height:1.15; font-variant-numeric:tabular-nums; }
+.today-rest { display:flex; align-items:center; gap:16px; flex:1 1 auto; }
+.today-stat { min-width:0; }
+.today-stat .today-label { font-size:10px; }
+.today-stat-v { font-size:15px; font-weight:800; color:var(--text-primary); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.today-stat-v.pos { color:var(--positive); }
+.today-stat-v.neg { color:var(--negative); }
 .inv-closed { text-align:center; padding:26px 16px; }
 .inv-closed-n { font-size:34px; font-weight:800; color:var(--text-primary); line-height:1.1; }
 .inv-closed-t { font-size:13px; color:var(--text-secondary); margin-top:2px; }
@@ -1296,6 +1306,11 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <section class="tab-panel active" id="tab-dashboard">
     <div id="low-stock-alert" class="alert-banner hidden"></div>
 
+    <!-- What has happened today, above everything historical. At a table the useful question is
+         "how am I doing right now", and Net Profit-to-date cannot answer it. Hidden on days with
+         no activity so the tab stays clean when you open it to review rather than to trade. -->
+    <div class="today-strip" id="today-strip" hidden></div>
+
     <!-- Hero band: the headline number (Net Profit) plus the three figures that explain it.
          Same element IDs as before — the JS only ever sets textContent by ID. -->
     <section class="hero-band">
@@ -1741,7 +1756,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v90</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v91</strong>
   </footer>
 </div>
 
@@ -4345,6 +4360,7 @@ class Dashboard {
     this.renderTopShows();
     this.renderCardShowKpis();
     this.renderWheresMyMoney();
+    this.renderToday();
     this.renderSalesProfitByCard();
     this.renderNetByShow();
     this.renderCashProfitByShow();
@@ -5293,6 +5309,54 @@ class Dashboard {
     this.markDirty();
     this.closeDateSet();
     this.showToast(`Purchase date set on ${targets.length} card${targets.length!==1?'s':''}.`);
+  }
+
+  // Today, at the top of the Dashboard.
+  //
+  // Net Profit is a lifetime figure and cannot answer the question you actually have at a table,
+  // which is how the day is going. This is only today's records: what you took, how many cards
+  // went, what you made on them, and what the day has cost so far.
+  //
+  // It hides on a day with no activity. Always-on would mean opening the app to review last
+  // month and being met by four zeroes.
+  renderToday(){
+    const el = document.getElementById('today-strip');
+    if(!el) return;
+    const n = v => Number(v)||0;
+    const today = this.todayStr();
+    const on = d => String(d||'').slice(0,10) === today;
+
+    const sales = this.data.sales.filter(s=>on(s['Date']));
+    const trades = this.data.trades.filter(t=>on(t['Date']));
+    const expenses = this.data.expenses.filter(e=>on(e['Date']));
+    if(!sales.length && !trades.length && !expenses.length){
+      el.hidden = true; el.innerHTML = ''; return;
+    }
+
+    const taken = sales.reduce((a,s)=>a+n(s['Total Sale Amount (auto)']),0);
+    const cards = sales.reduce((a,s)=>a+n(s['Quantity Sold']),0);
+    const margin = sales.reduce((a,s)=>a+n(s['Profit (auto)']),0);
+    const tradeProfit = trades.reduce((a,t)=>a+n(t['Trade Profit (auto)']),0);
+    const tradeCash = trades.reduce((a,t)=>a+n(t['Cash Settled']),0);
+    const spent = expenses.reduce((a,e)=>a+n(e['Amount']),0);
+    // Cash actually through your hands today, which is not the same as what you earned.
+    const cashIn = taken + tradeCash - spent;
+
+    const stat = (label, value, cls) =>
+      `<div class="today-stat"><div class="today-label">${label}</div>`
+      + `<div class="today-stat-v ${cls||''}">${value}</div></div>`;
+
+    el.hidden = false;
+    el.innerHTML =
+        `<div class="today-lead"><div class="today-label">Taken today</div>`
+      + `<div class="today-value">${fmtMoney(taken)}</div></div>`
+      + `<div class="today-rest">`
+      + stat('Cards', String(cards))
+      + stat('Margin', fmtMoney(margin), margin<0?'neg':'pos')
+      + (trades.length ? stat('Trades', fmtMoney(tradeProfit), tradeProfit<0?'neg':'pos') : '')
+      + (spent ? stat('Spent', fmtMoney(spent), 'neg') : '')
+      + stat('Cash in', fmtMoney(cashIn), cashIn<0?'neg':'pos')
+      + `</div>`;
   }
 
   // Where the money actually is, as opposed to what it earned.
