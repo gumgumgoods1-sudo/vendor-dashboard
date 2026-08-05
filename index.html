@@ -35,6 +35,16 @@
 };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+  // Cache the data on the device so opening the app with no signal shows YOUR records instead
+  // of the built-in sample data. Must be called before any other Firestore use. It fails when
+  // several tabs are open without synchronizeTabs, and in browsers with storage disabled —
+  // neither is worth breaking the page over, so a failure just means no cache.
+  //
+  // This is a READ cache only. It does not rescue offline writes: the cloud save runs inside a
+  // transaction, and transactions need a live round trip whatever the cache holds. The device
+  // copy written by _saveLocalDraft is what protects unsaved work.
+  db.enablePersistence({ synchronizeTabs: true })
+    .catch(err => console.warn('Offline cache unavailable:', err && err.code));
 </script>
 
 <style>
@@ -832,6 +842,12 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .today-stat-v { font-size:15px; font-weight:800; color:var(--text-primary); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .today-stat-v.pos { color:var(--positive); }
 .today-stat-v.neg { color:var(--negative); }
+/* Offline draft recovery banner. */
+.draft-banner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--warning-tint); border:1px solid #f0d59f; color:#7a4d05; border-radius:var(--radius); padding:13px 18px; margin-bottom:var(--gap); font-size:13px; box-shadow:var(--shadow-sm); }
+.draft-banner.hidden { display:none; }
+.draft-text { flex:1 1 260px; line-height:1.5; }
+.draft-banner .btn-sm { flex:0 0 auto; }
+
 /* Break-even meter — how much of a show's expenses its margin has paid back so far. */
 .be-card { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:14px; padding:14px 16px; margin-bottom:var(--gap); box-shadow:var(--shadow-sm); }
 .be-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
@@ -991,6 +1007,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <!-- Show Mode banner — visible on every tab while a show is active; content rebuilt by
        renderShowModeBanner() whenever KPIs re-render. -->
   <div id="show-mode-banner" class="show-mode-banner hidden"></div>
+  <!-- Offline safety net: shown at startup when this device holds changes newer than the
+       cloud copy. Lives outside the tab panels so it is seen whichever tab opens. -->
+  <div id="draft-banner" class="draft-banner hidden"></div>
 
   <nav class="tab-bar">
     <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Dashboard</button>
@@ -1786,7 +1805,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v96</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v97</strong>
   </footer>
 </div>
 
@@ -1893,6 +1912,9 @@ function niceScale(min, max, maxTicks){
 // goes only through the existing file-based save system — see
 // docs/superpowers/specs/2026-07-05-filter-persistence-design.md for the full discussion.
 const FILTER_STORAGE_KEY = 'gumgumgoods-tcg-filters-v1';
+// A full copy of the data, written to this device after every change. The last line of
+// defence when the cloud save cannot run — see _saveLocalDraft.
+const LOCAL_DRAFT_KEY = 'gumgumgoods-tcg-draft-v1';
 
 class Dashboard {
   constructor(raw){
@@ -2237,6 +2259,8 @@ class Dashboard {
       if(ladd){ this.handleListAdd(ladd); return; }
       const fc = e.target.closest('[data-filter-clear]');
       if(fc){ this.handleFilterClear(fc); return; }
+      if(e.target.closest('[data-draft-restore]')){ this.restoreLocalDraft(); return; }
+      if(e.target.closest('[data-draft-discard]')){ this.dismissLocalDraft(true); return; }
       const dls = e.target.closest('[data-dismiss-low-stock]');
       if(dls){ this.handleDismissLowStock(); return; }
       const ct = e.target.closest('[data-columns-toggle]');
@@ -3736,6 +3760,9 @@ class Dashboard {
   markDirty(){
     if(this._suppressDirty) return;
     this.dirty = true;
+    // Device copy first, and unconditionally: it is the only save that still works with no
+    // signal, and it costs nothing when there is one.
+    this._scheduleLocalDraft();
     // Cloud auto-save (Firebase) takes priority when available — every edit is debounced
     // and pushed straight to Firestore, no manual file handling required.
     if(typeof window.scheduleCloudSave === 'function'){
@@ -3836,6 +3863,92 @@ class Dashboard {
       // Deletions made on this device, so merge-on-save doesn't resurrect them from the cloud.
       deletedKeys: this._tombstonesToObject(),
     };
+  }
+
+  // ---------------- Local draft (offline safety net) ----------------
+  //
+  // Everything above this line assumes the cloud is reachable. At a show it usually isn't, and
+  // the cloud save is a Firestore transaction — transactions need a live round trip, so they
+  // fail outright offline rather than queueing. The catch handler says it will "retry on the
+  // next change", which means a session that ends with an edit never retries at all.
+  //
+  // So an afternoon of sales entered on bad convention wifi lived only in the tab's memory:
+  // close it, reload, or let the phone reclaim it, and the lot was gone. This keeps a copy on
+  // the device after every change, and offers it back if it turns out to be newer than what the
+  // cloud has. It is never applied automatically — restoring is the one thing that could
+  // overwrite good cloud data, so it stays a decision rather than a surprise.
+  _scheduleLocalDraft(){
+    clearTimeout(this._localDraftTimer);
+    this._localDraftTimer = setTimeout(()=>this._saveLocalDraft(), 700);
+  }
+
+  _saveLocalDraft(){
+    try{
+      localStorage.setItem(LOCAL_DRAFT_KEY, JSON.stringify(this._buildSavePayload()));
+    }catch(err){
+      // Quota, private browsing, storage disabled — never let this break an edit.
+      console.warn('Local draft save failed', err);
+    }
+  }
+
+  _loadLocalDraft(){
+    try{
+      const raw = localStorage.getItem(LOCAL_DRAFT_KEY);
+      if(!raw) return null;
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed==='object' && parsed.savedAt) ? parsed : null;
+    }catch(err){ return null; }
+  }
+
+  _clearLocalDraft(){
+    try{ localStorage.removeItem(LOCAL_DRAFT_KEY); }catch(err){}
+  }
+
+  // How many records a payload holds — the only honest way to describe a draft to someone
+  // deciding whether to restore it.
+  _draftSize(p){
+    return ['inventory','sales','trades','expenses','cashflow','calendar']
+      .reduce((a,k)=>a + (Array.isArray(p[k]) ? p[k].length : 0), 0);
+  }
+
+  // Called once the cloud copy has been applied. A draft that is older than the cloud has
+  // already made it up and is just cleared; a newer one is offered back.
+  offerLocalDraft(cloudSavedAt){
+    const draft = this._loadLocalDraft();
+    if(!draft) return false;
+    if(cloudSavedAt && String(draft.savedAt) <= String(cloudSavedAt)){
+      this._clearLocalDraft();
+      return false;
+    }
+    const el = document.getElementById('draft-banner');
+    if(!el) return false;
+    const when = new Date(draft.savedAt).toLocaleString();
+    el.innerHTML = `<span>&#9888;&#65039;</span><span class="draft-text">`
+      + `<b>Unsaved changes found on this device.</b> Edits from ${this._esc(when)} `
+      + `(${this._draftSize(draft)} records) never reached the cloud &mdash; most likely you were offline. `
+      + `Restoring replaces what is on screen with that copy.</span>`
+      + `<button type="button" class="btn-sm" data-draft-restore>Restore them</button>`
+      + `<button type="button" class="btn-sm" data-draft-discard>Discard</button>`;
+    el.classList.remove('hidden');
+    return true;
+  }
+
+  restoreLocalDraft(){
+    const draft = this._loadLocalDraft();
+    if(!draft){ this.dismissLocalDraft(); return; }
+    // _applyLoadedPayload pushes an undo snapshot first, so this is reversible.
+    this._applyLoadedPayload(draft, 'this device');
+    this._absorbTombstones(draft.deletedKeys);
+    this.dismissLocalDraft();
+    // Mark dirty so it pushes to the cloud as soon as there is a connection.
+    this.markDirty();
+    this.showToast('Offline changes restored.');
+  }
+
+  dismissLocalDraft(discard){
+    const el = document.getElementById('draft-banner');
+    if(el){ el.classList.add('hidden'); el.innerHTML = ''; }
+    if(discard) this._clearLocalDraft();
   }
 
   // ---------------- Merge-on-save (multi-device safety) ----------------
@@ -7930,6 +8043,9 @@ window.scheduleCloudSave = function scheduleCloudSave(){
         tx.set(ref, dash.mergeCloudPayload(cloud));
       });
       dash.dirty = false;
+      // Safely in the cloud — the device copy has done its job and would only be noise on the
+      // next load.
+      dash._clearLocalDraft();
       dash.setSessionStatus(`Saved to the cloud at ${new Date().toLocaleTimeString()}.`, 'saved');
     } catch(err){
       console.error('Cloud save failed', err);
@@ -7988,6 +8104,9 @@ async function loadCloudData(){
       dash.undoStack = [];
       dash.redoStack = [];
       dash._updateUndoRedoButtons();
+      // The cloud copy is now on screen. If this device still holds something newer, it never
+      // made it up — offer it back rather than letting the cloud copy quietly bury it.
+      dash.offerLocalDraft(snap.data().savedAt);
     } else {
       // First time this ever ran — save the built-in sample data as the starting point so
       // every later edit has something in Firestore to update.
@@ -7996,7 +8115,12 @@ async function loadCloudData(){
     }
   } catch(err){
     console.error('Cloud load failed', err);
-    dash.setSessionStatus('Could not reach the cloud-saved data — showing the built-in sample data instead. Check your connection and reload.', 'dirty');
+    // Offline start. The sample data on screen is worthless to a real vendor, so a device copy
+    // is the best thing available — offer it with no cloud timestamp to compare against.
+    const offered = dash.offerLocalDraft(null);
+    dash.setSessionStatus(offered
+      ? 'Could not reach the cloud — but this device has a saved copy of your data. Restore it from the banner above.'
+      : 'Could not reach the cloud-saved data — showing the built-in sample data instead. Check your connection and reload.', 'dirty');
   }
 }
 
