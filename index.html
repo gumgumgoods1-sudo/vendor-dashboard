@@ -1369,9 +1369,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <div class="kpi-group">
       <div class="kpi-group-title">Inventory &amp; Activity</div>
       <section class="kpi-row">
-        <div class="kpi-card potential" title="Retail Price − Cost, added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Potential Profit</div><div class="kpi-value" id="kpi-potential">$0</div></div>
+        <div class="kpi-card potential" title="Retail Price − Cost across every copy still in stock — cards you've fully sold through contribute $0. Equals Inventory Value minus Total Cost."><div class="kpi-label">Potential Profit</div><div class="kpi-value" id="kpi-potential">$0</div></div>
         <div class="kpi-card cost" title="What the stock you still hold cost you, counting every copy — three of a $40 card is $120. Cards you've fully sold through contribute $0. This is the same figure a new show fills its Starting Inventory Value with."><div class="kpi-label">Total Cost (Inventory)</div><div class="kpi-value" id="kpi-cost">$0</div></div>
-        <div class="kpi-card inv" title="The Retail Price column added up across every card still in stock (quantity not counted) — cards you've fully sold through contribute $0."><div class="kpi-label">Inventory Value</div><div class="kpi-value" id="kpi-inv">$0</div></div>
+        <div class="kpi-card inv" title="What the stock you still hold is worth at your retail prices, counting every copy — two of a $90 card is $180. Cards you've fully sold through contribute $0."><div class="kpi-label">Inventory Value</div><div class="kpi-value" id="kpi-inv">$0</div></div>
         <div class="kpi-card sold"><div class="kpi-label">Items Sold</div><div class="kpi-value" id="kpi-sold">0</div></div>
         <div class="kpi-card traded"><div class="kpi-label">Items Traded</div><div class="kpi-value" id="kpi-traded">0</div></div>
         <div class="kpi-card cash"><div class="kpi-label">Net Cashflow</div><div class="kpi-value" id="kpi-cash">$0</div></div>
@@ -1786,7 +1786,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v94</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v95</strong>
   </footer>
 </div>
 
@@ -4265,14 +4265,19 @@ class Dashboard {
       // Inventory Value with. They used to disagree by whatever the multi-copy rows came to,
       // with nothing on screen explaining why.
       //
-      // Total Inventory Value stays per-row at retail: it answers "what is the case worth on the
-      // table", where a second copy of a card rarely means a second sale at full price.
+      // Value and potential profit count copies for the same reason. Weighting cost alone broke
+      // the one identity these three tiles have to satisfy — Value − Cost = Potential Profit —
+      // leaving it out by whatever the multi-copy rows came to. Owning two of a card is $400 of
+      // your money in and $800 of retail on the table; whether the second copy really fetches
+      // full price is a pricing judgement, and the honest place to express it is the price you
+      // set, not a total that silently ignores half the stock.
       const inStock = remaining > 0;
       i['Total Cost (auto)'] = inStock ? round2((Number(i['Cost'])||0) * remaining) : 0;
-      i['Total Inventory Value (auto)'] = inStock ? (Number(i['Retail Price'])||0) : 0;
-      // Per-card potential profit = Retail − Cost (what you'd make selling this card at retail).
-      // $0 once sold out, matching the Total Cost / Value basis above.
-      i['Card Potential Profit (auto)'] = inStock ? ((Number(i['Retail Price'])||0) - (Number(i['Cost'])||0)) : 0;
+      i['Total Inventory Value (auto)'] = inStock ? round2((Number(i['Retail Price'])||0) * remaining) : 0;
+      // Per-card potential profit = (Retail − Cost) across every copy held. $0 once sold out,
+      // matching the Total Cost / Value basis above.
+      i['Card Potential Profit (auto)'] = inStock
+        ? round2(((Number(i['Retail Price'])||0) - (Number(i['Cost'])||0)) * remaining) : 0;
       // Three distinct states. These used to be two, with 'LOW STOCK' covering both "running
       // low" and "none left" — and the badge printed that as "Sold". A card with one copy on
       // hand and a reorder level of 1 therefore read as Sold while sitting in the box.
@@ -4368,17 +4373,11 @@ class Dashboard {
 
   computeKPIs(){
     const sum = (arr,f) => arr.reduce((a,r)=>a+(Number(r[f])||0),0);
-    // Potential profit = Retail Price minus Cost, added up across every card still in stock
-    // (quantity not counted — same basis as Total Cost / Inventory Value). Sold-out items
-    // contribute $0. This is separate from the per-show Potential Profit shown on the Cashflow
-    // tab, which tracks show-level cash movement instead.
-    const potentialProfit = this.data.inventory.reduce((a,i)=>{
-      const remaining = Number(i['Remaining Inventory (auto)'])||0;
-      if(remaining<=0) return a;
-      const retail = Number(i['Retail Price'])||0;
-      const cost = Number(i['Cost'])||0;
-      return a + (retail-cost);
-    }, 0);
+    // Potential profit = Retail Price minus Cost across every copy still in stock — the same
+    // per-copy basis as Total Cost and Inventory Value, so Value − Cost = Potential Profit holds.
+    // Sold-out items contribute $0. This is separate from the per-show Potential Profit shown on
+    // the Cashflow tab, which tracks show-level cash movement instead.
+    const potentialProfit = sum(this.data.inventory,'Card Potential Profit (auto)');
     const totalExpenses = sum(this.data.expenses,'Amount');
     // Total Actual Profit = every card sold for cash (Sales tab) plus every card sold for cards
     // (Trades tab). Both are sales; they differ only in what the customer handed over. Each side
