@@ -832,6 +832,19 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .today-stat-v { font-size:15px; font-weight:800; color:var(--text-primary); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .today-stat-v.pos { color:var(--positive); }
 .today-stat-v.neg { color:var(--negative); }
+/* Break-even meter — how much of a show's expenses its margin has paid back so far. */
+.be-card { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:14px; padding:14px 16px; margin-bottom:var(--gap); box-shadow:var(--shadow-sm); }
+.be-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+.be-label { font-size:10.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:var(--text-muted); }
+.be-title { font-size:22px; font-weight:800; color:var(--text-primary); line-height:1.2; font-variant-numeric:tabular-nums; }
+.be-title.pos { color:var(--positive); }
+.be-pct { font-size:15px; font-weight:800; color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.be-bar { height:10px; border-radius:999px; background:var(--negative-tint); margin:10px 0 8px; overflow:hidden; }
+.be-bar > span { display:block; height:100%; border-radius:999px; background:var(--warning); transition:width .25s ease; }
+.be-bar.clear > span { background:var(--positive); }
+.be-legend { display:flex; justify-content:space-between; gap:12px; font-size:12px; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.be-note { font-size:12.5px; color:var(--text-muted); margin-top:8px; }
+@media (max-width:768px){ .be-title { font-size:19px; } .be-legend { font-size:11.5px; } }
 .inv-closed { text-align:center; padding:26px 16px; }
 .inv-closed-n { font-size:34px; font-weight:800; color:var(--text-primary); line-height:1.1; }
 .inv-closed-t { font-size:13px; color:var(--text-secondary); margin-top:2px; }
@@ -1398,6 +1411,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <!-- Mobile-only shortcut into the Calendar tab (which has no bottom-nav icon by design).
          Hidden on desktop, where Calendar sits in the top tab bar. -->
     <button type="button" class="btn-sm cal-shortcut" onclick="dash.showTab('calendar')">&#128197; View Show Calendar</button>
+    <div class="be-card" id="break-even" hidden></div>
     <div class="section-title" style="margin-top:0">Show Performance</div>
     <div class="kpi-row" style="margin-bottom:var(--gap)">
       <div class="kpi-card" style="--dot:var(--positive)" title="Every sale on the Sales tab added up: what each card sold for, minus what it cost you. Cards sold via a trade are counted under Trade Profit instead.">
@@ -1756,7 +1770,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v91</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v92</strong>
   </footer>
 </div>
 
@@ -3396,9 +3410,17 @@ class Dashboard {
     const expenses = this.data.expenses.filter(e=>e['Show Name']===show).reduce((a,e)=>a+(Number(e['Amount'])||0),0);
     const tradeCash = this.data.trades.filter(t=>t['Show Name']===show).reduce((a,t)=>a+(Number(t['Cash Settled'])||0),0);
     const cash = Number(this.data.settings.baseCashOnHand)||0;
+    // The same break-even figure as the Card Show tab, carried into the banner so it's on screen
+    // while you're actually at the table. Silent until there's an expense to cover.
+    const run = this._showRuns(this.data.cashflow).find(r=>r.rows.some(c=>c['Show Name']===show));
+    const be = run ? this._breakEvenFor(run) : null;
+    const beStat = (be && be.expenses > 0)
+      ? `<span class="show-mode-stat" title="Margin still needed to cover this show's expenses.">Break-even<b>${be.gap>0 ? `${fmtMoney(be.gap)} to go` : `clear +${fmtMoney(-be.gap)}`}</b></span>`
+      : '';
     el.innerHTML = `<span aria-hidden="true">&#127914;</span><span class="show-mode-name">${this._esc(show)}</span>`
       + `<span class="show-mode-stat">Sales<b>${fmtMoney(sales)}</b></span>`
       + `<span class="show-mode-stat">Expenses<b>${fmtMoney(expenses)}</b></span>`
+      + beStat
       + `<span class="show-mode-stat">Trade Cash<b>${fmtMoney(tradeCash)}</b></span>`
       + `<span class="show-mode-stat">Cash on Hand<b>${fmtMoney(cash)}</b></span>`
       + `<button type="button" class="show-mode-end" data-show-mode-end title="Turn off Show Mode (records stay — only the default show and this banner go away)">End</button>`;
@@ -4359,6 +4381,7 @@ class Dashboard {
     this.renderCharts();
     this.renderTopShows();
     this.renderCardShowKpis();
+    this.renderBreakEven();
     this.renderWheresMyMoney();
     this.renderToday();
     this.renderSalesProfitByCard();
@@ -5462,6 +5485,96 @@ class Dashboard {
 
   // Card Show tab summary boxes. Sales profit is the headline — the sum of Profit (auto) across
   // every row on the Sales tab — with the figures it needs to be read against beside it.
+  // ---------------- break-even meter ----------------
+  //
+  // A show breaks even when the margin it earned covers what it cost to be there. Margin, not
+  // revenue: the cards you sold were bought with money, so takings alone say nothing about
+  // whether the day paid for itself. Trade profit counts too — a card swapped at a profit pays
+  // the booth fee just as well as one sold for cash.
+
+  // Your usual margin, used only to translate a margin shortfall back into a sales figure you
+  // can act on at the table. Clamped, because one freak sale shouldn't imply you can clear
+  // $900 of booth fees on $950 of sales.
+  _marginRate(){
+    const n = v => Number(v)||0;
+    let rev = 0, profit = 0;
+    this.data.sales.forEach(s=>{ rev += n(s['Total Sale Amount (auto)']); profit += n(s['Profit (auto)']); });
+    if(rev <= 0) return null;
+    const rate = profit / rev;
+    return (rate >= 0.05 && rate <= 0.95) ? rate : null;
+  }
+
+  _breakEvenFor(run){
+    const n = v => Number(v)||0;
+    const names = new Set(run.rows.map(c=>c['Show Name']).filter(Boolean));
+    const mine = rows => rows.filter(r=>names.has(r['Show Name']));
+    const sales = mine(this.data.sales);
+    const expenses = mine(this.data.expenses).reduce((a,e)=>a+n(e['Amount']),0);
+    const salesProfit = sales.reduce((a,s)=>a+n(s['Profit (auto)']),0);
+    const tradeProfit = mine(this.data.trades).reduce((a,t)=>a+n(t['Trade Profit (auto)']),0);
+    const revenue = sales.reduce((a,s)=>a+n(s['Total Sale Amount (auto)']),0);
+    const margin = salesProfit + tradeProfit;
+    return { run, names, expenses, salesProfit, tradeProfit, revenue, margin, gap: expenses - margin };
+  }
+
+  // The show the meter is about: whichever one you're running right now, or failing that the
+  // most recent one, so the tab still answers "did the last show pay for itself".
+  _breakEvenRun(){
+    const runs = this._showRuns(this.data.cashflow.filter(c=>!this._isBookkeepingBucket(c['Show Name'])));
+    if(!runs.length) return null;
+    if(this.activeShow){
+      const active = runs.find(r=>r.rows.some(c=>c['Show Name']===this.activeShow));
+      if(active) return active;
+    }
+    return runs.slice().sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')))[0];
+  }
+
+  renderBreakEven(){
+    const el = document.getElementById('break-even');
+    if(!el) return;
+    const run = this._breakEvenRun();
+    if(!run){ el.hidden = true; el.innerHTML = ''; return; }
+    const be = this._breakEvenFor(run);
+    const date = this._runDateLabel(run);
+    const head = `Break-even &middot; ${this._esc(run.name||'—')}${date ? ' &middot; ' + this._esc(date) : ''}`;
+
+    // No expenses recorded is not the same as nothing to cover — far more often it means the
+    // booth fee hasn't been entered yet. Say that rather than declaring a free show.
+    if(be.expenses <= 0){
+      el.innerHTML = `<div class="be-head"><div><div class="be-label">${head}</div>`
+        + `<div class="be-title">No expenses recorded yet</div></div></div>`
+        + `<div class="be-note">Add the booth fee, travel and food on the Expenses tab and this will show how much margin you still need to cover them.</div>`;
+      el.hidden = false;
+      return;
+    }
+
+    const clear = be.gap <= 0;
+    const pct = Math.max(0, Math.min(1, be.margin / be.expenses));
+    const rate = this._marginRate();
+    let note;
+    if(clear){
+      note = `Everything from here is profit.`;
+    } else if(rate){
+      // Rounded to the nearest $10: it's an extrapolation off an average margin, and "$699.04"
+      // claims a precision it hasn't got.
+      note = `About ${fmtMoney(Math.ceil(be.gap / rate / 10) * 10)} more in sales at your usual ${Math.round(rate*100)}% margin.`;
+    } else {
+      note = `Margin counts, not takings — ${fmtMoney(be.gap)} of profit after what the cards cost you.`;
+    }
+    const tradeNote = be.tradeProfit !== 0
+      ? ` <span title="Trade profit counts toward break-even too.">(${fmtMoney(be.salesProfit)} sales + ${fmtMoney(be.tradeProfit)} trades)</span>` : '';
+
+    el.innerHTML =
+        `<div class="be-head"><div><div class="be-label">${head}</div>`
+      + `<div class="be-title ${clear?'pos':''}">${clear ? `Past break-even &mdash; ${fmtMoney(-be.gap)} clear` : `${fmtMoney(be.gap)} to go`}</div></div>`
+      + `<div class="be-pct">${Math.round(pct*100)}%</div></div>`
+      + `<div class="be-bar${clear?' clear':''}"><span style="width:${(pct*100).toFixed(1)}%"></span></div>`
+      + `<div class="be-legend"><span>${fmtMoney(be.margin)} margin banked${tradeNote}</span>`
+      + `<span>${fmtMoney(be.expenses)} to cover</span></div>`
+      + `<div class="be-note">${note}</div>`;
+    el.hidden = false;
+  }
+
   renderCardShowKpis(){
     const el = document.getElementById('kpi-cs-sales-profit');
     if(!el) return;
