@@ -856,6 +856,22 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .today-stat-v { font-size:15px; font-weight:800; color:var(--text-primary); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .today-stat-v.pos { color:var(--positive); }
 .today-stat-v.neg { color:var(--negative); }
+/* Buy & Trade Calculator — Calculator / History panes. */
+.calc-pane { display:none; }
+.calc-pane.active { display:block; }
+.calc-history { max-height:46vh; overflow-y:auto; margin:2px 0 14px; }
+.calc-hist-day { font-size:10.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:var(--text-muted); padding:12px 2px 6px; position:sticky; top:0; background:var(--bg-card); }
+.calc-hist-day:first-child { padding-top:2px; }
+.calc-hist-row { display:flex; align-items:center; gap:10px; padding:9px 2px; border-bottom:1px solid var(--hairline); }
+.calc-hist-main { flex:1 1 auto; min-width:0; }
+.calc-hist-label { font-size:13.5px; font-weight:700; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.calc-hist-sub { font-size:11.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.calc-hist-offer { flex:0 0 auto; text-align:right; font-size:12px; color:var(--text-secondary); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.calc-hist-offer b { color:var(--text-primary); font-weight:800; }
+.calc-hist-again { flex:0 0 auto; border:1px solid var(--border-subtle); background:var(--bg-inset); color:var(--text-secondary); border-radius:9px; padding:5px 9px; font-size:11.5px; font-weight:700; cursor:pointer; }
+.calc-hist-again:hover { background:#eceef6; color:var(--text-primary); }
+.calc-hist-empty { font-size:12.5px; color:var(--text-secondary); font-style:italic; padding:16px 4px; }
+
 /* Offline draft recovery banner. */
 .draft-banner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--warning-tint); border:1px solid #f0d59f; color:#7a4d05; border-radius:var(--radius); padding:13px 18px; margin-bottom:var(--gap); font-size:13px; box-shadow:var(--shadow-sm); }
 .draft-banner.hidden { display:none; }
@@ -1185,30 +1201,54 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <h2>Buy &amp; Trade Calculator</h2>
         <button type="button" class="qa-close" id="calc-close" title="Close">&times;</button>
       </div>
-      <form class="qa-form active" id="calc-entry-form">
-        <div class="qa-row">
-          <div class="qa-field"><label>Value</label><input type="number" id="calc-value-input" min="0.01" step="0.01" placeholder="0.00"></div>
-          <div class="qa-field"><label>Label (optional)</label><input type="text" id="calc-label-input" placeholder="e.g. Charizard"></div>
+      <div class="qa-tabs">
+        <button type="button" class="qa-tab-btn active" data-calc-tab="calc" onclick="dash.switchCalcTab('calc')">Calculator</button>
+        <button type="button" class="qa-tab-btn" data-calc-tab="history" onclick="dash.switchCalcTab('history')">History</button>
+      </div>
+
+      <div class="calc-pane active" id="calc-pane-calc">
+        <form class="qa-form active" id="calc-entry-form">
+          <div class="qa-row">
+            <div class="qa-field"><label>Value</label><input type="number" id="calc-value-input" min="0.01" step="0.01" placeholder="0.00"></div>
+            <div class="qa-field"><label>Label (optional)</label><input type="text" id="calc-label-input" placeholder="e.g. Charizard"></div>
+          </div>
+          <button type="submit" class="qa-submit">Add to List</button>
+        </form>
+        <div class="calc-list" id="calc-list"></div>
+        <div class="calc-totals">
+          <div class="calc-total-item">
+            <div class="calc-total-label">Total Value</div>
+            <div class="calc-total-value" id="calc-total-value">$0</div>
+          </div>
+          <div class="calc-total-item">
+            <div class="calc-total-label">Cash Offer</div>
+            <div class="calc-total-value" id="calc-total-cash">$0</div>
+          </div>
+          <div class="calc-total-item">
+            <div class="calc-total-label">Trade Credit</div>
+            <div class="calc-total-value" id="calc-total-trade">$0</div>
+          </div>
         </div>
-        <button type="submit" class="qa-submit">Add to List</button>
-      </form>
-      <div class="calc-list" id="calc-list"></div>
-      <div class="calc-totals">
-        <div class="calc-total-item">
-          <div class="calc-total-label">Total Value</div>
-          <div class="calc-total-value" id="calc-total-value">$0</div>
-        </div>
-        <div class="calc-total-item">
-          <div class="calc-total-label">Cash Offer</div>
-          <div class="calc-total-value" id="calc-total-cash">$0</div>
-        </div>
-        <div class="calc-total-item">
-          <div class="calc-total-label">Trade Credit</div>
-          <div class="calc-total-value" id="calc-total-trade">$0</div>
+        <div class="calc-actions">
+          <button type="button" class="btn-sm" id="calc-clear-btn">Clear All</button>
         </div>
       </div>
-      <div class="calc-actions">
-        <button type="button" class="btn-sm" id="calc-clear-btn">Clear All</button>
+
+      <!-- Every card put through the calculator, newest first. The offer rates are stored on each
+           entry rather than read live, so an old comp still shows what you actually offered that
+           day even after the rates in Settings change. -->
+      <div class="calc-pane" id="calc-pane-history">
+        <div class="qa-field">
+          <div class="qa-pick">
+            <span class="qa-pick-icon" aria-hidden="true">&#128269;</span>
+            <input type="search" id="calc-history-search" class="qa-pick-input" autocomplete="off"
+                   placeholder="Search what you've comped&hellip;">
+          </div>
+        </div>
+        <div class="calc-history" id="calc-history-list"></div>
+        <div class="calc-actions">
+          <button type="button" class="btn-sm" id="calc-history-clear">Clear History</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1820,7 +1860,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v98</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v99</strong>
   </footer>
 </div>
 
@@ -1932,6 +1972,10 @@ const FILTER_STORAGE_KEY = 'gumgumgoods-tcg-filters-v1';
 const LOCAL_DRAFT_KEY = 'gumgumgoods-tcg-draft-v1';
 // Whether the floating Quick Add / Calculator buttons are tucked away on this device.
 const FAB_COLLAPSED_KEY = 'gumgumgoods-tcg-fab-collapsed';
+// Log of every card put through the Buy & Trade Calculator. Device-local like the calculator
+// itself, and capped so it cannot grow without bound.
+const CALC_HISTORY_KEY = 'gumgumgoods-tcg-calc-history';
+const CALC_HISTORY_MAX = 500;
 
 class Dashboard {
   constructor(raw){
@@ -2262,6 +2306,8 @@ class Dashboard {
       if(ret){ this.returnSaleToInventory(Number(ret.dataset.id)); return; }
       const del = e.target.closest('[data-delete]');
       if(del){ this.handleDelete(del); return; }
+      const again = e.target.closest('[data-calc-again]');
+      if(again){ this.reuseCalcEntry(again.dataset.calcAgain); return; }
       const calcDel = e.target.closest('[data-calc-delete]');
       if(calcDel){ this.handleCalcDelete(calcDel); return; }
       const add = e.target.closest('[data-addrow]');
@@ -7639,10 +7685,24 @@ class Dashboard {
       this.handleCalcAdd();
     });
     document.getElementById('calc-clear-btn').addEventListener('click', ()=>this.handleCalcClear());
+    document.getElementById('calc-history-clear').addEventListener('click', ()=>this.clearCalcHistory());
+    const histSearch = document.getElementById('calc-history-search');
+    if(histSearch){
+      histSearch.addEventListener('input', ()=>{
+        this._calcHistoryQuery = histSearch.value;
+        this.renderCalcHistory();
+      });
+    }
   }
 
   openCalculator(){
     this.renderCalculator();
+    // Always opens on the Calculator: you reach for this to price a card in front of you, not to
+    // read back last week's. A stale search left in the history box would hide rows too.
+    this._calcHistoryQuery = '';
+    const histSearch = document.getElementById('calc-history-search');
+    if(histSearch) histSearch.value = '';
+    this.switchCalcTab('calc');
     document.getElementById('calc-overlay').classList.remove('hidden');
     document.getElementById('calc-value-input').focus();
   }
@@ -7651,12 +7711,111 @@ class Dashboard {
     document.getElementById('calc-overlay').classList.add('hidden');
   }
 
+  // ---------------- Calculator history ----------------
+  //
+  // Every card put through the calculator is logged, so "what did I offer on this last time" has
+  // an answer. The rates are copied onto each entry instead of being read back live: change the
+  // buy rate in Settings and an old comp should still show the offer you actually made that day.
+  //
+  // Device-local, like the rest of the calculator — it is a record of what you were quoted at a
+  // table, not part of the business's books, and it never touches the cloud document.
+  _loadCalcHistory(){
+    try{
+      const raw = localStorage.getItem(CALC_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Array.isArray(parsed) ? parsed : [];
+    }catch(err){ return []; }
+  }
+
+  _saveCalcHistory(list){
+    try{ localStorage.setItem(CALC_HISTORY_KEY, JSON.stringify(list)); }
+    catch(err){ console.warn('Calc history save failed', err); }
+  }
+
+  _pushCalcHistory(entry){
+    const list = this._loadCalcHistory();
+    list.unshift(entry);
+    // Capped so a few seasons of comps can't fill the device's storage quota.
+    this._saveCalcHistory(list.slice(0, CALC_HISTORY_MAX));
+  }
+
+  switchCalcTab(name){
+    document.querySelectorAll('[data-calc-tab]').forEach(b=>b.classList.toggle('active', b.dataset.calcTab===name));
+    document.querySelectorAll('.calc-pane').forEach(p=>p.classList.toggle('active', p.id==='calc-pane-'+name));
+    if(name==='history') this.renderCalcHistory();
+  }
+
+  renderCalcHistory(){
+    const el = document.getElementById('calc-history-list');
+    if(!el) return;
+    const q = String(this._calcHistoryQuery||'').trim().toLowerCase();
+    const all = this._loadCalcHistory();
+    const rows = q
+      ? all.filter(e => String(e.label||'').toLowerCase().includes(q))
+      : all;
+    if(!rows.length){
+      el.innerHTML = `<div class="calc-hist-empty">`
+        + (all.length ? 'Nothing matches that search.'
+                      : 'Nothing comped yet — values you add on the Calculator tab are logged here.')
+        + `</div>`;
+      return;
+    }
+    // Grouped by day, because "what did I offer at Myrtle" is a question about a day.
+    let out = '', lastDay = '';
+    rows.forEach(e=>{
+      const d = new Date(e.at);
+      const day = Number.isFinite(d.getTime()) ? d.toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'}) : 'Earlier';
+      if(day !== lastDay){ out += `<div class="calc-hist-day">${this._esc(day)}</div>`; lastDay = day; }
+      const time = Number.isFinite(d.getTime()) ? d.toLocaleTimeString(undefined,{hour:'numeric', minute:'2-digit'}) : '';
+      const cash = e.value * (Number(e.buyPct)||0) / 100;
+      const trade = e.value * (Number(e.tradePct)||0) / 100;
+      out += `<div class="calc-hist-row">`
+        + `<div class="calc-hist-main"><div class="calc-hist-label">${this._esc(e.label || 'Unlabelled card')}</div>`
+        + `<div class="calc-hist-sub">${fmtMoney(e.value)} &middot; ${e.buyPct}% cash / ${e.tradePct}% trade`
+        + `${time ? ' &middot; ' + this._esc(time) : ''}</div></div>`
+        + `<div class="calc-hist-offer">Cash <b>${fmtMoney(cash)}</b><br>Trade <b>${fmtMoney(trade)}</b></div>`
+        + `<button type="button" class="calc-hist-again" data-calc-again="${e.id}" title="Add this back to the current list">Again</button>`
+        + `</div>`;
+    });
+    el.innerHTML = out;
+  }
+
+  // Pull an old comp back into the working list — the same card turning up twice is the whole
+  // reason to keep a history. Re-comping logs a fresh entry at today's rates.
+  reuseCalcEntry(id){
+    const entry = this._loadCalcHistory().find(e=>String(e.id)===String(id));
+    if(!entry) return;
+    this.addCalcItem(entry.label, entry.value);
+    this.switchCalcTab('calc');
+    this.showToast(`${entry.label || 'Card'} added back at ${fmtMoney(entry.value)}.`);
+  }
+
+  clearCalcHistory(){
+    if(!this._loadCalcHistory().length) return;
+    this._confirmDelete('Clear the whole calculator history?<br><br>This only removes the log of what you have comped — nothing in your inventory, sales or shows is affected. It cannot be undone.',
+      ()=>{
+        try{ localStorage.removeItem(CALC_HISTORY_KEY); }catch(err){}
+        this.renderCalcHistory();
+        this.showToast('Calculator history cleared.');
+      });
+  }
+
+  // Shared by the entry form and the history "Again" button so both log identically.
+  addCalcItem(label, value){
+    const buyPct = this.getBuyRatePct();
+    const tradePct = this.getTradeRatePct();
+    const id = this.calcNextId++;
+    this.calcItems.push({ id, label, value });
+    this._pushCalcHistory({ id, label, value, buyPct, tradePct, at: new Date().toISOString() });
+    this.renderCalculator();
+  }
+
   handleCalcAdd(){
     const valueInput = document.getElementById('calc-value-input');
     const labelInput = document.getElementById('calc-label-input');
     const value = parseFloat(valueInput.value);
     if(!Number.isFinite(value) || value <= 0) return;
-    this.calcItems.push({ id: this.calcNextId++, label: labelInput.value.trim(), value });
+    this.addCalcItem(labelInput.value.trim(), value);
     valueInput.value = '';
     labelInput.value = '';
     this.renderCalculator();
