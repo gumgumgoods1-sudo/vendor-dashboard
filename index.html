@@ -1860,7 +1860,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v99</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v100</strong>
   </footer>
 </div>
 
@@ -3256,11 +3256,16 @@ class Dashboard {
       if(this._isBookkeepingBucket(c['Show Name'])) return;
       const typed = c['Ending Inventory Value (typed)'];
       if(typed==null || typed==='') return;
-      const t = Number(typed)||0, auto = Number(c['Ending Inventory Value'])||0;
-      if(Math.abs(t-auto) >= 100) typedGaps.push({ show:c['Show Name'], typed:t, auto, diff:t-auto });
+      // Compare against the reconstruction, not the visible field — an override now wins, so the
+      // visible field IS the typed figure and the two could never differ.
+      // Only rows actually USING a typed figure — a stale one the row ignores is not a problem
+      // to report.
+      if(c['Inventory Value Source (auto)'] !== 'typed') return;
+      const t = Number(typed)||0, auto = Number(c['Ending Inventory Value (auto)'])||0;
+      if(t !== 0 && Math.abs(t-auto) >= 100) typedGaps.push({ show:c['Show Name'], typed:t, auto, diff:t-auto });
     });
-    if(typedGaps.length) findings.push({ sev:'warn', icon:'📐', title:'Old typed inventory value differs from the stock list',
-      desc:'Inventory value is now read off your actual cards, at cost. These shows had a hand-typed figure that was well away from it — usually because the estimate was at retail, or stock is missing from the list. Nothing was lost; the old numbers are kept on the row.',
+    if(typedGaps.length) findings.push({ sev:'warn', icon:'📐', title:'Typed inventory value differs from the stock list',
+      desc:'These shows use a figure you typed instead of the value read off your cards at cost, and the two are well apart — usually because the typed number was at retail, or stock is missing from the list. Your figure is the one being used; clear the End Inv box to hand the row back to the stock list.',
       items: typedGaps.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff)).map(g=>({ table:'show', search:g.show,
         name:g.show, detail:`you typed ${money(g.typed)} · stock list says ${money(g.auto)}`,
         val:money(g.diff), neg:true })) });
@@ -4497,19 +4502,37 @@ class Dashboard {
       // whole case ignored. Zero therefore always defers to the reconstruction, which returns
       // 0 of its own accord when there genuinely is no stock.
       const typed = v => { const n = Number(v); return Number.isFinite(n) && n !== 0 ? n : null; };
-      if(typed(c['Starting Inventory Value'])!=null && c['Starting Inventory Value (typed)']==null)
-        c['Starting Inventory Value (typed)'] = c['Starting Inventory Value'];
-      if(typed(c['Ending Inventory Value'])!=null && c['Ending Inventory Value (typed)']==null)
-        c['Ending Inventory Value (typed)'] = c['Ending Inventory Value'];
+      // Rescue a figure hand-entered before the typed twin existed — but ONLY on a row recalc has
+      // never touched. After one pass the visible field holds a value this function derived, and
+      // capturing that would silently freeze the reconstruction as a permanent override.
+      // 'Inventory Value Source (auto)' is written at the end of every pass, so its absence is
+      // the marker for "never recalculated".
+      if(c['Inventory Value Source (auto)'] === undefined){
+        if(typed(c['Starting Inventory Value'])!=null && c['Starting Inventory Value (typed)']==null)
+          c['Starting Inventory Value (typed)'] = c['Starting Inventory Value'];
+        if(typed(c['Ending Inventory Value'])!=null && c['Ending Inventory Value (typed)']==null)
+          c['Ending Inventory Value (typed)'] = c['Ending Inventory Value'];
+      }
       const typedStart = typed(c['Starting Inventory Value (typed)']);
       const typedEnd   = typed(c['Ending Inventory Value (typed)']);
       const trackedFrom = this._purchaseTrackingStart();
       const canTrust = !!showDate && !!trackedFrom && showDate >= trackedFrom;
-      const startInv = (canTrust || typedStart==null) ? autoStart : typedStart;
-      const endInv   = (canTrust || typedEnd==null)   ? autoEnd   : typedEnd;
+      // A figure you deliberately typed always wins — that is the whole point of the box, and it
+      // used to lose to the reconstruction on any show dated after purchase tracking began,
+      // which made it useless for exactly the case it is needed for: a real count on a recent
+      // show where stock was bought at the table or a purchase date is missing.
+      //
+      // Everything else keeps the old rule — a typed figure only wins where the reconstruction
+      // cannot be trusted. That matters because some rows carry a typed value nobody entered,
+      // frozen there by the capture bug guarded above, and those must stay ignored.
+      const useTypedStart = typedStart!=null && (!!c['Starting Inventory Override (user)'] || !canTrust);
+      const useTypedEnd   = typedEnd!=null   && (!!c['Ending Inventory Override (user)']   || !canTrust);
+      const startInv = useTypedStart ? typedStart : autoStart;
+      const endInv   = useTypedEnd   ? typedEnd   : autoEnd;
       c['Starting Inventory Value'] = startInv;
       c['Ending Inventory Value'] = endInv;
-      c['Inventory Value Source (auto)'] = canTrust ? 'auto' : (typedEnd!=null ? 'typed' : 'auto');
+      c['Inventory Value Source (auto)'] = (useTypedStart || useTypedEnd) ? 'typed' : 'auto';
+      c['Inventory Trusted (auto)'] = canTrust;
       const invChg = endInv-startInv;
       // Realized margin from cards actually sold at this show — the basis for the estimated
       // Actual Profit used when no cash count was recorded.
@@ -7042,9 +7065,12 @@ class Dashboard {
         {field:'Show Name', label:'Show', editable:true, type:'text', primary:true},
         {field:'Date', label:'Date', editable:true, type:'date', primary:true},
         {field:'Starting Cash', label:'Start Cash', editable:true, type:'money', money:true},
-        {field:'Starting Inventory Value', label:'Start Inv (auto)', editable:false, money:true},
+        // Read off the stock list by default, but typeable: a real end-of-show count beats a
+        // reconstruction, especially where stock was bought at the show or is missing a purchase
+        // date. Type a figure to override, clear it (or enter 0) to hand the row back to auto.
+        {field:'Starting Inventory Value', label:'Start Inv', editable:true, type:'money', money:true},
         {field:'Ending Cash', label:'End Cash', editable:true, type:'money', money:true},
-        {field:'Ending Inventory Value', label:'End Inv (auto)', editable:false, money:true},
+        {field:'Ending Inventory Value', label:'End Inv', editable:true, type:'money', money:true},
         {field:'Owner Cash In', label:'Owner $ In/Out', editable:true, type:'money', money:true},
         {field:'Total Sales (auto)', label:'Sales', editable:false, money:true},
         {field:'Total Expenses (auto)', label:'Expenses', editable:false, money:true},
@@ -7176,6 +7202,17 @@ class Dashboard {
     let val = el.value;
     if(type==='number' || type==='money'){ val = val===''? 0 : parseFloat(val); if(Number.isNaN(val)) val=0; }
     this._pushUndoSnapshot();
+    // The two show-inventory figures are derived every recalc, so writing the visible field
+    // would be erased on the next pass. The typed twin is where an override lives; recalc reads
+    // it back and wins with it. Zero means "no override" — see the typed() note in recalcAll —
+    // so clearing the box hands the row back to the stock list.
+    if(table==='cashflow' && (field==='Starting Inventory Value' || field==='Ending Inventory Value')){
+      row[field+' (typed)'] = val;
+      // Flag it as YOUR figure. Some rows already carry a typed value that nobody entered — a
+      // reconstruction frozen there by the capture bug fixed in recalcAll — and those must keep
+      // losing to the stock list. Only a deliberate edit earns the right to override it.
+      row[field.replace(' Value','') + ' Override (user)'] = val !== 0;
+    }
     row[field] = val;
     this.recalcAll();
     this.renderAll();
