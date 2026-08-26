@@ -856,6 +856,24 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .today-stat-v { font-size:15px; font-weight:800; color:var(--text-primary); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .today-stat-v.pos { color:var(--positive); }
 .today-stat-v.neg { color:var(--negative); }
+/* Per-show ledger — set larger than the other tables. It is a handful of rows read carefully
+   (often to check one figure against a cash count), not hundreds scanned quickly, so it can
+   afford the space the Inventory and Sales tables cannot. */
+.ledger-lg { font-size:14.5px; }
+.ledger-lg thead th { font-size:11.5px; padding:11px 12px; }
+.ledger-lg tbody td { padding:12px 12px; }
+.ledger-lg td input, .ledger-lg td select { font-size:14.5px; padding:7px 8px; }
+.ledger-lg tbody tr { border-bottom:1px solid var(--border-subtle); }
+/* The bottom line should read as the bottom line. Keyed on data-label, which is what _cell
+   writes onto the cell — there is no data-field attribute on a td. */
+.ledger-lg td[data-label="Actual Profit"] { font-weight:800; font-size:15.5px; }
+.ledger-lg td[data-label="Show"] input { font-weight:700; }
+@media (max-width:768px){
+  .ledger-lg { font-size:14px; }
+  .ledger-lg tbody td { padding:10px 10px; }
+  .ledger-lg td input, .ledger-lg td select { font-size:14px; }
+}
+
 /* Buy & Trade Calculator — Calculator / History panes. */
 .calc-pane { display:none; }
 .calc-pane.active { display:block; }
@@ -1587,7 +1605,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-cashflow" data-mobile-sort-open data-table="cashflow">&#8645; Sort</button>
         </div>
       </div>
-      <table class="data-table table-cards">
+      <table class="data-table table-cards ledger-lg">
         <colgroup id="cashflow-colgroup"></colgroup>
         <thead id="cashflow-head"></thead>
         <tbody id="cashflow-body"></tbody>
@@ -1861,7 +1879,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v101</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v102</strong>
   </footer>
 </div>
 
@@ -6041,7 +6059,14 @@ class Dashboard {
       inventory: new Set(['Date Acquired','Category','Set / Expansion','Condition / Grade',
                           'Qty Purchased','Qty Sold (auto)','Total Inventory Value (auto)',
                           'Stock Status (auto)']),
-      sales: new Set(), trades: new Set(), expenses: new Set(), cashflow: new Set(),
+      sales: new Set(), trades: new Set(), expenses: new Set(),
+      // The ledger opens on the story of a show: what you walked in with, what you walked out
+      // with, what you took and spent, and the bottom line. Owner money, trade cash and the
+      // inventory delta are all derivable from those or almost always zero, and Potential
+      // Profit is a second profit figure sitting next to the real one — more confusing beside
+      // Actual Profit than useful. All still one tap away under Columns.
+      cashflow: new Set(['Owner Cash In','Total Trade Cash (auto)',
+                         'Change in Inventory Value (auto)','Potential Profit (auto)','Notes']),
     };
   }
 
@@ -6167,6 +6192,14 @@ class Dashboard {
     return { inventory:'inv-colgroup', sales:'sales-colgroup', trades:'trades-colgroup', expenses:'expenses-colgroup', cashflow:'cashflow-colgroup' }[table];
   }
   _defaultColWidth(col){
+    // A few fields whose content or heading outgrows the generic width for their type. Show
+    // names run long ("House of Patrick · Aug 1, 2026") and were clipping mid-word, and
+    // "Actual Profit" is a longer heading than the money default leaves room for.
+    // The inventory figures run to five digits and two decimals ($25,483.65) — the generic money
+    // width cut them off mid-number once the ledger's type got bigger.
+    const byField = { 'Show Name':190, 'Actual Profit (auto)':125,
+      'Starting Inventory Value':130, 'Ending Inventory Value':130 };
+    if(byField[col.field]) return byField[col.field];
     if(col.badge) return 100;
     // Wide enough for the native date input at its own min-width plus the cell's padding —
     // at 115 the picker was clipped mid-value.
@@ -6194,7 +6227,7 @@ class Dashboard {
     const el = document.getElementById(this._colgroupId(table));
     if(!el) return;
     const widths = this.columnWidths[table] || (this.columnWidths[table] = {});
-    const actionsWeight = 60;  // fits the delete button and its padding without clipping
+    const actionsWeight = 76;  // fits the per-show chart and delete buttons side by side
     const weights = cols.map(c => widths[c.field] || this._defaultColWidth(c));
     const totalWeight = weights.reduce((a,w)=>a+w,0) + (withActions ? actionsWeight : 0);
     el.innerHTML = cols.map((c,i)=>{
