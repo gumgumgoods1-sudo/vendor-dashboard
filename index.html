@@ -1662,6 +1662,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           </div>
           <button class="btn-sm" id="inv-date-btn" title="Stamp a purchase date onto many cards at once — needed before the app can value your stock at any past date.">&#128197; Set Purchase Date</button>
           <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
+          <button class="btn-sm" id="inv-labels-btn" title="Export the cards currently listed as a NIIMBOT label sheet (.xlsx) — Item Name, Cost, Price, SKU and finished QR text.">&#127991;&#65039; NIIMBOT Labels</button>
           <button class="btn-sm btn-add" data-addrow data-table="inventory">+ Add Item</button>
           <div data-sku-lookup-slot="inventory"></div>
         </div>
@@ -1860,7 +1861,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v100</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v101</strong>
   </footer>
 </div>
 
@@ -2288,6 +2289,7 @@ class Dashboard {
       if(sp){ this.pickSaleItem(sp.dataset.salePick); return; }
       if(e.target.closest('#qa-sale-search-clear')){ this.clearSalePicker(); return; }
       if(e.target.closest('#inv-show-all')){ this.showAllInventory = true; this.renderInventory(); return; }
+      if(e.target.closest('#inv-labels-btn')){ this.exportNiimbotLabels(); return; }
       if(e.target.closest('#inv-date-btn')){ this.openDateSet(); return; }
       if(e.target.closest('#dateset-close')){ this.closeDateSet(); return; }
       if(e.target.id === 'dateset-overlay'){ this.closeDateSet(); return; }
@@ -7912,6 +7914,157 @@ class Dashboard {
     URL.revokeObjectURL(url);
   }
 
+  // ---------------- NIIMBOT label sheet ----------------
+  //
+  // Writes the five columns the label printer expects — Item Name, Cost, Price, SKU, QR Code
+  // Data — as a real .xlsx, because that is the format it imports.
+  //
+  // The QR column is finished text rather than a formula: a formula arrives at the printer as
+  // the formula, not its result, and nothing prints.
+
+  // One label per card still in stock, taken from whatever the Inventory tab is currently
+  // showing — you label a binder at a time, so the search box and filters are the selection.
+  _niimbotRows(){
+    const n = v => Number(v)||0;
+    // Rebuilt through the same search → column-filter pipeline the tab renders with, because
+    // renderInventory keeps that list to itself. Sold-out cards are dropped whatever the
+    // "Show sold-out" toggle says — there is nothing in the case to put a label on.
+    const inStock = this.data.inventory.filter(i => n(i['Remaining Inventory (auto)']) > 0);
+    const searched = this._applyInventorySearch(inStock);
+    const visible = this._applyTableFilter('inventory', this._visibleColumns('inventory'), searched);
+    return visible
+      .map(i => {
+        const name = String(i['Item Name']||'').trim() || 'Unnamed card';
+        const cost = n(i['Cost']);
+        // Whole dollars, rounded up — a label reading $145.50 invites an argument over 50 cents.
+        const price = Math.ceil(n(i['Retail Price']));
+        // The card number is the SKU. Falling back to the Item ID keeps every label scannable
+        // and unique when a card has no number (the promo and DON!! cards).
+        const sku = String(i['SKU']||'').trim() || String(i['Item ID']||'').trim();
+        return { name, cost, price, sku,
+          qr: `Item ${name} | Cost $${cost.toFixed(2)} | $${price} | SKU ${sku}` };
+      });
+  }
+
+  // Minimal .xlsx writer. Values go in as inline strings/numbers so there is no shared-string
+  // table to keep in step, and the archive is stored uncompressed so no deflate is needed —
+  // a label sheet is a few hundred short rows, and the file still opens anywhere.
+  _xlsxBlob(sheetName, header, rows){
+    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      // Control characters are not legal in XML and would make the file unreadable.
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'');
+    const colName = i => { let s=''; i++; while(i>0){ const m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=(i-m-1)/26; } return s; };
+    const cell = (r, ci, v) => {
+      const ref = colName(ci)+r;
+      if(typeof v === 'number' && Number.isFinite(v)) return `<c r="${ref}"><v>${v}</v></c>`;
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(v==null?'':v)}</t></is></c>`;
+    };
+    const body = [header, ...rows].map((row, ri) =>
+      `<row r="${ri+1}">` + row.map((v,ci)=>cell(ri+1, ci, v)).join('') + `</row>`).join('');
+    const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
+      + `<sheetData>${body}</sheetData></worksheet>`;
+    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"`
+      + ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`
+      + `<sheets><sheet name="${esc(sheetName).slice(0,31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+    const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+      + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>`
+      + `</Relationships>`;
+    const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+      + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>`
+      + `</Relationships>`;
+    const types = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`
+      + `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`
+      + `<Default Extension="xml" ContentType="application/xml"/>`
+      + `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`
+      + `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+      + `</Types>`;
+    return this._zipBlob([
+      { name:'[Content_Types].xml', data:types },
+      { name:'_rels/.rels', data:rootRels },
+      { name:'xl/workbook.xml', data:workbook },
+      { name:'xl/_rels/workbook.xml.rels', data:wbRels },
+      { name:'xl/worksheets/sheet1.xml', data:sheet },
+    ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+
+  // ZIP archive, stored (method 0) — no compression library needed.
+  _zipBlob(files, mime){
+    const enc = new TextEncoder();
+    const table = (()=>{ const t=new Uint32Array(256);
+      for(let i=0;i<256;i++){ let c=i; for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320 ^ (c>>>1) : c>>>1; t[i]=c>>>0; }
+      return t; })();
+    const crc32 = buf => { let c = 0xFFFFFFFF;
+      for(let i=0;i<buf.length;i++) c = table[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+      return (c ^ 0xFFFFFFFF) >>> 0; };
+    const parts = [], central = [];
+    let offset = 0;
+    files.forEach(f=>{
+      const nameBytes = enc.encode(f.name);
+      const data = enc.encode(f.data);
+      const crc = crc32(data);
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);        // version needed
+      local.setUint16(6, 0x0800, true);    // UTF-8 names
+      local.setUint16(8, 0, true);         // stored
+      local.setUint16(10, 0, true); local.setUint16(12, 0, true);  // no time/date
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, nameBytes.length, true);
+      local.setUint16(28, 0, true);
+      parts.push(new Uint8Array(local.buffer), nameBytes, data);
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(4, 20, true); cd.setUint16(6, 20, true);
+      cd.setUint16(8, 0x0800, true);
+      cd.setUint16(10, 0, true);
+      cd.setUint16(12, 0, true); cd.setUint16(14, 0, true);
+      cd.setUint32(16, crc, true);
+      cd.setUint32(20, data.length, true);
+      cd.setUint32(24, data.length, true);
+      cd.setUint16(28, nameBytes.length, true);
+      cd.setUint16(30, 0, true); cd.setUint16(32, 0, true);
+      cd.setUint16(34, 0, true); cd.setUint16(36, 0, true);
+      cd.setUint32(38, 0, true);
+      cd.setUint32(42, offset, true);
+      central.push(new Uint8Array(cd.buffer), nameBytes);
+      offset += 30 + nameBytes.length + data.length;
+    });
+    const centralSize = central.reduce((a,b)=>a+b.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, files.length, true);
+    end.setUint16(10, files.length, true);
+    end.setUint32(12, centralSize, true);
+    end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], {type:mime});
+  }
+
+  exportNiimbotLabels(){
+    const rows = this._niimbotRows();
+    if(!rows.length){
+      this.showToast('Nothing to label — no cards in stock in the current view.');
+      return;
+    }
+    const blob = this._xlsxBlob('Labels',
+      ['Item Name','Cost','Price','SKU','QR Code Data'],
+      rows.map(r=>[r.name, r.cost, r.price, r.sku, r.qr]));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `niimbot-labels-${this.todayStr()}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    this.showToast(`${rows.length} label${rows.length!==1?'s':''} exported.`);
+  }
+
   _countLabel(shown, total, noun){
     const base = `${shown} ${noun}${shown!==1?'s':''}`;
     return shown===total ? base : `${base} (filtered from ${total})`;
@@ -7968,7 +8121,7 @@ class Dashboard {
       `<tr data-row-id="${row._id}">` + cols.map(c=>this._cell('inventory', row, c)).join('') + this._deleteCell('inventory', row) + '</tr>'
     ).join('');
     // Sum of the Potential Profit column across exactly the rows currently shown (so it tracks
-    // the search box and any column filters). Per-unit, matching the values in the column.
+    // the search box and any column filters). Counts every copy held, matching the column.
     const totalEl = document.getElementById('inv-total');
     if(totalEl){
       const sum = data.reduce((a,r)=>a+(Number(r['Card Potential Profit (auto)'])||0),0);
