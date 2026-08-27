@@ -890,6 +890,17 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .calc-hist-again:hover { background:#eceef6; color:var(--text-primary); }
 .calc-hist-empty { font-size:12.5px; color:var(--text-secondary); font-style:italic; padding:16px 4px; }
 
+/* "Your show is today" prompt. Green rather than the draft banner's amber — this is a normal
+   part of a show day, not a warning about something that went wrong. */
+.show-prompt { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--positive-tint); border:1px solid #b8dcc6; color:#14532d; border-radius:var(--radius); padding:13px 18px; margin-bottom:var(--gap); font-size:13px; box-shadow:var(--shadow-sm); }
+.show-prompt.hidden { display:none; }
+.sp-text { flex:1 1 240px; line-height:1.5; }
+.sp-text b { font-weight:800; }
+.sp-cash { display:flex; align-items:center; gap:6px; flex:0 0 auto; font-weight:700; }
+.sp-cash input { width:96px; padding:8px 10px; font-size:14px; border:1px solid #b8dcc6; border-radius:9px; background:#fff; color:var(--text-primary); font-family:inherit; }
+.sp-cash input:focus { outline:none; border-color:var(--positive); box-shadow:0 0 0 3px rgba(24,128,56,0.15); }
+.show-prompt .btn-sm { flex:0 0 auto; }
+
 /* Offline draft recovery banner. */
 .draft-banner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--warning-tint); border:1px solid #f0d59f; color:#7a4d05; border-radius:var(--radius); padding:13px 18px; margin-bottom:var(--gap); font-size:13px; box-shadow:var(--shadow-sm); }
 .draft-banner.hidden { display:none; }
@@ -1058,6 +1069,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <!-- Offline safety net: shown at startup when this device holds changes newer than the
        cloud copy. Lives outside the tab panels so it is seen whichever tab opens. -->
   <div id="draft-banner" class="draft-banner hidden"></div>
+  <!-- Booked in the Calendar, happening today, and no ledger row for it yet. Sits outside
+       the tab panels so it is the first thing seen whichever tab opens. -->
+  <div id="show-prompt" class="show-prompt hidden"></div>
 
   <nav class="tab-bar">
     <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Dashboard</button>
@@ -1879,7 +1893,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v102</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v103</strong>
   </footer>
 </div>
 
@@ -1995,6 +2009,9 @@ const FAB_COLLAPSED_KEY = 'gumgumgoods-tcg-fab-collapsed';
 // itself, and capped so it cannot grow without bound.
 const CALC_HISTORY_KEY = 'gumgumgoods-tcg-calc-history';
 const CALC_HISTORY_MAX = 500;
+// The day the "your show is today" prompt was last dismissed, so it asks once and then
+// leaves you alone until tomorrow.
+const SHOW_PROMPT_KEY = 'gumgumgoods-tcg-show-prompt-off';
 
 class Dashboard {
   constructor(raw){
@@ -2342,6 +2359,8 @@ class Dashboard {
       if(ladd){ this.handleListAdd(ladd); return; }
       const fc = e.target.closest('[data-filter-clear]');
       if(fc){ this.handleFilterClear(fc); return; }
+      if(e.target.closest('[data-show-prompt-start]')){ this.startBookedShow(); return; }
+      if(e.target.closest('[data-show-prompt-skip]')){ this.dismissShowPrompt(); return; }
       if(e.target.closest('[data-draft-restore]')){ this.restoreLocalDraft(); return; }
       if(e.target.closest('[data-draft-discard]')){ this.dismissLocalDraft(true); return; }
       const dls = e.target.closest('[data-dismiss-low-stock]');
@@ -3954,6 +3973,78 @@ class Dashboard {
     };
   }
 
+  // ---------------- "Your show is today" prompt ----------------
+  //
+  // Shows get booked in the Calendar weeks ahead — name, dates, table number — and then the
+  // ledger row that every sale needs to land on has to be created by hand on the day, which is
+  // the step that gets forgotten in the rush of setting up. The two halves of the app already
+  // hold everything needed to join them up; nothing ever asked.
+  //
+  // So on a day you have a booking and no ledger row, this offers to make one.
+
+  // The booking covering today, if there is one. Multi-day runs count on every day they span.
+  _todaysBooking(){
+    const today = this.todayStr();
+    return (this.data.calendar||[]).find(b =>
+      String(b.name||'').trim() && this._bookingDays(b).includes(today)) || null;
+  }
+
+  // A row already exists for today — whatever it is called, the day is being tracked.
+  _hasShowRowToday(){
+    const today = this.todayStr();
+    return this.data.cashflow.some(c => String(c['Date']||'').slice(0,10) === today);
+  }
+
+  renderShowPrompt(){
+    const el = document.getElementById('show-prompt');
+    if(!el) return;
+    const hide = () => { el.classList.add('hidden'); el.innerHTML = ''; };
+    let dismissed = '';
+    try{ dismissed = localStorage.getItem(SHOW_PROMPT_KEY) || ''; }catch(e){}
+    if(dismissed === this.todayStr()) return hide();
+    const booking = this._todaysBooking();
+    if(!booking || this._hasShowRowToday()) return hide();
+    const days = this._bookingDays(booking);
+    const dayNo = days.indexOf(this.todayStr()) + 1;
+    const which = days.length > 1 ? ` &mdash; day ${dayNo} of ${days.length}` : '';
+    const where = booking.location ? ` at ${this._esc(String(booking.location).slice(0,60))}` : '';
+    el.innerHTML = `<span aria-hidden="true">&#127914;</span>`
+      + `<span class="sp-text"><b>${this._esc(booking.name)}</b> is today${where}${which}.`
+      + `<br>There is no ledger row for it yet &mdash; start it so today&rsquo;s sales have a show to land on.</span>`
+      + `<label class="sp-cash">Starting cash $`
+      + `<input type="number" id="sp-cash-input" min="0" step="0.01" placeholder="0.00" inputmode="decimal"></label>`
+      + `<button type="button" class="btn-sm btn-add" data-show-prompt-start>Start show</button>`
+      + `<button type="button" class="btn-sm" data-show-prompt-skip title="Hides this until tomorrow. The show stays in your calendar.">Not today</button>`;
+    el.classList.remove('hidden');
+  }
+
+  // Creates the ledger row from the booking, through the same path the New Show dialog uses —
+  // so it gets the app's "Venue · date" naming (which _showRuns groups a multi-day show on),
+  // the duplicate check, the venue memory and an undo snapshot for free.
+  startBookedShow(){
+    const booking = this._todaysBooking();
+    if(!booking){ this.renderShowPrompt(); return; }
+    const input = document.getElementById('sp-cash-input');
+    const raw = input ? String(input.value).trim() : '';
+    // Blank is left blank rather than forced to zero: with no cash count the app falls back to
+    // working the show's profit out from its records, which beats a number nobody counted.
+    const name = this._createOrGetShow(booking.name, this.todayStr(), raw === '' ? null : raw);
+    // Straight into Show Mode — it is what the row is for, and it makes every sale, expense and
+    // trade recorded today default to this show without another thought.
+    this.activeShow = name;
+    try{ localStorage.setItem('tcgvd-active-show', name); }catch(e){}
+    this.renderAll();
+    this.markDirty();
+    this.showToast(raw === ''
+      ? `${name} started — add your starting cash on the Card Show tab once you have counted it.`
+      : `${name} started with ${fmtMoney(parseFloat(raw)||0)} on hand.`);
+  }
+
+  dismissShowPrompt(){
+    try{ localStorage.setItem(SHOW_PROMPT_KEY, this.todayStr()); }catch(e){}
+    this.renderShowPrompt();
+  }
+
   // ---------------- Local draft (offline safety net) ----------------
   //
   // Everything above this line assumes the cloud is reachable. At a show it usually isn't, and
@@ -4648,6 +4739,7 @@ class Dashboard {
     this.filteredTrades = this.data.trades;
     this.filteredExpenses = this.data.expenses;
     this.renderLowStock();
+    this.renderShowPrompt();
     this.renderKPIs();
     this.renderCharts();
     this.renderTopShows();
