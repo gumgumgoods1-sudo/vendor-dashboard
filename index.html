@@ -916,14 +916,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .pb-target small { display:block; font-size:12px; color:#c3c9e8; margin-top:2px; }
 .pb-shutter { flex:0 0 auto; width:62px; height:62px; border-radius:50%; border:3px solid rgba(255,255,255,.85); background:var(--action); color:#fff; font-size:26px; line-height:1; cursor:pointer; padding:0; }
 .pb-shutter:active { transform:scale(.94); }
-#scan-pick .qa-pick-input { width:100%; max-width:460px; margin-top:10px; }
 
-.pc-photo { position:relative; margin-top:10px; }
-.pc-photo[hidden] { display:none; }
-.pc-photo img { display:block; width:64px; height:64px; object-fit:cover; border-radius:10px; border:1px solid rgba(255,255,255,.35); cursor:zoom-in; }
-.pc-photo.zoom img { width:100%; height:auto; max-height:38vh; object-fit:contain; cursor:zoom-out; background:#000; }
-.pc-photo-del { position:absolute; top:-6px; left:52px; width:22px; height:22px; border-radius:50%; border:1px solid rgba(255,255,255,.4); background:#1c2036; color:#fff; font-size:14px; line-height:1; cursor:pointer; padding:0; }
-.pc-photo.zoom .pc-photo-del { left:auto; right:-6px; }
 
 /* "Your show is today" prompt. Green rather than the draft banner's amber — this is a normal
    part of a show day, not a warning about something that went wrong. */
@@ -1935,7 +1928,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v108</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v109</strong>
   </footer>
 </div>
 
@@ -2054,9 +2047,6 @@ const CALC_HISTORY_MAX = 500;
 // The day the "your show is today" prompt was last dismissed, so it asks once and then
 // leaves you alone until tomorrow.
 const SHOW_PROMPT_KEY = 'gumgumgoods-tcg-show-prompt-off';
-// Card photos live in IndexedDB, keyed by Item ID — never in the saved data. See _photoDb.
-const PHOTO_DB_NAME = 'gumgumgoods-tcg-photos';
-const PHOTO_STORE = 'photos';
 
 class Dashboard {
   constructor(raw){
@@ -2427,15 +2417,6 @@ class Dashboard {
       const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill], [data-price-check], [data-photo-mode]');
       if(scanBtn){ this.openScanner(scanBtn); return; }
       if(e.target.closest('[data-photo-shoot]')){ this.takePhotoNow(); return; }
-      const photoPick = e.target.closest('[data-photo-pick]');
-      if(photoPick){ this.assignPendingPhoto(photoPick.dataset.photoPick); return; }
-      const pcPhoto = e.target.closest('[data-pc-photo]');
-      if(pcPhoto){ this.capturePhoto(pcPhoto.dataset.pcPhoto); return; }
-      const pcPhotoDel = e.target.closest('[data-pc-photo-del]');
-      if(pcPhotoDel){ this.removePhoto(pcPhotoDel.dataset.pcPhotoDel); return; }
-      if(e.target.closest('[data-pc-photo-zoom]')){
-        e.target.closest('.pc-photo').classList.toggle('zoom'); return;
-      }
       const pcSell = e.target.closest('[data-pc-sell]');
       if(pcSell){ this.priceCheckSell(pcSell.dataset.pcSell); return; }
       if(e.target.closest('[data-pc-close]')){ this.closeScanner(); return; }
@@ -6791,8 +6772,6 @@ class Dashboard {
     this._scanPriceCheck = !!(btnEl && btnEl.matches('[data-price-check]'));
     this._scanPhotoMode = !!(btnEl && btnEl.matches('[data-photo-mode]'));
     this._photoTarget = null;
-    this._pendingPhoto = null;
-    this._photoQuery = '';
     // Two launch modes: from a SKU lookup box (decoded code runs the lookup pipeline), or from
     // the Quick Add Inventory SKU field via data-scan-fill (decoded code just fills the input —
     // the label was printed BEFORE the item exists, so there is nothing to look up yet).
@@ -6978,18 +6957,6 @@ class Dashboard {
   }
 
   skipScanPick(){
-    if(this._scanPhotoMode){
-      const had = !!this._pendingPhoto;
-      this._pendingPhoto = null;
-      this._photoQuery = '';
-      this._closeScanPick();
-      this._photoTarget = null;
-      this.renderPhotoBar();
-      if(!this._scanRunning){ this._scanRunning = true; this._scanTick(); }
-      this._setScanStatus(had ? 'Photo discarded. Line up the next card.'
-                              : 'Line the card up and press the shutter.');
-      return;
-    }
     this._resumeScanAfterPick();
     this._setScanStatus('Skipped — nothing added. Scan the next card.');
   }
@@ -7014,95 +6981,18 @@ class Dashboard {
     f.classList.add('scan-'+s);
   }
 
-  // ---------------- Card photos ----------------
-  //
-  // Kept in IndexedDB on the device, deliberately NOT in the saved data. The cloud copy is a
-  // single Firestore document with a hard 1 MB ceiling and the records already fill a quarter of
-  // it — a couple of photos would push the whole document over and then nothing would save at
-  // all, records included. A photo is worth having; it is not worth losing the books for.
-  //
-  // Consequence to be honest about: photos stay on the device that took them. They do not sync,
-  // they are not in a backup export, and clearing site data clears them.
-  _photoDb(){
-    if(this._photoDbPromise) return this._photoDbPromise;
-    this._photoDbPromise = new Promise((resolve, reject)=>{
-      if(!window.indexedDB) return reject(new Error('no indexedDB'));
-      const req = indexedDB.open(PHOTO_DB_NAME, 1);
-      req.onupgradeneeded = ()=>{
-        const db = req.result;
-        if(!db.objectStoreNames.contains(PHOTO_STORE)) db.createObjectStore(PHOTO_STORE);
-      };
-      req.onsuccess = ()=>resolve(req.result);
-      req.onerror = ()=>reject(req.error || new Error('indexedDB open failed'));
-    });
-    return this._photoDbPromise;
-  }
-
-  async _photoTx(mode, run){
-    try{
-      const db = await this._photoDb();
-      return await new Promise((resolve, reject)=>{
-        const tx = db.transaction(PHOTO_STORE, mode);
-        const req = run(tx.objectStore(PHOTO_STORE));
-        tx.onerror = ()=>reject(tx.error);
-        tx.oncomplete = ()=>resolve(req ? req.result : undefined);
-      });
-    }catch(err){
-      console.warn('Photo store unavailable', err);
-      return undefined;
-    }
-  }
-
-  savePhoto(itemId, blob){ return this._photoTx('readwrite', st=>st.put(blob, itemId)); }
-  getPhoto(itemId){ return this._photoTx('readonly', st=>st.get(itemId)); }
-  deletePhoto(itemId){ return this._photoTx('readwrite', st=>st.delete(itemId)); }
-
-  // Grabs the frame the camera is already showing. Scaled down and JPEG-encoded because a raw
-  // frame is several megabytes and nothing here needs that — this is "which card is it and what
-  // condition was it in", not a print.
+  // Grabs the frame the camera is already showing, scaled down and JPEG-encoded — a raw frame
+  // is several megabytes and nothing here needs that.
   _grabFrame(video){
     if(!video || !video.videoWidth) return Promise.resolve(null);
-    const maxW = 900;
+    const maxW = 1400;
     const scale = Math.min(1, maxW / video.videoWidth);
     const w = Math.max(1, Math.round(video.videoWidth * scale));
     const h = Math.max(1, Math.round(video.videoHeight * scale));
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     cv.getContext('2d').drawImage(video, 0, 0, w, h);
-    return new Promise(res=>cv.toBlob(res, 'image/jpeg', 0.72));
-  }
-
-  async capturePhoto(itemId){
-    const video = document.getElementById('scan-video');
-    if(!video || !video.videoWidth){ this.showToast('Camera is not ready yet.'); return false; }
-    const blob = await this._grabFrame(video);
-    if(!blob){ this.showToast('Could not capture the photo.'); return false; }
-    await this.savePhoto(itemId, blob);
-    this.showToast('Photo saved to this device.');
-    await this._renderPricePhoto(itemId);
-    return true;
-  }
-
-  // Injected after the panel is drawn rather than inline, because reading the photo store is
-  // async and the price has to be on screen immediately.
-  async _renderPricePhoto(itemId){
-    const slot = document.getElementById('pc-photo');
-    if(!slot) return;
-    if(this._pcPhotoUrl){ URL.revokeObjectURL(this._pcPhotoUrl); this._pcPhotoUrl = null; }
-    const blob = itemId ? await this.getPhoto(itemId) : null;
-    // The panel may have moved on to another card while this was loading.
-    if(!slot.isConnected || slot.dataset.itemId !== String(itemId||'')) return;
-    if(!blob){ slot.innerHTML = ''; slot.hidden = true; return; }
-    this._pcPhotoUrl = URL.createObjectURL(blob);
-    slot.innerHTML = `<img src="${this._pcPhotoUrl}" alt="Photo of this card" data-pc-photo-zoom>`
-      + `<button type="button" class="pc-photo-del" data-pc-photo-del="${this._esc(itemId)}" title="Delete this photo">&times;</button>`;
-    slot.hidden = false;
-  }
-
-  async removePhoto(itemId){
-    await this.deletePhoto(itemId);
-    await this._renderPricePhoto(itemId);
-    this.showToast('Photo deleted.');
+    return new Promise(res=>cv.toBlob(res, 'image/jpeg', 0.85));
   }
 
   // ---------------- Photo mode ----------------
@@ -7124,7 +7014,7 @@ class Dashboard {
       + (item
           ? `<b>${this._esc(item['Item Name'] || item['Item ID'])}</b>`
             + `<small>${item['SKU'] ? this._esc(item['SKU']) + ' &middot; ' : ''}ready to photograph</small>`
-          : `<b>Point at the card&rsquo;s label</b><small>or just shoot &mdash; you can say which card after</small>`)
+          : `<b>Point at the card&rsquo;s label</b><small>or just shoot &mdash; the label only names the file</small>`)
       + `</div>`
       + `<button type="button" class="pb-shutter" data-photo-shoot title="Take the photo">&#128247;</button>`;
     el.classList.remove('hidden');
@@ -7136,71 +7026,59 @@ class Dashboard {
     this.renderPhotoBar();
   }
 
+  // A filename that means something in a camera roll of hundreds. When the label was read the
+  // card names itself; otherwise the timestamp is all there is to go on.
+  _photoFileName(){
+    const item = this._photoTarget
+      ? this.data.inventory.find(i=>i['Item ID']===this._photoTarget) : null;
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    if(!item) return `card-${stamp}.jpg`;
+    const base = String(item['Item Name'] || item['Item ID'] || 'card')
+      .replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,60) || 'card';
+    const sku = String(item['SKU']||'').replace(/[^a-z0-9-]+/gi,'');
+    return `${base}${sku ? '-'+sku : ''}-${stamp}.jpg`;
+  }
+
+  // Hands the picture to the phone rather than keeping it. The share sheet is where "Save Image"
+  // lives on a phone, so that is the route to the camera roll; a browser without it (desktop,
+  // mostly) gets a download instead. Nothing is stored in the app — the photo belongs in Photos,
+  // and a second copy the app alone can see was the thing that made these hard to find.
   async takePhotoNow(){
     const video = document.getElementById('scan-video');
-    if(!video || !video.videoWidth){ this.showToast('Camera is not ready yet.'); return; }
-    if(this._photoTarget){
-      const ok = await this.capturePhoto(this._photoTarget);
-      if(ok){
-        // Cleared so the next card starts fresh rather than inheriting this one.
-        this._photoTarget = null;
-        this.renderPhotoBar();
-      }
-      return;
-    }
-    // No card known yet. Freeze the frame now — the customer is not going to hold still while
-    // the right row is found — and attach it once one is picked.
+    if(!video || !video.videoWidth){ this.showToast('Camera is not ready yet.'); return false; }
     const blob = await this._grabFrame(video);
-    if(!blob){ this.showToast('Could not capture the photo.'); return; }
-    this._pendingPhoto = blob;
-    this.openPhotoPicker();
+    if(!blob){ this.showToast('Could not capture the photo.'); return false; }
+    const name = this._photoFileName();
+    const file = (typeof File === 'function') ? new File([blob], name, { type:'image/jpeg' }) : null;
+    if(file && navigator.canShare && navigator.canShare({ files:[file] })){
+      try{
+        await navigator.share({ files:[file], title: name });
+        this._afterPhoto('Photo sent — choose Save Image to keep it in your camera roll.');
+        return true;
+      }catch(err){
+        // Dismissing the sheet is a normal choice, not a failure worth a fallback download.
+        if(err && err.name === 'AbortError'){ this.showToast('Photo discarded.'); return false; }
+        // Anything else (a browser that lists the API but refuses the call) falls through.
+      }
+    }
+    this._downloadPhoto(blob, name);
+    this._afterPhoto('Photo saved to your downloads.');
+    return true;
   }
 
-  // Which card does that photo belong to? Same matcher the Inventory search uses, so the same
-  // words find the same cards.
-  openPhotoPicker(query){
-    const head = document.getElementById('scan-pick-head');
-    const list = document.getElementById('scan-pick-list');
-    const wrap = document.getElementById('scan-pick');
-    if(!head || !list || !wrap) return;
-    this._scanRunning = false;
-    const q = query == null ? (this._photoQuery || '') : query;
-    this._photoQuery = q;
-    const inStock = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
-    const matches = (q.trim() ? this._matchInventory(inStock, q) : inStock).slice(0, 40);
-    head.innerHTML = `Which card is this photo of?`
-      + `<small>Search by name, SKU or set.</small>`
-      + `<input type="search" id="photo-pick-search" class="qa-pick-input" autocomplete="off"`
-      + ` placeholder="Search your stock&hellip;" value="${this._esc(q)}">`;
-    list.innerHTML = matches.length
-      ? matches.map(i=>`<button type="button" class="scan-pick-opt" data-photo-pick="${this._esc(i['Item ID'])}">`
-          + `<span class="nm">${this._esc(i['Item Name'] || i['Item ID'])}</span>`
-          + `<span class="mt">${this._esc(i['SKU']||'')}<b>${fmtMoney(Number(i['Retail Price'])||0)}</b></span>`
-          + `</button>`).join('')
-      : `<div class="checkout-empty">No cards in stock match that.</div>`;
-    wrap.classList.remove('hidden');
-    const box = document.getElementById('photo-pick-search');
-    if(box){
-      box.addEventListener('input', ()=>this.openPhotoPicker(box.value));
-      if(query != null){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
-    }
+  _downloadPhoto(blob, name){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 10000);
   }
 
-  async assignPendingPhoto(itemId){
-    if(this._pendingPhoto){
-      await this.savePhoto(itemId, this._pendingPhoto);
-      this._pendingPhoto = null;
-      const item = this.data.inventory.find(i=>i['Item ID']===itemId);
-      this.showToast(`Photo saved for ${item ? (item['Item Name']||itemId) : itemId}.`);
-    }
-    this._photoQuery = '';
-    this._closeScanPick();
+  // Clear the identified card so the next shot starts fresh instead of inheriting this one.
+  _afterPhoto(msg){
     this._photoTarget = null;
     this.renderPhotoBar();
-    if(!this._scanRunning && !document.getElementById('scan-overlay').classList.contains('hidden')){
-      this._scanRunning = true;
-      this._scanTick();
-    }
+    this.showToast(msg);
   }
 
   // ---------------- Price Check ----------------
@@ -7237,14 +7115,10 @@ class Dashboard {
       + `${item['SKU'] ? ' &middot; SKU ' + this._esc(item['SKU']) : ''}</div>`
       + (stale ? `<div class="pc-stale">Label says $${printed} &mdash; this card is now ${fmtMoney(retail)}. `
           + `Reprint the label or honour the sticker.</div>` : '')
-      + `<div class="pc-photo" id="pc-photo" data-item-id="${this._esc(item['Item ID'])}" hidden></div>`
       + `<div class="pc-actions">`
       + `<button type="button" data-pc-sell="${this._esc(item['Item ID'])}" class="primary"${left>0?'':' disabled'}>Sell it</button>`
-      + `<button type="button" data-pc-photo="${this._esc(item['Item ID'])}">&#128247; Photo</button>`
       + `<button type="button" data-pc-close>Done</button></div>`;
     el.classList.remove('hidden');
-    // Fire and forget: the price is already on screen, the photo catches up.
-    this._renderPricePhoto(item['Item ID']);
   }
 
   // Straight from a price check into recording the sale, with the card already picked. The
@@ -7411,15 +7285,12 @@ class Dashboard {
       if(title) title.textContent = 'Scan QR label';
       const card = document.getElementById('price-card');
       if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
-      if(this._pcPhotoUrl){ URL.revokeObjectURL(this._pcPhotoUrl); this._pcPhotoUrl = null; }
     }
     if(this._scanPhotoMode){
       this._scanPhotoMode = false;
       this._photoTarget = null;
       // A frame captured but never assigned is dropped rather than silently attached later.
-      this._pendingPhoto = null;
-      this._photoQuery = '';
-      const cancelBtn = document.getElementById('scan-cancel');
+        const cancelBtn = document.getElementById('scan-cancel');
       if(cancelBtn) cancelBtn.textContent = 'Cancel';
       const title = document.querySelector('.scan-title');
       if(title) title.textContent = 'Scan QR label';
