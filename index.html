@@ -890,6 +890,19 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .calc-hist-again:hover { background:#eceef6; color:var(--text-primary); }
 .calc-hist-empty { font-size:12.5px; color:var(--text-secondary); font-style:italic; padding:16px 4px; }
 
+/* Price Check result, held over the camera while it keeps scanning. */
+.price-card { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; background:rgba(10,12,24,.96); border:1px solid rgba(255,255,255,.28); border-radius:16px; padding:14px 16px; color:#fff; box-shadow:0 14px 40px rgba(0,0,0,.5); }
+.price-card.hidden { display:none; }
+.pc-name { font-size:15px; font-weight:800; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pc-price { font-size:38px; font-weight:800; line-height:1.1; color:#ffd98a; font-variant-numeric:tabular-nums; margin:2px 0 4px; }
+.pc-meta { font-size:12.5px; color:#c3c9e8; line-height:1.55; font-variant-numeric:tabular-nums; }
+.pc-meta b { color:#fff; }
+.pc-stale { margin-top:8px; font-size:12.5px; font-weight:700; color:#ffd98a; background:rgba(255,217,138,.12); border:1px solid rgba(255,217,138,.4); border-radius:9px; padding:7px 10px; line-height:1.45; }
+.pc-out { color:#ff7a80; }
+.pc-actions { display:flex; gap:8px; margin-top:10px; }
+.pc-actions button { flex:1 1 auto; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.1); color:#fff; border-radius:10px; padding:9px 10px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; }
+.pc-actions button.primary { background:var(--action); border-color:var(--action); }
+
 /* "Your show is today" prompt. Green rather than the draft banner's amber — this is a normal
    part of a show day, not a warning about something that went wrong. */
 .show-prompt { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--positive-tint); border:1px solid #b8dcc6; color:#14532d; border-radius:var(--radius); padding:13px 18px; margin-bottom:var(--gap); font-size:13px; box-shadow:var(--shadow-sm); }
@@ -1431,6 +1444,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <div class="scan-pick-list" id="scan-pick-list"></div>
       <button type="button" class="scan-cancel" id="scan-pick-skip">Skip this card</button>
     </div>
+    <!-- Price Check mode: the last scanned card's live figures, held on screen while the camera
+         keeps running so a queue of cards can be checked one after another. -->
+    <div class="price-card hidden" id="price-card"></div>
   </div>
 
   <!-- ===================== DASHBOARD TAB ===================== -->
@@ -1893,7 +1909,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v103</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v104</strong>
   </footer>
 </div>
 
@@ -2379,8 +2395,11 @@ class Dashboard {
       if(skuSug){ this._handleSkuSuggestionClick(skuSug); return; }
       const skuPick = e.target.closest('[data-sku-pick-id]');
       if(skuPick){ this.handleSkuPick(skuPick); return; }
-      const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill]');
+      const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill], [data-price-check]');
       if(scanBtn){ this.openScanner(scanBtn); return; }
+      const pcSell = e.target.closest('[data-pc-sell]');
+      if(pcSell){ this.priceCheckSell(pcSell.dataset.pcSell); return; }
+      if(e.target.closest('[data-pc-close]')){ this.closeScanner(); return; }
       if(e.target.closest('#add-modal-save')){ this.saveAddModal(false); return; }
       if(e.target.closest('#add-modal-save-another')){ this.saveAddModal(true); return; }
       if(e.target.closest('#add-modal-cancel') || e.target.closest('#add-modal-close')){ this.closeAddModal(); return; }
@@ -6357,6 +6376,7 @@ class Dashboard {
     return `<span class="sku-lookup-icon" aria-hidden="true">&#128269;</span>`
       + `<input type="text" class="sku-lookup-input" data-sku-lookup="${this._esc(location)}" placeholder="Scan or type SKU" autocomplete="off">`
       + `<button type="button" class="sku-scan-btn" data-scan-btn title="Scan a QR label with the camera">&#128247;</button>`
+      + `<button type="button" class="sku-scan-btn" data-price-check title="Price check — scan a label to see what a card sells for, with no changes made">&#128176;</button>`
       + `<span class="sku-lookup-msg" data-sku-lookup-msg></span>`
       + `<div class="sku-suggestions hidden" data-sku-suggestions></div>`;
   }
@@ -6728,11 +6748,15 @@ class Dashboard {
   }
 
   async openScanner(btnEl){
+    // Price Check is a read-only mode: it looks a card up and shows what it sells for, and is
+    // wired first so none of the modes below (which all write something) can claim the scan.
+    this._scanPriceCheck = !!(btnEl && btnEl.matches('[data-price-check]'));
     // Two launch modes: from a SKU lookup box (decoded code runs the lookup pipeline), or from
     // the Quick Add Inventory SKU field via data-scan-fill (decoded code just fills the input —
     // the label was printed BEFORE the item exists, so there is nothing to look up yet).
     const wrap = btnEl.closest('.sku-lookup');
-    this._scanInput = wrap ? wrap.querySelector('[data-sku-lookup]') : null;
+    this._scanInput = this._scanPriceCheck ? null
+      : (wrap ? wrap.querySelector('[data-sku-lookup]') : null);
     this._scanFillInput = null;
     if(!this._scanInput && btnEl.matches('[data-scan-fill]')){
       const row = btnEl.closest('.qa-sku-scan-row');
@@ -6742,7 +6766,12 @@ class Dashboard {
     // added straight to the basket and the camera stays open for the next one — no re-tapping.
     this._scanRapid = !!(this._scanInput && this._scanInput.getAttribute('data-sku-lookup')==='qa-checkout');
     const cancelBtn = document.getElementById('scan-cancel');
-    if(cancelBtn) cancelBtn.textContent = this._scanRapid ? '✓ Done' : 'Cancel';
+    if(cancelBtn) cancelBtn.textContent = (this._scanRapid || this._scanPriceCheck) ? '✓ Done' : 'Cancel';
+    const title = document.querySelector('.scan-title');
+    if(title) title.textContent = this._scanPriceCheck ? 'Price check' : 'Scan QR label';
+    const card = document.getElementById('price-card');
+    if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
+    if(this._scanPriceCheck) status.textContent = 'Point the camera at a card\u2019s label to see what it sells for.';
     const status = document.getElementById('scan-status');
     document.getElementById('scan-overlay').classList.remove('hidden');
     status.textContent = 'Starting camera…';
@@ -6811,6 +6840,14 @@ class Dashboard {
     if(mName){ out.name = mName[1].trim(); out.labeled = true; }
     if(mCost) out.cost = parseFloat(mCost[1].replace(/,/g,''));
     if(mRetail) out.retail = parseFloat(mRetail[1].replace(/,/g,''));
+    // The sheet this app exports writes the price with no word in front of it —
+    // "Item X | Cost $0.00 | $374 | SKU Y" — so nothing above catches it. Fall back to a
+    // segment that is nothing but an amount. "Cost $420.00" cannot match, since it has a word.
+    if(out.retail == null){
+      const bare = text.split(/[|\n]/).map(x=>x.trim())
+        .find(x => /^\$?\s*\d[\d.,]*$/.test(x));
+      if(bare) out.retail = parseFloat(bare.replace(/[$,\s]/g,''));
+    }
     return out;
   }
 
@@ -6866,6 +6903,16 @@ class Dashboard {
     const matches = this._scanPickMatches || [];
     const item = matches[Number(el.dataset.scanPick)];
     if(!item){ this._resumeScanAfterPick(); return; }
+    // Price Check only ever looks: picking which card it is answers the question, and adding it
+    // to a basket would turn "how much is this?" into a recorded sale.
+    if(this._scanPriceCheck){
+      this._resumeScanAfterPick();
+      if(navigator.vibrate) navigator.vibrate(60);
+      this._flashScanFrame('hit');
+      this._setScanStatus('Scan the next card to check it.');
+      this._showPriceCheck(this._scanPickParsed || { sku:item['SKU'], retail:null }, item);
+      return;
+    }
     this.addToCheckout(item);
     const line = this.checkoutItems.find(l=>l.itemId===item['Item ID']);
     const qty = line ? line.qty : 1;
@@ -6893,7 +6940,12 @@ class Dashboard {
     const total = this.checkoutItems.reduce((a,l)=>a+l.qty*(Number(l.price)||0),0);
     return `Basket: ${n} card${n!==1?'s':''} · ${fmtMoney(total)} — tap ✓ Done when finished.`;
   }
-  _setScanStatus(main){ const el=document.getElementById('scan-status'); if(el) el.textContent = main + '\n' + this._rapidBasketLine(); }
+  // The basket line belongs to rapid checkout. Price Check keeps the camera open too but has no
+  // basket, so appending it there would report a total for something that isn't happening.
+  _setScanStatus(main){
+    const el = document.getElementById('scan-status');
+    if(el) el.textContent = this._scanRapid ? (main + '\n' + this._rapidBasketLine()) : main;
+  }
   // state: 'hit' (green), 'warn' (amber), 'miss' (red).
   _flashScanFrame(state){
     const f = document.querySelector('.scan-frame'); if(!f) return;
@@ -6903,7 +6955,88 @@ class Dashboard {
     f.classList.add('scan-'+s);
   }
 
+  // ---------------- Price Check ----------------
+  //
+  // Scan a printed label and read back what the card sells for. Deliberately changes nothing —
+  // no basket, no sale, no stock movement — because the question being answered is a customer
+  // asking "how much is this?", and answering it must never risk the books.
+  //
+  // The label's own printed price is compared against the live one. A label printed weeks ago
+  // is a snapshot; if the price has moved since, that gap is the whole reason to check.
+  _showPriceCheck(parsed, item){
+    const el = document.getElementById('price-card');
+    if(!el) return;
+    const n = v => Number(v)||0;
+    if(!item){
+      el.innerHTML = `<div class="pc-name">Not in your inventory</div>`
+        + `<div class="pc-meta">Nothing matches SKU <b>${this._esc(parsed.sku)}</b>`
+        + `${parsed.name ? ' &middot; ' + this._esc(parsed.name) : ''}.</div>`;
+      el.classList.remove('hidden');
+      return;
+    }
+    const retail = n(item['Retail Price']), cost = n(item['Cost']);
+    const left = n(item['Remaining Inventory (auto)']);
+    const margin = retail - cost;
+    const pct = retail > 0 ? Math.round(margin / retail * 100) : null;
+    // The label rounds up to whole dollars, so only a real change counts as stale.
+    const printed = parsed.retail;
+    const stale = printed != null && Math.abs(printed - Math.ceil(retail)) >= 1;
+    el.innerHTML = `<div class="pc-name">${this._esc(item['Item Name'] || item['Item ID'])}</div>`
+      + `<div class="pc-price">${fmtMoney(retail)}</div>`
+      + `<div class="pc-meta">Cost <b>${fmtMoney(cost)}</b> &middot; margin <b>${fmtMoney(margin)}</b>`
+      + `${pct!=null ? ` (${pct}%)` : ''}<br>`
+      + `<span class="${left>0?'':'pc-out'}"><b>${left}</b> in stock</span>`
+      + `${item['SKU'] ? ' &middot; SKU ' + this._esc(item['SKU']) : ''}</div>`
+      + (stale ? `<div class="pc-stale">Label says $${printed} &mdash; this card is now ${fmtMoney(retail)}. `
+          + `Reprint the label or honour the sticker.</div>` : '')
+      + `<div class="pc-actions">`
+      + `<button type="button" data-pc-sell="${this._esc(item['Item ID'])}" class="primary"${left>0?'':' disabled'}>Sell it</button>`
+      + `<button type="button" data-pc-close>Done</button></div>`;
+    el.classList.remove('hidden');
+  }
+
+  // Straight from a price check into recording the sale, with the card already picked. The
+  // scanner closes first — the answer has been given and the customer is buying.
+  priceCheckSell(itemId){
+    const item = this.data.inventory.find(i=>i['Item ID']===itemId);
+    this.closeScanner();
+    if(!item) return;
+    this.openQuickAdd('sales');
+    const form = document.getElementById('qa-form-sales');
+    if(!form) return;
+    const binder = document.getElementById('qa-binder');
+    if(binder && binder.checked){ binder.checked = false; this.setBinderMode(false); }
+    form.elements['Item ID'].value = itemId;
+    this.updateSaleInfo({itemChanged:true});
+    form.elements['Quantity Sold'].focus();
+  }
+
   _handleScanResult(text){
+    // Price check: show the card's live figures and keep the camera running for the next one.
+    if(this._scanPriceCheck){
+      const parsed = this._parseScannedLabel(text);
+      const matches = this._resolveScanToItem(parsed);
+      if(matches.length === 1){
+        if(navigator.vibrate) navigator.vibrate(60);
+        this._flashScanFrame('hit');
+        this._setScanStatus('Scan the next card to check it.');
+        this._showPriceCheck(parsed, matches[0]);
+      } else if(matches.length === 0){
+        this._flashScanFrame('miss');
+        this._setScanStatus(`No item found for “${parsed.sku}”`);
+        this._showPriceCheck(parsed, null);
+      } else {
+        // Several cards share the SKU. Asking is the only honest answer to "how much is it".
+        this._flashScanFrame('warn');
+        if(navigator.vibrate) navigator.vibrate([70,60,70]);
+        this._scanPickParsed = parsed;
+        this._openScanPick(parsed.sku, matches);
+        return;
+      }
+      clearTimeout(this._scanRearm);
+      this._scanRearm = setTimeout(()=>{ if(this._scanRunning) this._scanTick(); }, 1300);
+      return;
+    }
     // Rapid checkout: add to the basket and keep scanning instead of closing.
     if(this._scanRapid){
       const parsed = this._parseScannedLabel(text);
@@ -7000,6 +7133,15 @@ class Dashboard {
       if(cancelBtn) cancelBtn.textContent = 'Cancel';
       const n = this.checkoutItems.reduce((a,l)=>a+l.qty,0);
       if(n>0) this.showToast(`${n} card${n!==1?'s':''} in basket — review and complete the sale.`);
+    }
+    if(this._scanPriceCheck){
+      this._scanPriceCheck = false;
+      const cancelBtn = document.getElementById('scan-cancel');
+      if(cancelBtn) cancelBtn.textContent = 'Cancel';
+      const title = document.querySelector('.scan-title');
+      if(title) title.textContent = 'Scan QR label';
+      const card = document.getElementById('price-card');
+      if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
     }
     if(this._scanStream){ this._scanStream.getTracks().forEach(t=>t.stop()); this._scanStream = null; }
     const video = document.getElementById('scan-video');
