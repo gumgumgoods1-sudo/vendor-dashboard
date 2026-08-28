@@ -905,6 +905,12 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .pc-actions { display:flex; gap:8px; margin-top:10px; }
 .pc-actions button { flex:1 1 auto; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.1); color:#fff; border-radius:10px; padding:9px 10px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; }
 .pc-actions button.primary { background:var(--action); border-color:var(--action); }
+.pc-photo { position:relative; margin-top:10px; }
+.pc-photo[hidden] { display:none; }
+.pc-photo img { display:block; width:64px; height:64px; object-fit:cover; border-radius:10px; border:1px solid rgba(255,255,255,.35); cursor:zoom-in; }
+.pc-photo.zoom img { width:100%; height:auto; max-height:38vh; object-fit:contain; cursor:zoom-out; background:#000; }
+.pc-photo-del { position:absolute; top:-6px; left:52px; width:22px; height:22px; border-radius:50%; border:1px solid rgba(255,255,255,.4); background:#1c2036; color:#fff; font-size:14px; line-height:1; cursor:pointer; padding:0; }
+.pc-photo.zoom .pc-photo-del { left:auto; right:-6px; }
 
 /* "Your show is today" prompt. Green rather than the draft banner's amber — this is a normal
    part of a show day, not a warning about something that went wrong. */
@@ -1913,7 +1919,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v106</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v107</strong>
   </footer>
 </div>
 
@@ -2032,6 +2038,9 @@ const CALC_HISTORY_MAX = 500;
 // The day the "your show is today" prompt was last dismissed, so it asks once and then
 // leaves you alone until tomorrow.
 const SHOW_PROMPT_KEY = 'gumgumgoods-tcg-show-prompt-off';
+// Card photos live in IndexedDB, keyed by Item ID — never in the saved data. See _photoDb.
+const PHOTO_DB_NAME = 'gumgumgoods-tcg-photos';
+const PHOTO_STORE = 'photos';
 
 class Dashboard {
   constructor(raw){
@@ -2401,6 +2410,13 @@ class Dashboard {
       if(skuPick){ this.handleSkuPick(skuPick); return; }
       const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill], [data-price-check]');
       if(scanBtn){ this.openScanner(scanBtn); return; }
+      const pcPhoto = e.target.closest('[data-pc-photo]');
+      if(pcPhoto){ this.capturePhoto(pcPhoto.dataset.pcPhoto); return; }
+      const pcPhotoDel = e.target.closest('[data-pc-photo-del]');
+      if(pcPhotoDel){ this.removePhoto(pcPhotoDel.dataset.pcPhotoDel); return; }
+      if(e.target.closest('[data-pc-photo-zoom]')){
+        e.target.closest('.pc-photo').classList.toggle('zoom'); return;
+      }
       const pcSell = e.target.closest('[data-pc-sell]');
       if(pcSell){ this.priceCheckSell(pcSell.dataset.pcSell); return; }
       if(e.target.closest('[data-pc-close]')){ this.closeScanner(); return; }
@@ -6959,6 +6975,92 @@ class Dashboard {
     f.classList.add('scan-'+s);
   }
 
+  // ---------------- Card photos ----------------
+  //
+  // Kept in IndexedDB on the device, deliberately NOT in the saved data. The cloud copy is a
+  // single Firestore document with a hard 1 MB ceiling and the records already fill a quarter of
+  // it — a couple of photos would push the whole document over and then nothing would save at
+  // all, records included. A photo is worth having; it is not worth losing the books for.
+  //
+  // Consequence to be honest about: photos stay on the device that took them. They do not sync,
+  // they are not in a backup export, and clearing site data clears them.
+  _photoDb(){
+    if(this._photoDbPromise) return this._photoDbPromise;
+    this._photoDbPromise = new Promise((resolve, reject)=>{
+      if(!window.indexedDB) return reject(new Error('no indexedDB'));
+      const req = indexedDB.open(PHOTO_DB_NAME, 1);
+      req.onupgradeneeded = ()=>{
+        const db = req.result;
+        if(!db.objectStoreNames.contains(PHOTO_STORE)) db.createObjectStore(PHOTO_STORE);
+      };
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error || new Error('indexedDB open failed'));
+    });
+    return this._photoDbPromise;
+  }
+
+  async _photoTx(mode, run){
+    try{
+      const db = await this._photoDb();
+      return await new Promise((resolve, reject)=>{
+        const tx = db.transaction(PHOTO_STORE, mode);
+        const req = run(tx.objectStore(PHOTO_STORE));
+        tx.onerror = ()=>reject(tx.error);
+        tx.oncomplete = ()=>resolve(req ? req.result : undefined);
+      });
+    }catch(err){
+      console.warn('Photo store unavailable', err);
+      return undefined;
+    }
+  }
+
+  savePhoto(itemId, blob){ return this._photoTx('readwrite', st=>st.put(blob, itemId)); }
+  getPhoto(itemId){ return this._photoTx('readonly', st=>st.get(itemId)); }
+  deletePhoto(itemId){ return this._photoTx('readwrite', st=>st.delete(itemId)); }
+
+  // Grabs the frame the camera is already showing. Scaled down and JPEG-encoded because a raw
+  // frame is several megabytes and nothing here needs that — this is "which card is it and what
+  // condition was it in", not a print.
+  async capturePhoto(itemId){
+    const video = document.getElementById('scan-video');
+    if(!video || !video.videoWidth){ this.showToast('Camera is not ready yet.'); return false; }
+    const maxW = 900;
+    const scale = Math.min(1, maxW / video.videoWidth);
+    const w = Math.max(1, Math.round(video.videoWidth * scale));
+    const h = Math.max(1, Math.round(video.videoHeight * scale));
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(video, 0, 0, w, h);
+    const blob = await new Promise(res=>cv.toBlob(res, 'image/jpeg', 0.72));
+    if(!blob){ this.showToast('Could not capture the photo.'); return false; }
+    await this.savePhoto(itemId, blob);
+    this.showToast('Photo saved to this device.');
+    await this._renderPricePhoto(itemId);
+    return true;
+  }
+
+  // Injected after the panel is drawn rather than inline, because reading the photo store is
+  // async and the price has to be on screen immediately.
+  async _renderPricePhoto(itemId){
+    const slot = document.getElementById('pc-photo');
+    if(!slot) return;
+    if(this._pcPhotoUrl){ URL.revokeObjectURL(this._pcPhotoUrl); this._pcPhotoUrl = null; }
+    const blob = itemId ? await this.getPhoto(itemId) : null;
+    // The panel may have moved on to another card while this was loading.
+    if(!slot.isConnected || slot.dataset.itemId !== String(itemId||'')) return;
+    if(!blob){ slot.innerHTML = ''; slot.hidden = true; return; }
+    this._pcPhotoUrl = URL.createObjectURL(blob);
+    slot.innerHTML = `<img src="${this._pcPhotoUrl}" alt="Photo of this card" data-pc-photo-zoom>`
+      + `<button type="button" class="pc-photo-del" data-pc-photo-del="${this._esc(itemId)}" title="Delete this photo">&times;</button>`;
+    slot.hidden = false;
+  }
+
+  async removePhoto(itemId){
+    await this.deletePhoto(itemId);
+    await this._renderPricePhoto(itemId);
+    this.showToast('Photo deleted.');
+  }
+
   // ---------------- Price Check ----------------
   //
   // Scan a printed label and read back what the card sells for. Deliberately changes nothing —
@@ -6993,10 +7095,14 @@ class Dashboard {
       + `${item['SKU'] ? ' &middot; SKU ' + this._esc(item['SKU']) : ''}</div>`
       + (stale ? `<div class="pc-stale">Label says $${printed} &mdash; this card is now ${fmtMoney(retail)}. `
           + `Reprint the label or honour the sticker.</div>` : '')
+      + `<div class="pc-photo" id="pc-photo" data-item-id="${this._esc(item['Item ID'])}" hidden></div>`
       + `<div class="pc-actions">`
       + `<button type="button" data-pc-sell="${this._esc(item['Item ID'])}" class="primary"${left>0?'':' disabled'}>Sell it</button>`
+      + `<button type="button" data-pc-photo="${this._esc(item['Item ID'])}">&#128247; Photo</button>`
       + `<button type="button" data-pc-close>Done</button></div>`;
     el.classList.remove('hidden');
+    // Fire and forget: the price is already on screen, the photo catches up.
+    this._renderPricePhoto(item['Item ID']);
   }
 
   // Straight from a price check into recording the sale, with the card already picked. The
@@ -7146,6 +7252,7 @@ class Dashboard {
       if(title) title.textContent = 'Scan QR label';
       const card = document.getElementById('price-card');
       if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
+      if(this._pcPhotoUrl){ URL.revokeObjectURL(this._pcPhotoUrl); this._pcPhotoUrl = null; }
     }
     if(this._scanStream){ this._scanStream.getTracks().forEach(t=>t.stop()); this._scanStream = null; }
     const video = document.getElementById('scan-video');
