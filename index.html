@@ -1913,7 +1913,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v105</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v106</strong>
   </footer>
 </div>
 
@@ -6774,7 +6774,6 @@ class Dashboard {
     if(title) title.textContent = this._scanPriceCheck ? 'Price check' : 'Scan QR label';
     const card = document.getElementById('price-card');
     if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
-    if(this._scanPriceCheck) status.textContent = 'Point the camera at a card\u2019s label to see what it sells for.';
     const status = document.getElementById('scan-status');
     document.getElementById('scan-overlay').classList.remove('hidden');
     status.textContent = 'Starting camera…';
@@ -6794,9 +6793,11 @@ class Dashboard {
       const video = document.getElementById('scan-video');
       video.srcObject = stream;
       await video.play();
-      status.textContent = this._scanRapid
-        ? 'Rapid checkout — scan each card to add it to the basket. Tap ✓ Done when finished.'
-        : "Point the camera at the item's QR label.";
+      status.textContent = this._scanPriceCheck
+        ? 'Point the camera at a card\u2019s label to see what it sells for. Nothing is recorded.'
+        : this._scanRapid
+          ? 'Rapid checkout — scan each card to add it to the basket. Tap ✓ Done when finished.'
+          : "Point the camera at the item's QR label.";
       this._scanRunning = true;
       this._scanTick();
     }catch(err){
