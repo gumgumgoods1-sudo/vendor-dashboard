@@ -188,11 +188,13 @@ body {
 /* Buy & Trade Calculator FAB stacks directly above the Quick Add FAB. */
 .fab-calc { bottom:92px; font-size:24px; background:#fff; color:var(--text-primary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-md); }
 .fab-calc:hover { background:#f4f5fa; }
+.fab-price { bottom:162px; font-size:24px; background:#fff; color:var(--text-primary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-md); }
+.fab-price:hover { background:#f4f5fa; }
 /* Collapse handle. The two floating buttons sit on top of whatever is in the bottom-right of
    every table and chart; on mobile they tuck themselves while you scroll, but that only helps
    mid-scroll. This puts it under your control — collapse them once and they stay gone, leaving
    a slim tab at the edge to bring them back. The choice is remembered per device. */
-.fab-toggle { position:fixed; right:26px; bottom:158px; width:34px; height:34px; border-radius:12px; background:#fff; color:var(--text-secondary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:901; transition:right .22s ease, bottom .22s ease, width .22s ease, height .22s ease, border-radius .22s ease, transform .22s ease, opacity .18s ease; }
+.fab-toggle { position:fixed; right:26px; bottom:228px; width:34px; height:34px; border-radius:12px; background:#fff; color:var(--text-secondary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:901; transition:right .22s ease, bottom .22s ease, width .22s ease, height .22s ease, border-radius .22s ease, transform .22s ease, opacity .18s ease; }
 .fab-toggle:hover { background:#f4f5fa; color:var(--text-primary); }
 body.fab-collapsed .fab, body.fab-collapsed .fab-calc { transform:translateX(calc(100% + 34px)); opacity:0; pointer-events:none; }
 body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px; border-radius:12px 0 0 12px; box-shadow:var(--shadow-md); }
@@ -686,14 +688,15 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
   .dashboard-container { padding-bottom:calc(var(--nav-h, 52px) + 14px); }
   .fab { bottom:calc(var(--nav-h, 52px) + 14px); transition:bottom .22s ease, transform .15s, box-shadow .15s; }
   .fab-calc { bottom:calc(var(--nav-h, 52px) + 84px); }
+  .fab-price { bottom:calc(var(--nav-h, 52px) + 154px); }
   /* The floating buttons go with the bar. They are the worst offenders for covering content —
-     two opaque circles parked over the right-hand side of every table and chart — and simply
-     moving them down still leaves them on top of something. Scrolling down clears the screen
-     completely; scrolling up brings the bar and both buttons back together. */
+     a stack of opaque circles parked over the right-hand side of every table and chart — and
+     simply moving them down still leaves them on top of something. Scrolling down clears the
+     screen completely; scrolling up brings the bar and the buttons back together. */
   .fab, .fab-calc { transition:bottom .22s ease, transform .22s ease, opacity .18s ease, box-shadow .15s; }
   body.nav-tucked .fab, body.nav-tucked .fab-calc { transform:translateY(140%); opacity:0; pointer-events:none; }
   /* Sits above the calculator button, clear of the bottom bar. */
-  .fab-toggle { bottom:calc(var(--nav-h, 52px) + 150px); right:24px; }
+  .fab-toggle { bottom:calc(var(--nav-h, 52px) + 224px); right:24px; }
   body.fab-collapsed .fab-toggle { bottom:calc(var(--nav-h, 52px) + 90px); right:0; }
   /* The handle rides along with the scroll-tuck while the buttons are out, so a lone floater
      isn't left behind. Once collapsed it stays put — it is the only way back. */
@@ -1239,6 +1242,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        trade credit on the fly while talking to a customer. Deliberately never touches this.data
        or autosave/cloud sync; the running list lives only in memory for the current page load. -->
   <button class="fab fab-calc" id="calc-fab" title="Buy &amp; Trade Calculator">&#128290;</button>
+  <button class="fab fab-price" id="price-fab" data-price-check title="Price check — scan a label to see what a card sells for. Nothing is recorded.">&#128176;</button>
   <button class="fab-toggle" id="fab-toggle" aria-expanded="true" title="Hide the floating buttons">&#10095;</button>
   <div class="qa-overlay hidden" id="calc-overlay">
     <div class="qa-modal">
@@ -1909,7 +1913,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v104</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v105</strong>
   </footer>
 </div>
 
@@ -6376,7 +6380,6 @@ class Dashboard {
     return `<span class="sku-lookup-icon" aria-hidden="true">&#128269;</span>`
       + `<input type="text" class="sku-lookup-input" data-sku-lookup="${this._esc(location)}" placeholder="Scan or type SKU" autocomplete="off">`
       + `<button type="button" class="sku-scan-btn" data-scan-btn title="Scan a QR label with the camera">&#128247;</button>`
-      + `<button type="button" class="sku-scan-btn" data-price-check title="Price check — scan a label to see what a card sells for, with no changes made">&#128176;</button>`
       + `<span class="sku-lookup-msg" data-sku-lookup-msg></span>`
       + `<div class="sku-suggestions hidden" data-sku-suggestions></div>`;
   }
