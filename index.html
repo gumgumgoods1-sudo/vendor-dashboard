@@ -899,6 +899,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 /* Price Check result, held over the camera while it keeps scanning. */
 .price-card { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; background:rgba(10,12,24,.96); border:1px solid rgba(255,255,255,.28); border-radius:16px; padding:14px 16px; color:#fff; box-shadow:0 14px 40px rgba(0,0,0,.5); }
 .price-card.hidden { display:none; }
+.pr-img { display:block; width:100%; max-height:38vh; object-fit:contain; background:#0d1020; border-radius:12px; margin-bottom:14px; }
+.pr-name { font-size:12.5px; color:var(--text-secondary); margin:2px 0 14px; word-break:break-all; }
+.pr-name b { color:var(--text-primary); font-weight:700; }
 .pc-name { font-size:15px; font-weight:800; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pc-price { font-size:38px; font-weight:800; line-height:1.1; color:#ffd98a; font-variant-numeric:tabular-nums; margin:2px 0 4px; }
 .pc-meta { font-size:12.5px; color:#c3c9e8; line-height:1.55; font-variant-numeric:tabular-nums; }
@@ -908,14 +911,6 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .pc-actions { display:flex; gap:8px; margin-top:10px; }
 .pc-actions button { flex:1 1 auto; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.1); color:#fff; border-radius:10px; padding:9px 10px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; }
 .pc-actions button.primary { background:var(--action); border-color:var(--action); }
-/* Photo mode: who the shutter is aimed at, and the shutter itself. */
-.photo-bar { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; display:flex; align-items:center; gap:12px; background:rgba(10,12,24,.96); border:1px solid rgba(255,255,255,.28); border-radius:16px; padding:12px 14px; color:#fff; box-shadow:0 14px 40px rgba(0,0,0,.5); }
-.photo-bar.hidden { display:none; }
-.pb-target { flex:1 1 auto; min-width:0; line-height:1.35; }
-.pb-target b { display:block; font-size:15px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pb-target small { display:block; font-size:12px; color:#c3c9e8; margin-top:2px; }
-.pb-shutter { flex:0 0 auto; width:62px; height:62px; border-radius:50%; border:3px solid rgba(255,255,255,.85); background:var(--action); color:#fff; font-size:26px; line-height:1; cursor:pointer; padding:0; }
-.pb-shutter:active { transform:scale(.94); }
 
 
 /* "Your show is today" prompt. Green rather than the draft banner's amber — this is a normal
@@ -1255,8 +1250,34 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        or autosave/cloud sync; the running list lives only in memory for the current page load. -->
   <button class="fab fab-calc" id="calc-fab" title="Buy &amp; Trade Calculator">&#128290;</button>
   <button class="fab fab-price" id="price-fab" data-price-check title="Price check — scan a label to see what a card sells for. Nothing is recorded.">&#128176;</button>
-  <button class="fab fab-photo" id="photo-fab" data-photo-mode title="Photograph a card and keep the picture against it">&#128247;</button>
+  <button class="fab fab-photo" id="photo-fab" title="Take a photo with your phone's camera">&#128247;</button>
+  <!-- capture= hands straight to the phone's own camera UI rather than a viewfinder drawn in
+       the page. iOS gives you the real Camera controls; the picture comes back here. -->
+  <input type="file" id="native-cam" accept="image/*" capture="environment" style="display:none">
   <button class="fab-toggle" id="fab-toggle" aria-expanded="true" title="Hide the floating buttons">&#10095;</button>
+  <!-- After the phone's camera hands the picture back: name it after a card, then save it to
+       the camera roll. iOS does not save a captured photo itself — the page has to pass it on. -->
+  <div class="qa-overlay hidden" id="photo-review">
+    <div class="qa-modal">
+      <div class="qa-modal-head">
+        <h2>Save this photo</h2>
+        <button type="button" class="qa-close" id="photo-review-close" title="Discard">&times;</button>
+      </div>
+      <img id="photo-review-img" class="pr-img" alt="The photo you just took">
+      <div class="qa-field">
+        <label>Name it after a card <small>(optional)</small></label>
+        <div class="qa-pick">
+          <span class="qa-pick-icon" aria-hidden="true">&#128269;</span>
+          <input type="search" id="photo-review-search" class="qa-pick-input" autocomplete="off"
+                 placeholder="Search your stock&hellip;">
+        </div>
+        <div class="qa-pick-results hidden" id="photo-review-results"></div>
+      </div>
+      <div class="pr-name" id="photo-review-name"></div>
+      <button type="button" class="qa-submit" id="photo-review-save">Save to Photos</button>
+    </div>
+  </div>
+
   <div class="qa-overlay hidden" id="calc-overlay">
     <div class="qa-modal">
       <div class="qa-modal-head">
@@ -1464,8 +1485,6 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <!-- Price Check mode: the last scanned card's live figures, held on screen while the camera
          keeps running so a queue of cards can be checked one after another. -->
     <div class="price-card hidden" id="price-card"></div>
-    <!-- Photo mode: names the card the camera has recognised and holds the shutter. -->
-    <div class="photo-bar hidden" id="photo-bar"></div>
   </div>
 
   <!-- ===================== DASHBOARD TAB ===================== -->
@@ -1928,7 +1947,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v109</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v110</strong>
   </footer>
 </div>
 
@@ -2414,9 +2433,10 @@ class Dashboard {
       if(skuSug){ this._handleSkuSuggestionClick(skuSug); return; }
       const skuPick = e.target.closest('[data-sku-pick-id]');
       if(skuPick){ this.handleSkuPick(skuPick); return; }
-      const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill], [data-price-check], [data-photo-mode]');
+      const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill], [data-price-check]');
       if(scanBtn){ this.openScanner(scanBtn); return; }
-      if(e.target.closest('[data-photo-shoot]')){ this.takePhotoNow(); return; }
+      const reviewPick = e.target.closest('[data-review-pick]');
+      if(reviewPick){ this.pickReviewCard(reviewPick.dataset.reviewPick); return; }
       const pcSell = e.target.closest('[data-pc-sell]');
       if(pcSell){ this.priceCheckSell(pcSell.dataset.pcSell); return; }
       if(e.target.closest('[data-pc-close]')){ this.closeScanner(); return; }
@@ -6770,13 +6790,11 @@ class Dashboard {
     // Price Check is a read-only mode: it looks a card up and shows what it sells for, and is
     // wired first so none of the modes below (which all write something) can claim the scan.
     this._scanPriceCheck = !!(btnEl && btnEl.matches('[data-price-check]'));
-    this._scanPhotoMode = !!(btnEl && btnEl.matches('[data-photo-mode]'));
-    this._photoTarget = null;
     // Two launch modes: from a SKU lookup box (decoded code runs the lookup pipeline), or from
     // the Quick Add Inventory SKU field via data-scan-fill (decoded code just fills the input —
     // the label was printed BEFORE the item exists, so there is nothing to look up yet).
     const wrap = btnEl.closest('.sku-lookup');
-    this._scanInput = (this._scanPriceCheck || this._scanPhotoMode) ? null
+    this._scanInput = this._scanPriceCheck ? null
       : (wrap ? wrap.querySelector('[data-sku-lookup]') : null);
     this._scanFillInput = null;
     if(!this._scanInput && btnEl.matches('[data-scan-fill]')){
@@ -6787,11 +6805,9 @@ class Dashboard {
     // added straight to the basket and the camera stays open for the next one — no re-tapping.
     this._scanRapid = !!(this._scanInput && this._scanInput.getAttribute('data-sku-lookup')==='qa-checkout');
     const cancelBtn = document.getElementById('scan-cancel');
-    if(cancelBtn) cancelBtn.textContent = (this._scanRapid || this._scanPriceCheck || this._scanPhotoMode) ? '✓ Done' : 'Cancel';
+    if(cancelBtn) cancelBtn.textContent = (this._scanRapid || this._scanPriceCheck) ? '✓ Done' : 'Cancel';
     const title = document.querySelector('.scan-title');
-    if(title) title.textContent = this._scanPhotoMode ? 'Photograph a card'
-      : this._scanPriceCheck ? 'Price check' : 'Scan QR label';
-    this.renderPhotoBar();
+    if(title) title.textContent = this._scanPriceCheck ? 'Price check' : 'Scan QR label';
     const card = document.getElementById('price-card');
     if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
     const status = document.getElementById('scan-status');
@@ -6813,9 +6829,7 @@ class Dashboard {
       const video = document.getElementById('scan-video');
       video.srcObject = stream;
       await video.play();
-      status.textContent = this._scanPhotoMode
-        ? 'Line the card up and press the shutter.'
-        : this._scanPriceCheck
+      status.textContent = this._scanPriceCheck
         ? 'Point the camera at a card\u2019s label to see what it sells for. Nothing is recorded.'
         : this._scanRapid
           ? 'Rapid checkout — scan each card to add it to the basket. Tap ✓ Done when finished.'
@@ -6981,56 +6995,72 @@ class Dashboard {
     f.classList.add('scan-'+s);
   }
 
-  // Grabs the frame the camera is already showing, scaled down and JPEG-encoded — a raw frame
-  // is several megabytes and nothing here needs that.
-  _grabFrame(video){
-    if(!video || !video.videoWidth) return Promise.resolve(null);
-    const maxW = 1400;
-    const scale = Math.min(1, maxW / video.videoWidth);
-    const w = Math.max(1, Math.round(video.videoWidth * scale));
-    const h = Math.max(1, Math.round(video.videoHeight * scale));
-    const cv = document.createElement('canvas');
-    cv.width = w; cv.height = h;
-    cv.getContext('2d').drawImage(video, 0, 0, w, h);
-    return new Promise(res=>cv.toBlob(res, 'image/jpeg', 0.85));
-  }
-
-  // ---------------- Photo mode ----------------
+  // ---------------- Camera ----------------
   //
-  // Its own thing, not a corner of Price Check: the job is "photograph the cards I am selling",
-  // and it should not require asking what one is worth first.
+  // The 📷 button hands straight to the phone's own camera through a capture-enabled file
+  // input. No web page can launch the Camera app itself — there is no URL scheme for it — but
+  // this is the same camera UI, with the real controls, focus and flash.
   //
-  // The camera keeps scanning while you line the card up, so by the time you press the shutter
-  // it usually already knows which card this is from its printed label. When it doesn't — an
-  // unlabelled card, or a label that won't read — the photo is still taken and you say which
-  // card it belongs to afterwards, rather than losing the shot.
-  renderPhotoBar(){
-    const el = document.getElementById('photo-bar');
-    if(!el) return;
-    if(!this._scanPhotoMode){ el.classList.add('hidden'); el.innerHTML = ''; return; }
-    const item = this._photoTarget
-      ? this.data.inventory.find(i=>i['Item ID']===this._photoTarget) : null;
-    el.innerHTML = `<div class="pb-target">`
-      + (item
-          ? `<b>${this._esc(item['Item Name'] || item['Item ID'])}</b>`
-            + `<small>${item['SKU'] ? this._esc(item['SKU']) + ' &middot; ' : ''}ready to photograph</small>`
-          : `<b>Point at the card&rsquo;s label</b><small>or just shoot &mdash; the label only names the file</small>`)
-      + `</div>`
-      + `<button type="button" class="pb-shutter" data-photo-shoot title="Take the photo">&#128247;</button>`;
-    el.classList.remove('hidden');
+  // iOS does not put a photo taken this way into the camera roll; it gives it to the page and
+  // nothing else. So the page has to pass it on, which is what the review sheet is for: name it
+  // after a card if you want, then send it to Photos.
+  openNativeCamera(){
+    const input = document.getElementById('native-cam');
+    if(!input) return;
+    input.value = '';   // so shooting the same card twice still fires a change
+    input.click();
   }
 
-  // Called from the scan loop when a label resolves while photo mode is running.
-  _photoIdentified(item){
-    this._photoTarget = item ? item['Item ID'] : null;
-    this.renderPhotoBar();
+  handleNativePhoto(file){
+    if(!file || !/^image\//.test(file.type||'')){ this.showToast('That was not a photo.'); return; }
+    this._reviewBlob = file;
+    this._reviewItemId = null;
+    this._reviewQuery = '';
+    if(this._reviewUrl) URL.revokeObjectURL(this._reviewUrl);
+    this._reviewUrl = URL.createObjectURL(file);
+    const img = document.getElementById('photo-review-img');
+    if(img) img.src = this._reviewUrl;
+    const box = document.getElementById('photo-review-search');
+    if(box) box.value = '';
+    this.renderPhotoReview();
+    document.getElementById('photo-review').classList.remove('hidden');
   }
 
-  // A filename that means something in a camera roll of hundreds. When the label was read the
-  // card names itself; otherwise the timestamp is all there is to go on.
-  _photoFileName(){
-    const item = this._photoTarget
-      ? this.data.inventory.find(i=>i['Item ID']===this._photoTarget) : null;
+  renderPhotoReview(query){
+    const results = document.getElementById('photo-review-results');
+    const nameEl = document.getElementById('photo-review-name');
+    if(!results || !nameEl) return;
+    if(query != null) this._reviewQuery = query;
+    const q = String(this._reviewQuery||'').trim();
+    // Only offered while searching: the list is a way to name the file, not a step to get past.
+    if(!q){
+      results.innerHTML = '';
+      results.classList.add('hidden');
+    } else {
+      const inStock = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
+      const matches = this._matchInventory(inStock, q).slice(0, 25);
+      results.innerHTML = matches.length
+        ? matches.map(i=>`<button type="button" class="qa-pick-row" data-review-pick="${this._esc(i['Item ID'])}">`
+            + `<span class="qa-pick-main"><span class="qa-pick-name">${this._esc(i['Item Name'] || i['Item ID'])}</span>`
+            + `<span class="qa-pick-meta">${this._esc(i['SKU'] || i['Item ID'] || '')}</span></span></button>`).join('')
+        : `<div class="qa-pick-none">No card in stock matches that.</div>`;
+      results.classList.remove('hidden');
+    }
+    nameEl.innerHTML = `Will save as <b>${this._esc(this._photoFileName(this._reviewItemId))}</b>`;
+  }
+
+  pickReviewCard(itemId){
+    this._reviewItemId = itemId;
+    const item = this.data.inventory.find(i=>i['Item ID']===itemId);
+    const box = document.getElementById('photo-review-search');
+    if(box && item) box.value = item['Item Name'] || itemId;
+    this._reviewQuery = '';
+    this.renderPhotoReview();
+  }
+
+  // A filename that means something in a camera roll of hundreds.
+  _photoFileName(itemId){
+    const item = itemId ? this.data.inventory.find(i=>i['Item ID']===itemId) : null;
     const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
     if(!item) return `card-${stamp}.jpg`;
     const base = String(item['Item Name'] || item['Item ID'] || 'card')
@@ -7039,31 +7069,37 @@ class Dashboard {
     return `${base}${sku ? '-'+sku : ''}-${stamp}.jpg`;
   }
 
-  // Hands the picture to the phone rather than keeping it. The share sheet is where "Save Image"
-  // lives on a phone, so that is the route to the camera roll; a browser without it (desktop,
-  // mostly) gets a download instead. Nothing is stored in the app — the photo belongs in Photos,
-  // and a second copy the app alone can see was the thing that made these hard to find.
-  async takePhotoNow(){
-    const video = document.getElementById('scan-video');
-    if(!video || !video.videoWidth){ this.showToast('Camera is not ready yet.'); return false; }
-    const blob = await this._grabFrame(video);
-    if(!blob){ this.showToast('Could not capture the photo.'); return false; }
-    const name = this._photoFileName();
-    const file = (typeof File === 'function') ? new File([blob], name, { type:'image/jpeg' }) : null;
+  // The share sheet is where "Save Image" lives on a phone, so that is the route to the camera
+  // roll. A browser without it — desktop, mostly — gets a download instead.
+  async savePhotoToRoll(){
+    const blob = this._reviewBlob;
+    if(!blob){ this.closePhotoReview(); return false; }
+    const name = this._photoFileName(this._reviewItemId);
+    const file = (typeof File === 'function') ? new File([blob], name, { type: blob.type || 'image/jpeg' }) : null;
     if(file && navigator.canShare && navigator.canShare({ files:[file] })){
       try{
         await navigator.share({ files:[file], title: name });
-        this._afterPhoto('Photo sent — choose Save Image to keep it in your camera roll.');
+        this.closePhotoReview();
+        this.showToast('Choose Save Image to keep it in your camera roll.');
         return true;
       }catch(err){
-        // Dismissing the sheet is a normal choice, not a failure worth a fallback download.
-        if(err && err.name === 'AbortError'){ this.showToast('Photo discarded.'); return false; }
-        // Anything else (a browser that lists the API but refuses the call) falls through.
+        // Dismissing the sheet is a choice, not a failure — do not download behind their back.
+        if(err && err.name === 'AbortError'){ this.showToast('Not saved.'); return false; }
       }
     }
     this._downloadPhoto(blob, name);
-    this._afterPhoto('Photo saved to your downloads.');
+    this.closePhotoReview();
+    this.showToast('Photo saved to your downloads.');
     return true;
+  }
+
+  closePhotoReview(){
+    const el = document.getElementById('photo-review');
+    if(el) el.classList.add('hidden');
+    if(this._reviewUrl){ URL.revokeObjectURL(this._reviewUrl); this._reviewUrl = null; }
+    this._reviewBlob = null;
+    this._reviewItemId = null;
+    this._reviewQuery = '';
   }
 
   _downloadPhoto(blob, name){
@@ -7072,13 +7108,6 @@ class Dashboard {
     a.href = url; a.download = name;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 10000);
-  }
-
-  // Clear the identified card so the next shot starts fresh instead of inheriting this one.
-  _afterPhoto(msg){
-    this._photoTarget = null;
-    this.renderPhotoBar();
-    this.showToast(msg);
   }
 
   // ---------------- Price Check ----------------
@@ -7138,23 +7167,6 @@ class Dashboard {
   }
 
   _handleScanResult(text){
-    // Photo mode: a label in view just names the card the shutter will attach to. It never
-    // captures on its own — the shot is taken when you press the button, not when a QR drifts
-    // through the frame.
-    if(this._scanPhotoMode){
-      const parsed = this._parseScannedLabel(text);
-      const matches = this._resolveScanToItem(parsed);
-      if(matches.length === 1){
-        if(this._photoTarget !== matches[0]['Item ID']){
-          if(navigator.vibrate) navigator.vibrate(50);
-          this._flashScanFrame('hit');
-          this._photoIdentified(matches[0]);
-        }
-      }
-      clearTimeout(this._scanRearm);
-      this._scanRearm = setTimeout(()=>{ if(this._scanRunning) this._scanTick(); }, 900);
-      return;
-    }
     // Price check: show the card's live figures and keep the camera running for the next one.
     if(this._scanPriceCheck){
       const parsed = this._parseScannedLabel(text);
@@ -7285,16 +7297,6 @@ class Dashboard {
       if(title) title.textContent = 'Scan QR label';
       const card = document.getElementById('price-card');
       if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
-    }
-    if(this._scanPhotoMode){
-      this._scanPhotoMode = false;
-      this._photoTarget = null;
-      // A frame captured but never assigned is dropped rather than silently attached later.
-        const cancelBtn = document.getElementById('scan-cancel');
-      if(cancelBtn) cancelBtn.textContent = 'Cancel';
-      const title = document.querySelector('.scan-title');
-      if(title) title.textContent = 'Scan QR label';
-      this.renderPhotoBar();
     }
     if(this._scanStream){ this._scanStream.getTracks().forEach(t=>t.stop()); this._scanStream = null; }
     const video = document.getElementById('scan-video');
@@ -8136,6 +8138,24 @@ class Dashboard {
   _initCalculator(){
     document.getElementById('calc-fab').addEventListener('click', ()=>this.openCalculator());
     document.getElementById('calc-close').addEventListener('click', ()=>this.closeCalculator());
+    // Camera: the FAB opens the phone's camera; the file it returns opens the review sheet.
+    const photoFab = document.getElementById('photo-fab');
+    if(photoFab) photoFab.addEventListener('click', ()=>this.openNativeCamera());
+    const nativeCam = document.getElementById('native-cam');
+    if(nativeCam) nativeCam.addEventListener('change', (ev)=>{
+      this.handleNativePhoto(ev.target.files && ev.target.files[0]);
+    });
+    const prClose = document.getElementById('photo-review-close');
+    if(prClose) prClose.addEventListener('click', ()=>{ this.closePhotoReview(); this.showToast('Photo discarded.'); });
+    const prSave = document.getElementById('photo-review-save');
+    if(prSave) prSave.addEventListener('click', ()=>this.savePhotoToRoll());
+    const prSearch = document.getElementById('photo-review-search');
+    if(prSearch) prSearch.addEventListener('input', ()=>this.renderPhotoReview(prSearch.value));
+    const prOverlay = document.getElementById('photo-review');
+    if(prOverlay) prOverlay.addEventListener('click', (ev)=>{
+      if(ev.target.id === 'photo-review'){ this.closePhotoReview(); }
+    });
+
     document.getElementById('calc-overlay').addEventListener('click', (e)=>{
       if(e.target.id==='calc-overlay') this.closeCalculator();
     });
