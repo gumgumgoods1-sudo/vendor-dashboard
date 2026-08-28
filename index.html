@@ -1917,6 +1917,10 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <input type="checkbox" id="pref-low-stock-alert" data-pref="showLowStockAlert" checked>
         Show the low-stock alert banner on the Dashboard tab
       </label>
+      <label class="settings-checkbox-row" title="On: a photo goes straight to your phone's save sheet. Off: it stops on a review card first, where you can name the file after a card in your stock.">
+        <input type="checkbox" id="pref-auto-save-photos" data-pref="autoSavePhotos" checked>
+        Send photos straight to Photos (skip the naming step)
+      </label>
       <div class="settings-rate-row">
         <label class="settings-rate-field">
           <span>Buy Rate (Cash) %</span>
@@ -1947,7 +1951,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v110</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v111</strong>
   </footer>
 </div>
 
@@ -2175,6 +2179,10 @@ class Dashboard {
       // individually, so there is no item to read a cost from — this rate stands in for one.
       // Defaults to 0, which books binder sales as pure profit.
       binderCostPct: Number.isFinite(binder) ? Math.min(100, Math.max(0, binder)) : 0,
+      // Whether a photo goes straight to the phone instead of stopping at the review sheet.
+      // On by default: shooting a card is a between-customers job, and the sheet is only worth
+      // it when the file needs a card's name on it.
+      autoSavePhotos: settings ? settings.autoSavePhotos !== false : true,
     };
   }
 
@@ -7018,12 +7026,61 @@ class Dashboard {
     this._reviewQuery = '';
     if(this._reviewUrl) URL.revokeObjectURL(this._reviewUrl);
     this._reviewUrl = URL.createObjectURL(file);
+    if(this.data.settings.autoSavePhotos !== false){ this._autoSavePhoto(); return; }
+    this._openPhotoReview();
+  }
+
+  _openPhotoReview(){
     const img = document.getElementById('photo-review-img');
     if(img) img.src = this._reviewUrl;
     const box = document.getElementById('photo-review-search');
     if(box) box.value = '';
     this.renderPhotoReview();
     document.getElementById('photo-review').classList.remove('hidden');
+  }
+
+  // Straight through: shoot, and the picture is handed on with nothing in between.
+  //
+  // The phone still shows its own save sheet. No web page may write into the camera roll
+  // unattended — iOS exposes no API that does, at any permission level — so that last tap is
+  // the one thing here that cannot be removed. Everything before it can, and is.
+  //
+  // The sheet needs the tap that opened the camera to still count as user activation when the
+  // picture comes back. Safari does not reliably carry activation through a file input, so a
+  // refusal is an expected outcome rather than a fault: fall back to the review sheet, and the
+  // flow is exactly the one that was there before.
+  async _autoSavePhoto(){
+    const blob = this._reviewBlob;
+    if(!blob) return;
+    const name = this._photoFileName(null);
+    const res = await this._sharePhoto(blob, name);
+    if(res === 'saved'){
+      this.closePhotoReview();
+      this.showToast('Tap Save Image to keep it in your camera roll.');
+      return;
+    }
+    if(res === 'unsupported'){
+      this._downloadPhoto(blob, name);
+      this.closePhotoReview();
+      this.showToast('Photo saved to your downloads.');
+      return;
+    }
+    // Dismissed, or the phone would not open the sheet unprompted. Either way the review sheet
+    // is the way back in, and it is also where naming lives.
+    this._openPhotoReview();
+    if(res === 'aborted') this.showToast('Not saved — try again, or name it first.');
+  }
+
+  // 'saved' | 'aborted' (they dismissed it) | 'unsupported' | 'failed'
+  async _sharePhoto(blob, name){
+    const file = (typeof File === 'function') ? new File([blob], name, { type: blob.type || 'image/jpeg' }) : null;
+    if(!(file && navigator.canShare && navigator.canShare({ files:[file] }))) return 'unsupported';
+    try{
+      await navigator.share({ files:[file], title: name });
+      return 'saved';
+    }catch(err){
+      return (err && err.name === 'AbortError') ? 'aborted' : 'failed';
+    }
   }
 
   renderPhotoReview(query){
@@ -7075,18 +7132,14 @@ class Dashboard {
     const blob = this._reviewBlob;
     if(!blob){ this.closePhotoReview(); return false; }
     const name = this._photoFileName(this._reviewItemId);
-    const file = (typeof File === 'function') ? new File([blob], name, { type: blob.type || 'image/jpeg' }) : null;
-    if(file && navigator.canShare && navigator.canShare({ files:[file] })){
-      try{
-        await navigator.share({ files:[file], title: name });
-        this.closePhotoReview();
-        this.showToast('Choose Save Image to keep it in your camera roll.');
-        return true;
-      }catch(err){
-        // Dismissing the sheet is a choice, not a failure — do not download behind their back.
-        if(err && err.name === 'AbortError'){ this.showToast('Not saved.'); return false; }
-      }
+    const res = await this._sharePhoto(blob, name);
+    if(res === 'saved'){
+      this.closePhotoReview();
+      this.showToast('Choose Save Image to keep it in your camera roll.');
+      return true;
     }
+    // Dismissing the sheet is a choice, not a failure — do not download behind their back.
+    if(res === 'aborted'){ this.showToast('Not saved.'); return false; }
     this._downloadPhoto(blob, name);
     this.closePhotoReview();
     this.showToast('Photo saved to your downloads.');
@@ -8770,6 +8823,7 @@ class Dashboard {
     document.getElementById('pref-trade-rate').value = this.data.settings.tradeRatePct;
     document.getElementById('pref-cash-float').value = this.data.settings.baseCashOnHand;
     document.getElementById('pref-binder-cost').value = this.data.settings.binderCostPct;
+    document.getElementById('pref-auto-save-photos').checked = this.data.settings.autoSavePhotos !== false;
   }
 
   handleListRename(el){
