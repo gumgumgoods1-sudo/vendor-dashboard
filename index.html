@@ -190,11 +190,13 @@ body {
 .fab-calc:hover { background:#f4f5fa; }
 .fab-price { bottom:162px; font-size:24px; background:#fff; color:var(--text-primary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-md); }
 .fab-price:hover { background:#f4f5fa; }
+.fab-photo { bottom:232px; font-size:24px; background:#fff; color:var(--text-primary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-md); }
+.fab-photo:hover { background:#f4f5fa; }
 /* Collapse handle. The two floating buttons sit on top of whatever is in the bottom-right of
    every table and chart; on mobile they tuck themselves while you scroll, but that only helps
    mid-scroll. This puts it under your control — collapse them once and they stay gone, leaving
    a slim tab at the edge to bring them back. The choice is remembered per device. */
-.fab-toggle { position:fixed; right:26px; bottom:228px; width:34px; height:34px; border-radius:12px; background:#fff; color:var(--text-secondary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:901; transition:right .22s ease, bottom .22s ease, width .22s ease, height .22s ease, border-radius .22s ease, transform .22s ease, opacity .18s ease; }
+.fab-toggle { position:fixed; right:26px; bottom:298px; width:34px; height:34px; border-radius:12px; background:#fff; color:var(--text-secondary); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:901; transition:right .22s ease, bottom .22s ease, width .22s ease, height .22s ease, border-radius .22s ease, transform .22s ease, opacity .18s ease; }
 .fab-toggle:hover { background:#f4f5fa; color:var(--text-primary); }
 body.fab-collapsed .fab, body.fab-collapsed .fab-calc { transform:translateX(calc(100% + 34px)); opacity:0; pointer-events:none; }
 body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px; border-radius:12px 0 0 12px; box-shadow:var(--shadow-md); }
@@ -689,6 +691,7 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
   .fab { bottom:calc(var(--nav-h, 52px) + 14px); transition:bottom .22s ease, transform .15s, box-shadow .15s; }
   .fab-calc { bottom:calc(var(--nav-h, 52px) + 84px); }
   .fab-price { bottom:calc(var(--nav-h, 52px) + 154px); }
+  .fab-photo { bottom:calc(var(--nav-h, 52px) + 224px); }
   /* The floating buttons go with the bar. They are the worst offenders for covering content —
      a stack of opaque circles parked over the right-hand side of every table and chart — and
      simply moving them down still leaves them on top of something. Scrolling down clears the
@@ -696,7 +699,7 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
   .fab, .fab-calc { transition:bottom .22s ease, transform .22s ease, opacity .18s ease, box-shadow .15s; }
   body.nav-tucked .fab, body.nav-tucked .fab-calc { transform:translateY(140%); opacity:0; pointer-events:none; }
   /* Sits above the calculator button, clear of the bottom bar. */
-  .fab-toggle { bottom:calc(var(--nav-h, 52px) + 224px); right:24px; }
+  .fab-toggle { bottom:calc(var(--nav-h, 52px) + 294px); right:24px; }
   body.fab-collapsed .fab-toggle { bottom:calc(var(--nav-h, 52px) + 90px); right:0; }
   /* The handle rides along with the scroll-tuck while the buttons are out, so a lone floater
      isn't left behind. Once collapsed it stays put — it is the only way back. */
@@ -905,6 +908,16 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .pc-actions { display:flex; gap:8px; margin-top:10px; }
 .pc-actions button { flex:1 1 auto; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.1); color:#fff; border-radius:10px; padding:9px 10px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; }
 .pc-actions button.primary { background:var(--action); border-color:var(--action); }
+/* Photo mode: who the shutter is aimed at, and the shutter itself. */
+.photo-bar { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; display:flex; align-items:center; gap:12px; background:rgba(10,12,24,.96); border:1px solid rgba(255,255,255,.28); border-radius:16px; padding:12px 14px; color:#fff; box-shadow:0 14px 40px rgba(0,0,0,.5); }
+.photo-bar.hidden { display:none; }
+.pb-target { flex:1 1 auto; min-width:0; line-height:1.35; }
+.pb-target b { display:block; font-size:15px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pb-target small { display:block; font-size:12px; color:#c3c9e8; margin-top:2px; }
+.pb-shutter { flex:0 0 auto; width:62px; height:62px; border-radius:50%; border:3px solid rgba(255,255,255,.85); background:var(--action); color:#fff; font-size:26px; line-height:1; cursor:pointer; padding:0; }
+.pb-shutter:active { transform:scale(.94); }
+#scan-pick .qa-pick-input { width:100%; max-width:460px; margin-top:10px; }
+
 .pc-photo { position:relative; margin-top:10px; }
 .pc-photo[hidden] { display:none; }
 .pc-photo img { display:block; width:64px; height:64px; object-fit:cover; border-radius:10px; border:1px solid rgba(255,255,255,.35); cursor:zoom-in; }
@@ -1249,6 +1262,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        or autosave/cloud sync; the running list lives only in memory for the current page load. -->
   <button class="fab fab-calc" id="calc-fab" title="Buy &amp; Trade Calculator">&#128290;</button>
   <button class="fab fab-price" id="price-fab" data-price-check title="Price check — scan a label to see what a card sells for. Nothing is recorded.">&#128176;</button>
+  <button class="fab fab-photo" id="photo-fab" data-photo-mode title="Photograph a card and keep the picture against it">&#128247;</button>
   <button class="fab-toggle" id="fab-toggle" aria-expanded="true" title="Hide the floating buttons">&#10095;</button>
   <div class="qa-overlay hidden" id="calc-overlay">
     <div class="qa-modal">
@@ -1457,6 +1471,8 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <!-- Price Check mode: the last scanned card's live figures, held on screen while the camera
          keeps running so a queue of cards can be checked one after another. -->
     <div class="price-card hidden" id="price-card"></div>
+    <!-- Photo mode: names the card the camera has recognised and holds the shutter. -->
+    <div class="photo-bar hidden" id="photo-bar"></div>
   </div>
 
   <!-- ===================== DASHBOARD TAB ===================== -->
@@ -1919,7 +1935,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v107</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v108</strong>
   </footer>
 </div>
 
@@ -2408,8 +2424,11 @@ class Dashboard {
       if(skuSug){ this._handleSkuSuggestionClick(skuSug); return; }
       const skuPick = e.target.closest('[data-sku-pick-id]');
       if(skuPick){ this.handleSkuPick(skuPick); return; }
-      const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill], [data-price-check]');
+      const scanBtn = e.target.closest('[data-scan-btn], [data-scan-fill], [data-price-check], [data-photo-mode]');
       if(scanBtn){ this.openScanner(scanBtn); return; }
+      if(e.target.closest('[data-photo-shoot]')){ this.takePhotoNow(); return; }
+      const photoPick = e.target.closest('[data-photo-pick]');
+      if(photoPick){ this.assignPendingPhoto(photoPick.dataset.photoPick); return; }
       const pcPhoto = e.target.closest('[data-pc-photo]');
       if(pcPhoto){ this.capturePhoto(pcPhoto.dataset.pcPhoto); return; }
       const pcPhotoDel = e.target.closest('[data-pc-photo-del]');
@@ -6770,11 +6789,15 @@ class Dashboard {
     // Price Check is a read-only mode: it looks a card up and shows what it sells for, and is
     // wired first so none of the modes below (which all write something) can claim the scan.
     this._scanPriceCheck = !!(btnEl && btnEl.matches('[data-price-check]'));
+    this._scanPhotoMode = !!(btnEl && btnEl.matches('[data-photo-mode]'));
+    this._photoTarget = null;
+    this._pendingPhoto = null;
+    this._photoQuery = '';
     // Two launch modes: from a SKU lookup box (decoded code runs the lookup pipeline), or from
     // the Quick Add Inventory SKU field via data-scan-fill (decoded code just fills the input —
     // the label was printed BEFORE the item exists, so there is nothing to look up yet).
     const wrap = btnEl.closest('.sku-lookup');
-    this._scanInput = this._scanPriceCheck ? null
+    this._scanInput = (this._scanPriceCheck || this._scanPhotoMode) ? null
       : (wrap ? wrap.querySelector('[data-sku-lookup]') : null);
     this._scanFillInput = null;
     if(!this._scanInput && btnEl.matches('[data-scan-fill]')){
@@ -6785,9 +6808,11 @@ class Dashboard {
     // added straight to the basket and the camera stays open for the next one — no re-tapping.
     this._scanRapid = !!(this._scanInput && this._scanInput.getAttribute('data-sku-lookup')==='qa-checkout');
     const cancelBtn = document.getElementById('scan-cancel');
-    if(cancelBtn) cancelBtn.textContent = (this._scanRapid || this._scanPriceCheck) ? '✓ Done' : 'Cancel';
+    if(cancelBtn) cancelBtn.textContent = (this._scanRapid || this._scanPriceCheck || this._scanPhotoMode) ? '✓ Done' : 'Cancel';
     const title = document.querySelector('.scan-title');
-    if(title) title.textContent = this._scanPriceCheck ? 'Price check' : 'Scan QR label';
+    if(title) title.textContent = this._scanPhotoMode ? 'Photograph a card'
+      : this._scanPriceCheck ? 'Price check' : 'Scan QR label';
+    this.renderPhotoBar();
     const card = document.getElementById('price-card');
     if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
     const status = document.getElementById('scan-status');
@@ -6809,7 +6834,9 @@ class Dashboard {
       const video = document.getElementById('scan-video');
       video.srcObject = stream;
       await video.play();
-      status.textContent = this._scanPriceCheck
+      status.textContent = this._scanPhotoMode
+        ? 'Line the card up and press the shutter.'
+        : this._scanPriceCheck
         ? 'Point the camera at a card\u2019s label to see what it sells for. Nothing is recorded.'
         : this._scanRapid
           ? 'Rapid checkout — scan each card to add it to the basket. Tap ✓ Done when finished.'
@@ -6951,6 +6978,18 @@ class Dashboard {
   }
 
   skipScanPick(){
+    if(this._scanPhotoMode){
+      const had = !!this._pendingPhoto;
+      this._pendingPhoto = null;
+      this._photoQuery = '';
+      this._closeScanPick();
+      this._photoTarget = null;
+      this.renderPhotoBar();
+      if(!this._scanRunning){ this._scanRunning = true; this._scanTick(); }
+      this._setScanStatus(had ? 'Photo discarded. Line up the next card.'
+                              : 'Line the card up and press the shutter.');
+      return;
+    }
     this._resumeScanAfterPick();
     this._setScanStatus('Skipped — nothing added. Scan the next card.');
   }
@@ -7021,9 +7060,8 @@ class Dashboard {
   // Grabs the frame the camera is already showing. Scaled down and JPEG-encoded because a raw
   // frame is several megabytes and nothing here needs that — this is "which card is it and what
   // condition was it in", not a print.
-  async capturePhoto(itemId){
-    const video = document.getElementById('scan-video');
-    if(!video || !video.videoWidth){ this.showToast('Camera is not ready yet.'); return false; }
+  _grabFrame(video){
+    if(!video || !video.videoWidth) return Promise.resolve(null);
     const maxW = 900;
     const scale = Math.min(1, maxW / video.videoWidth);
     const w = Math.max(1, Math.round(video.videoWidth * scale));
@@ -7031,7 +7069,13 @@ class Dashboard {
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     cv.getContext('2d').drawImage(video, 0, 0, w, h);
-    const blob = await new Promise(res=>cv.toBlob(res, 'image/jpeg', 0.72));
+    return new Promise(res=>cv.toBlob(res, 'image/jpeg', 0.72));
+  }
+
+  async capturePhoto(itemId){
+    const video = document.getElementById('scan-video');
+    if(!video || !video.videoWidth){ this.showToast('Camera is not ready yet.'); return false; }
+    const blob = await this._grabFrame(video);
     if(!blob){ this.showToast('Could not capture the photo.'); return false; }
     await this.savePhoto(itemId, blob);
     this.showToast('Photo saved to this device.');
@@ -7059,6 +7103,104 @@ class Dashboard {
     await this.deletePhoto(itemId);
     await this._renderPricePhoto(itemId);
     this.showToast('Photo deleted.');
+  }
+
+  // ---------------- Photo mode ----------------
+  //
+  // Its own thing, not a corner of Price Check: the job is "photograph the cards I am selling",
+  // and it should not require asking what one is worth first.
+  //
+  // The camera keeps scanning while you line the card up, so by the time you press the shutter
+  // it usually already knows which card this is from its printed label. When it doesn't — an
+  // unlabelled card, or a label that won't read — the photo is still taken and you say which
+  // card it belongs to afterwards, rather than losing the shot.
+  renderPhotoBar(){
+    const el = document.getElementById('photo-bar');
+    if(!el) return;
+    if(!this._scanPhotoMode){ el.classList.add('hidden'); el.innerHTML = ''; return; }
+    const item = this._photoTarget
+      ? this.data.inventory.find(i=>i['Item ID']===this._photoTarget) : null;
+    el.innerHTML = `<div class="pb-target">`
+      + (item
+          ? `<b>${this._esc(item['Item Name'] || item['Item ID'])}</b>`
+            + `<small>${item['SKU'] ? this._esc(item['SKU']) + ' &middot; ' : ''}ready to photograph</small>`
+          : `<b>Point at the card&rsquo;s label</b><small>or just shoot &mdash; you can say which card after</small>`)
+      + `</div>`
+      + `<button type="button" class="pb-shutter" data-photo-shoot title="Take the photo">&#128247;</button>`;
+    el.classList.remove('hidden');
+  }
+
+  // Called from the scan loop when a label resolves while photo mode is running.
+  _photoIdentified(item){
+    this._photoTarget = item ? item['Item ID'] : null;
+    this.renderPhotoBar();
+  }
+
+  async takePhotoNow(){
+    const video = document.getElementById('scan-video');
+    if(!video || !video.videoWidth){ this.showToast('Camera is not ready yet.'); return; }
+    if(this._photoTarget){
+      const ok = await this.capturePhoto(this._photoTarget);
+      if(ok){
+        // Cleared so the next card starts fresh rather than inheriting this one.
+        this._photoTarget = null;
+        this.renderPhotoBar();
+      }
+      return;
+    }
+    // No card known yet. Freeze the frame now — the customer is not going to hold still while
+    // the right row is found — and attach it once one is picked.
+    const blob = await this._grabFrame(video);
+    if(!blob){ this.showToast('Could not capture the photo.'); return; }
+    this._pendingPhoto = blob;
+    this.openPhotoPicker();
+  }
+
+  // Which card does that photo belong to? Same matcher the Inventory search uses, so the same
+  // words find the same cards.
+  openPhotoPicker(query){
+    const head = document.getElementById('scan-pick-head');
+    const list = document.getElementById('scan-pick-list');
+    const wrap = document.getElementById('scan-pick');
+    if(!head || !list || !wrap) return;
+    this._scanRunning = false;
+    const q = query == null ? (this._photoQuery || '') : query;
+    this._photoQuery = q;
+    const inStock = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
+    const matches = (q.trim() ? this._matchInventory(inStock, q) : inStock).slice(0, 40);
+    head.innerHTML = `Which card is this photo of?`
+      + `<small>Search by name, SKU or set.</small>`
+      + `<input type="search" id="photo-pick-search" class="qa-pick-input" autocomplete="off"`
+      + ` placeholder="Search your stock&hellip;" value="${this._esc(q)}">`;
+    list.innerHTML = matches.length
+      ? matches.map(i=>`<button type="button" class="scan-pick-opt" data-photo-pick="${this._esc(i['Item ID'])}">`
+          + `<span class="nm">${this._esc(i['Item Name'] || i['Item ID'])}</span>`
+          + `<span class="mt">${this._esc(i['SKU']||'')}<b>${fmtMoney(Number(i['Retail Price'])||0)}</b></span>`
+          + `</button>`).join('')
+      : `<div class="checkout-empty">No cards in stock match that.</div>`;
+    wrap.classList.remove('hidden');
+    const box = document.getElementById('photo-pick-search');
+    if(box){
+      box.addEventListener('input', ()=>this.openPhotoPicker(box.value));
+      if(query != null){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+    }
+  }
+
+  async assignPendingPhoto(itemId){
+    if(this._pendingPhoto){
+      await this.savePhoto(itemId, this._pendingPhoto);
+      this._pendingPhoto = null;
+      const item = this.data.inventory.find(i=>i['Item ID']===itemId);
+      this.showToast(`Photo saved for ${item ? (item['Item Name']||itemId) : itemId}.`);
+    }
+    this._photoQuery = '';
+    this._closeScanPick();
+    this._photoTarget = null;
+    this.renderPhotoBar();
+    if(!this._scanRunning && !document.getElementById('scan-overlay').classList.contains('hidden')){
+      this._scanRunning = true;
+      this._scanTick();
+    }
   }
 
   // ---------------- Price Check ----------------
@@ -7122,6 +7264,23 @@ class Dashboard {
   }
 
   _handleScanResult(text){
+    // Photo mode: a label in view just names the card the shutter will attach to. It never
+    // captures on its own — the shot is taken when you press the button, not when a QR drifts
+    // through the frame.
+    if(this._scanPhotoMode){
+      const parsed = this._parseScannedLabel(text);
+      const matches = this._resolveScanToItem(parsed);
+      if(matches.length === 1){
+        if(this._photoTarget !== matches[0]['Item ID']){
+          if(navigator.vibrate) navigator.vibrate(50);
+          this._flashScanFrame('hit');
+          this._photoIdentified(matches[0]);
+        }
+      }
+      clearTimeout(this._scanRearm);
+      this._scanRearm = setTimeout(()=>{ if(this._scanRunning) this._scanTick(); }, 900);
+      return;
+    }
     // Price check: show the card's live figures and keep the camera running for the next one.
     if(this._scanPriceCheck){
       const parsed = this._parseScannedLabel(text);
@@ -7253,6 +7412,18 @@ class Dashboard {
       const card = document.getElementById('price-card');
       if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
       if(this._pcPhotoUrl){ URL.revokeObjectURL(this._pcPhotoUrl); this._pcPhotoUrl = null; }
+    }
+    if(this._scanPhotoMode){
+      this._scanPhotoMode = false;
+      this._photoTarget = null;
+      // A frame captured but never assigned is dropped rather than silently attached later.
+      this._pendingPhoto = null;
+      this._photoQuery = '';
+      const cancelBtn = document.getElementById('scan-cancel');
+      if(cancelBtn) cancelBtn.textContent = 'Cancel';
+      const title = document.querySelector('.scan-title');
+      if(title) title.textContent = 'Scan QR label';
+      this.renderPhotoBar();
     }
     if(this._scanStream){ this._scanStream.getTracks().forEach(t=>t.stop()); this._scanStream = null; }
     const video = document.getElementById('scan-video');
