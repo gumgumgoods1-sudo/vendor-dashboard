@@ -902,6 +902,30 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .pr-img { display:block; width:100%; max-height:38vh; object-fit:contain; background:#0d1020; border-radius:12px; margin-bottom:14px; }
 .pr-name { font-size:12.5px; color:var(--text-secondary); margin:2px 0 14px; word-break:break-all; }
 .pr-name b { color:var(--text-primary); font-weight:700; }
+
+/* ---- Merch tab ---- */
+.merch-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:var(--gap); margin-bottom:var(--gap); }
+.merch-table th, .merch-table td { white-space:nowrap; }
+.merch-table td.num, .merch-table th.num { text-align:right; }
+.merch-name { font-weight:600; white-space:normal; min-width:150px; }
+.merch-sku { display:block; font-size:11px; font-weight:400; color:var(--text-secondary); margin-top:2px; }
+.merch-left { font-weight:700; }
+.merch-row.merch-low .merch-left { color:#b4530a; }
+.merch-actions { display:flex; gap:6px; }
+.merch-sell, .merch-sell-n { white-space:nowrap; }
+.merch-sell[disabled], .merch-sell-n[disabled] { opacity:.4; cursor:not-allowed; }
+.merch-empty { padding:32px 20px; text-align:center; }
+.merch-empty-t { font-size:15px; font-weight:700; margin-bottom:6px; }
+.merch-empty-s { font-size:13px; color:var(--text-secondary); max-width:460px; margin:0 auto; line-height:1.5; }
+.merch-add { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; margin-top:var(--gap); box-shadow:var(--shadow-sm); }
+.merch-add h4 { margin:0 0 12px; font-size:14px; }
+.merch-add-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:14px; }
+.merch-add-grid label { display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--text-secondary); font-weight:600; }
+.merch-add-grid input { padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; background:var(--bg); color:var(--text-primary); }
+@media (max-width:640px){
+  .merch-kpis { grid-template-columns:repeat(2,1fr); }
+  .merch-actions { flex-direction:column; }
+}
 .pc-name { font-size:15px; font-weight:800; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pc-price { font-size:38px; font-weight:800; line-height:1.1; color:#ffd98a; font-variant-numeric:tabular-nums; margin:2px 0 4px; }
 .pc-meta { font-size:12.5px; color:#c3c9e8; line-height:1.55; font-variant-numeric:tabular-nums; }
@@ -1100,6 +1124,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <button class="tab-btn active" data-tab="dashboard" onclick="dash.showTab('dashboard')">Dashboard</button>
     <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')">Card Show</button>
     <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')">Inventory</button>
+    <button class="tab-btn" data-tab="merch" onclick="dash.showTab('merch')">Merch</button>
     <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')">Sales</button>
     <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')">Trades</button>
     <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')">Expenses</button>
@@ -1118,6 +1143,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <button class="tab-btn" data-tab="dashboard" onclick="dash.showTab('dashboard')"><span class="nav-ico" aria-hidden="true">&#128202;</span>Dashboard</button>
     <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')"><span class="nav-ico" aria-hidden="true">&#127914;</span>Card Show</button>
     <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')"><span class="nav-ico" aria-hidden="true">&#128230;</span>Inventory</button>
+    <button class="tab-btn" data-tab="merch" onclick="dash.showTab('merch')"><span class="nav-ico" aria-hidden="true">&#129509;</span>Merch</button>
     <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')"><span class="nav-ico" aria-hidden="true">&#128181;</span>Sales</button>
     <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')"><span class="nav-ico" aria-hidden="true">&#128257;</span>Trades</button>
     <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')"><span class="nav-ico" aria-hidden="true">&#128179;</span>Expenses</button>
@@ -1767,6 +1793,52 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   </section>
 
   <!-- ===================== SALES TAB ===================== -->
+  <!-- ===================== MERCH TAB =====================
+       Everything sold at the table that isn't a card. Kept out of the Inventory tab and the
+       card stats, but sales recorded here are ordinary sales, so the show's profit, the drawer
+       and the break-even meter all pick them up with nothing extra to do. -->
+  <section class="tab-panel" id="tab-merch">
+    <div class="merch-kpis">
+      <div class="kpi-card"><div class="kpi-label">Units Sold</div><div class="kpi-value" id="merch-kpi-units">0</div></div>
+      <div class="kpi-card"><div class="kpi-label">Revenue</div><div class="kpi-value" id="merch-kpi-revenue">$0</div></div>
+      <div class="kpi-card"><div class="kpi-label">Profit</div><div class="kpi-value" id="merch-kpi-profit">$0</div></div>
+      <div class="kpi-card"><div class="kpi-label">Margin</div><div class="kpi-value" id="merch-kpi-margin">0%</div></div>
+      <div class="kpi-card"><div class="kpi-label">Units Left</div><div class="kpi-value" id="merch-kpi-left">0</div></div>
+      <div class="kpi-card"><div class="kpi-label">Stock at Cost</div><div class="kpi-value" id="merch-kpi-stock">$0</div></div>
+    </div>
+
+    <div class="alert-banner hidden" id="merch-reorder"></div>
+
+    <div class="table-section">
+      <div class="table-toolbar"><h3 style="margin:0">Merch</h3></div>
+      <div class="table-wrap">
+        <table class="data-table merch-table">
+          <thead><tr>
+            <th>Item</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th>
+            <th class="num">Bought</th><th class="num">Sold</th><th class="num">Left</th>
+            <th class="num">At Cost</th><th>Sell</th>
+          </tr></thead>
+          <tbody id="merch-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="merch-add">
+      <h4>Add merch</h4>
+      <form id="merch-add-form" onsubmit="event.preventDefault(); dash.addMerchItem();">
+        <div class="merch-add-grid">
+          <label>Item Name<input type="text" name="Item Name" placeholder="Rain Poncho" required></label>
+          <label>SKU<input type="text" name="SKU" placeholder="PONCHO-CLR"></label>
+          <label>Cost each<input type="number" name="Cost" step="0.01" min="0" placeholder="4.00"></label>
+          <label>Sell for<input type="number" name="Retail Price" step="0.01" min="0" placeholder="15.00"></label>
+          <label>Qty bought<input type="number" name="Qty Purchased" step="1" min="0" placeholder="50"></label>
+          <label title="Warn me to reorder once stock falls to this number.">Reorder at<input type="number" name="Reorder Level" step="1" min="0" placeholder="10"></label>
+        </div>
+        <button type="submit" class="btn-sm btn-add">+ Add merch</button>
+      </form>
+    </div>
+  </section>
+
   <section class="tab-panel" id="tab-sales">
     <div class="table-section">
       <div class="edit-note"><span class="swatch-input"></span>editable field<span class="swatch-auto"></span>auto-calculated</div>
@@ -1951,7 +2023,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v111</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v112</strong>
   </footer>
 </div>
 
@@ -2183,6 +2255,14 @@ class Dashboard {
       // On by default: shooting a card is a between-customers job, and the sheet is only worth
       // it when the file needs a card's name on it.
       autoSavePhotos: settings ? settings.autoSavePhotos !== false : true,
+      // Which inventory categories hold merch rather than cards. Merch is kept out of every
+      // card-shaped view and metric, but its stock and its sales stay in the show figures —
+      // same table, same drawer. Stored as a list so "Apparel" or "Supplies" can join "Merch".
+      merchCategories: (()=>{
+        const raw = settings && settings.merchCategories;
+        const arr = Array.isArray(raw) ? raw.map(x=>String(x||'').trim()).filter(Boolean) : null;
+        return (arr && arr.length) ? Array.from(new Set(arr)) : ['Merch'];
+      })(),
     };
   }
 
@@ -2445,6 +2525,10 @@ class Dashboard {
       if(scanBtn){ this.openScanner(scanBtn); return; }
       const reviewPick = e.target.closest('[data-review-pick]');
       if(reviewPick){ this.pickReviewCard(reviewPick.dataset.reviewPick); return; }
+      const merchSell = e.target.closest('[data-merch-sell]');
+      if(merchSell){ this.sellMerch(merchSell.dataset.merchSell, merchSell.dataset.qty||1); return; }
+      const merchAsk = e.target.closest('[data-merch-sell-ask]');
+      if(merchAsk){ this.askSellMerch(merchAsk.dataset.merchSellAsk); return; }
       const pcSell = e.target.closest('[data-pc-sell]');
       if(pcSell){ this.priceCheckSell(pcSell.dataset.pcSell); return; }
       if(e.target.closest('[data-pc-close]')){ this.closeScanner(); return; }
@@ -3275,7 +3359,10 @@ class Dashboard {
         val:String(Number(i['Remaining Inventory (auto)'])||0), neg:true })) });
 
     // 3) Duplicate sales — same date, item, price, qty, and show entered more than once.
-    const dupeSales = this._auditDupes(this.data.sales,
+    // Merch is exempt: two customers buying the same poncho at the same price on the same day
+    // produce two identical rows, and that is the normal case rather than a double entry.
+    const merchIds = this._merchIdSet();
+    const dupeSales = this._auditDupes(this.data.sales.filter(s=>!merchIds.has(s['Item ID'])),
       s=>[s['Date'],s['Item ID'],s['Sale Price'],s['Quantity Sold'],s['Show Name']].join('|'));
     if(dupeSales.length) findings.push({ sev:'error', icon:'📋', title:'Possible duplicate sales',
       desc:'Identical sales (same date, item, price, qty, show) appear more than once — one may have been entered twice.',
@@ -4796,6 +4883,16 @@ class Dashboard {
       avgSalePrice: itemsSold>0 ? totalSalesAmt/itemsSold : 0,
       avgMarginPct: totalSalesAmt>0 ? (salesProfit/totalSalesAmt)*100 : 0,
       sellThroughPct: qtyPurchased>0 ? (itemsSold/qtyPurchased)*100 : 0,
+      // The same rate over cards alone. Fifty ponchos bought in one go swamp a figure meant to
+      // say how much of what you buy actually sells, and they sell on a completely different
+      // curve. With no merch on the books this is identical to the figure above.
+      cardSellThroughPct: (()=>{
+        const merch = this.merchItems();
+        const ids = new Set(merch.map(i=>i['Item ID']));
+        const cardQty = qtyPurchased - sum(merch,'Qty Purchased');
+        const cardUnits = itemsSold - sum(this.data.sales.filter(s=>ids.has(s['Item ID'])),'Quantity Sold');
+        return cardQty>0 ? (cardUnits/cardQty)*100 : 0;
+      })(),
     };
   }
 
@@ -4808,6 +4905,7 @@ class Dashboard {
     this.renderLowStock();
     this.renderShowPrompt();
     this.renderKPIs();
+    this.renderMerch();
     this.renderCharts();
     this.renderTopShows();
     this.renderCardShowKpis();
@@ -4857,7 +4955,7 @@ class Dashboard {
     document.getElementById('kpi-cashonhand').textContent = fmtMoney(k.cashOnHand);
     document.getElementById('kpi-asp').textContent = fmtMoney(k.avgSalePrice);
     document.getElementById('kpi-margin').textContent = k.avgMarginPct.toFixed(1)+'%';
-    document.getElementById('kpi-sellthrough').textContent = k.sellThroughPct.toFixed(1)+'%';
+    document.getElementById('kpi-sellthrough').textContent = k.cardSellThroughPct.toFixed(1)+'%';
     // The Show Mode banner shows live per-show figures — keep it in lockstep with every KPI
     // refresh (renderAll, Cash on Hand edits, etc.).
     this.renderShowModeBanner();
@@ -7163,6 +7261,176 @@ class Dashboard {
     setTimeout(()=>URL.revokeObjectURL(url), 10000);
   }
 
+  // ---------------- Merch ----------------
+  //
+  // Merch is stock that isn't cards: ponchos, sleeves, anything bought in bulk and re-ordered.
+  //
+  // It lives in the same inventory array on purpose. A poncho sale is a sale — the show's
+  // profit, the break-even meter and the drawer count all read one stock list, and holding merch
+  // in a second array would quietly drop it out of every one of them. What IS separated is
+  // everything card-shaped: the Inventory tab, the sell-through rate, and the duplicate-sale
+  // check, which reads two identical rows as a mistake when for merch it's just two customers
+  // buying the same poncho.
+  _merchCats(){
+    const c = this.data.settings.merchCategories;
+    return Array.isArray(c) && c.length ? c : ['Merch'];
+  }
+  isMerch(item){ return this._merchCats().includes(String((item && item['Category']) || '')); }
+  merchItems(){ return this.data.inventory.filter(i=>this.isMerch(i)); }
+  cardItems(){ return this.data.inventory.filter(i=>!this.isMerch(i)); }
+  _merchIdSet(){ return new Set(this.merchItems().map(i=>i['Item ID'])); }
+
+  // Merch's own bottom line, kept apart from the card figures it would otherwise dilute.
+  computeMerchKPIs(){
+    const n = v => Number(v)||0;
+    const items = this.merchItems();
+    const ids = this._merchIdSet();
+    const sales = this.data.sales.filter(s=>ids.has(s['Item ID']));
+    const units   = sales.reduce((a,s)=>a+n(s['Quantity Sold']),0);
+    const revenue = sales.reduce((a,s)=>a+n(s['Total Sale Amount (auto)']),0);
+    const profit  = sales.reduce((a,s)=>a+n(s['Profit (auto)']),0);
+    const bought  = items.reduce((a,i)=>a+n(i['Qty Purchased']),0);
+    const left    = items.reduce((a,i)=>a+n(i['Remaining Inventory (auto)']),0);
+    return {
+      items, sales, units, revenue, profit, bought, left,
+      stockCost:  items.reduce((a,i)=>a+n(i['Total Cost (auto)']),0),
+      stockValue: items.reduce((a,i)=>a+n(i['Total Inventory Value (auto)']),0),
+      marginPct:      revenue>0 ? (profit/revenue)*100 : 0,
+      sellThroughPct: bought>0  ? (units/bought)*100   : 0,
+      // Merch is the case where a reorder level earns its keep: unlike a 1-of-1 single, running
+      // out means simply buying more of the same thing before the next show.
+      low: items.filter(i=>(n(i['Remaining Inventory (auto)']) <= n(i['Reorder Level'])) && n(i['Qty Purchased'])>0),
+    };
+  }
+
+  // Adding merch keeps the category list honest, so the Inventory form offers it too.
+  _ensureMerchCategory(){
+    const cat = this._merchCats()[0];
+    const list = this.data.lists['Inventory Categories'];
+    if(Array.isArray(list) && !list.includes(cat)) list.push(cat);
+    return cat;
+  }
+
+  addMerchItem(){
+    const form = document.getElementById('merch-add-form');
+    if(!form) return;
+    const val = k => (form.elements[k] ? String(form.elements[k].value||'').trim() : '');
+    const num = k => parseFloat(val(k))||0;
+    const name = val('Item Name');
+    if(!name){ this.showToast('Give it a name first.'); return; }
+    this._pushUndoSnapshot();
+    const cat = this._ensureMerchCategory();
+    const row = this.blankRow('inventory');
+    row['Item Name'] = name;
+    row['SKU'] = val('SKU');
+    row['Category'] = cat;
+    row['Cost'] = num('Cost');
+    row['Retail Price'] = num('Retail Price');
+    row['Qty Purchased'] = num('Qty Purchased');
+    row['Reorder Level'] = num('Reorder Level');
+    row['Date Acquired'] = this.todayStr();
+    row._id = this.nextId++;
+    this.data.inventory.push(row);
+    const cashNote = this.deductInventoryCostFromCash(row);
+    this.recalcAll(); this.renderAll(); this.markDirty();
+    form.reset();
+    this.showToast(`${name} added${cashNote}`);
+  }
+
+  // Selling merch at the table: one tap per customer, not per unit. Records a normal sale, so
+  // the show, the drawer and the break-even meter all pick it up with nothing else to do.
+  sellMerch(itemId, qty){
+    const item = this.data.inventory.find(i=>i['Item ID']===itemId);
+    if(!item) return;
+    const want = Math.max(1, Math.floor(Number(qty)||1));
+    const left = Number(item['Remaining Inventory (auto)'])||0;
+    if(left <= 0){ this.showToast(`${item['Item Name']||'That'} is sold out.`); return; }
+    const sold = Math.min(want, left);
+    this._pushUndoSnapshot();
+    const row = this.blankRow('sales');
+    row['Date'] = this.todayStr();
+    row['Show Name'] = this.activeShow || this._defaultShow();
+    row['Item ID'] = itemId;
+    row['Quantity Sold'] = sold;
+    row['Sale Price'] = Number(item['Retail Price'])||0;
+    row['Payment Method'] = this.data.settings.lastSalePayment || '';
+    row._id = this.nextId++;
+    this.data.sales.push(row);
+    this.recalcAll(); this.renderAll(); this.markDirty();
+    const now = Number(item['Remaining Inventory (auto)'])||0;
+    this.showToast(`${sold} × ${item['Item Name']||'item'} sold — ${now} left`
+      + (sold < want ? ` (only ${sold} were in stock)` : ''));
+  }
+
+  renderMerch(){
+    const body = document.getElementById('merch-body');
+    if(!body) return;
+    const k = this.computeMerchKPIs();
+    const money = v => fmtMoney(v);
+    const set = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
+    set('merch-kpi-units',   fmtNum(k.units));
+    set('merch-kpi-revenue', money(k.revenue));
+    set('merch-kpi-profit',  money(k.profit));
+    set('merch-kpi-margin',  k.marginPct.toFixed(0)+'%');
+    set('merch-kpi-left',    fmtNum(k.left));
+    set('merch-kpi-stock',   money(k.stockCost));
+
+    const warn = document.getElementById('merch-reorder');
+    if(warn){
+      if(k.low.length){
+        warn.classList.remove('hidden');
+        warn.innerHTML = `<strong>&#9888; Reorder:</strong> `
+          + k.low.map(i=>`${this._esc(i['Item Name']||i['Item ID'])} `
+            + `(${Number(i['Remaining Inventory (auto)'])||0} left)`).join(', ');
+      } else warn.classList.add('hidden');
+    }
+
+    if(!k.items.length){
+      body.innerHTML = `<tr><td colspan="99"><div class="merch-empty">`
+        + `<div class="merch-empty-t">No merch yet</div>`
+        + `<div class="merch-empty-s">Add the first thing you sell that isn't a card — `
+        + `a poncho, sleeves, a playmat. It stays out of your card inventory and card stats, `
+        + `but its sales still count toward the show.</div></div></td></tr>`;
+      return;
+    }
+    const n = v => Number(v)||0;
+    body.innerHTML = k.items.map(i=>{
+      const id = i['Item ID'];
+      const left = n(i['Remaining Inventory (auto)']);
+      const bought = n(i['Qty Purchased']);
+      const sold = bought - left;
+      const unitMargin = n(i['Retail Price']) - n(i['Cost']);
+      const lowCls = bought>0 && left <= n(i['Reorder Level']) ? ' merch-low' : '';
+      return `<tr data-row-id="${i._id}" class="merch-row${lowCls}">`
+        + `<td class="merch-name">${this._esc(i['Item Name']||id)}`
+          + (i['SKU'] ? `<span class="merch-sku">${this._esc(i['SKU'])}</span>` : '') + `</td>`
+        + `<td class="num">${money(n(i['Cost']))}</td>`
+        + `<td class="num">${money(n(i['Retail Price']))}</td>`
+        + `<td class="num">${money(unitMargin)}</td>`
+        + `<td class="num">${fmtNum(bought)}</td>`
+        + `<td class="num">${fmtNum(sold)}</td>`
+        + `<td class="num merch-left">${fmtNum(left)}</td>`
+        + `<td class="num">${money(n(i['Total Cost (auto)']))}</td>`
+        + `<td class="merch-actions">`
+          + `<button type="button" class="btn-sm merch-sell" data-merch-sell="${this._esc(id)}" data-qty="1"`
+            + (left<=0?' disabled':'') + `>+1 sold</button>`
+          + `<button type="button" class="btn-sm merch-sell-n" data-merch-sell-ask="${this._esc(id)}"`
+            + (left<=0?' disabled':'') + `>N&hellip;</button>`
+        + `</td></tr>`;
+    }).join('');
+  }
+
+  askSellMerch(itemId){
+    const item = this.data.inventory.find(i=>i['Item ID']===itemId);
+    if(!item) return;
+    const left = Number(item['Remaining Inventory (auto)'])||0;
+    const val = prompt(`How many ${item['Item Name']||'items'} sold? (${left} in stock)`, '2');
+    if(val == null) return;
+    const q = Math.floor(Number(val));
+    if(!Number.isFinite(q) || q < 1){ this.showToast('That is not a quantity.'); return; }
+    this.sellMerch(itemId, q);
+  }
+
   // ---------------- Price Check ----------------
   //
   // Scan a printed label and read back what the card sells for. Deliberately changes nothing —
@@ -8579,9 +8847,12 @@ class Dashboard {
     // Sold-out items (nothing left in stock) drop off the Inventory tab by default — they live on
     // in the Sales tab. The "Show sold-out" toggle brings them back into view. The rows still exist
     // in the data (sales reference them); this is purely a view filter.
+    // Merch lives on its own tab. It is real stock and stays in every total, but it is not a
+    // card and does not belong in a list you scan looking for one.
+    const cardStock = this.cardItems();
     const inStock = this.showSoldOut
-      ? this.data.inventory
-      : this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
+      ? cardStock
+      : cardStock.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0);
     // On a phone the stock list is thirteen screens of cards you cannot usefully scan — the only
     // way to reach one is to search. So it stays closed until you do, and rendering hundreds of
     // editable rows nobody asked for stops being the cost of opening the tab.
@@ -8602,10 +8873,10 @@ class Dashboard {
     const searched = this._applyInventorySearch(inStock);
     const filtered = this._applyTableFilter('inventory', cols, searched);
     const data = this._sortData(filtered, this.sortStates.inv);
-    const soldOutCount = this.data.inventory.length - this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0).length;
+    const soldOutCount = cardStock.length - cardStock.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0).length;
     const q = this.inventorySearch.trim();
     document.getElementById('inv-count').textContent =
-      this._countLabel(data.length, this.showSoldOut ? this.data.inventory.length : inStock.length, 'item')
+      this._countLabel(data.length, this.showSoldOut ? cardStock.length : inStock.length, 'item')
       + (q ? ` · matching “${q}”` : '')
       + (!this.showSoldOut && soldOutCount>0 ? ` · ${soldOutCount} sold-out hidden` : '');
     // data-row-id is a stable hook for SKU Quick Lookup to find a specific row even when every
