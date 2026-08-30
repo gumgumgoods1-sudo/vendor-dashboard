@@ -905,14 +905,38 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
 /* ---- Merch tab ---- */
 .merch-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:var(--gap); margin-bottom:var(--gap); }
-.merch-table th, .merch-table td { white-space:nowrap; }
-.merch-table td.num, .merch-table th.num { text-align:right; }
-.merch-name { font-weight:600; white-space:normal; min-width:150px; }
-.merch-sku { display:block; font-size:11px; font-weight:400; color:var(--text-secondary); margin-top:2px; }
-.merch-left { font-weight:700; }
-.merch-row.merch-low .merch-left { color:#b4530a; }
-.merch-actions { display:flex; gap:6px; }
-.merch-sell, .merch-sell-n { white-space:nowrap; }
+.merch-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:var(--gap); }
+.merch-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow-sm); min-width:0; }
+.merch-card.merch-low { border-color:#f0c98f; }
+.mc-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
+.mc-title { min-width:0; }
+.merch-name { font-weight:700; font-size:15px; display:block; overflow-wrap:anywhere; }
+.merch-sku { display:block; font-size:11px; font-weight:400; color:var(--text-secondary); margin-top:2px; overflow-wrap:anywhere; }
+.mc-left { text-align:right; flex:none; line-height:1.1; }
+.merch-left { font-weight:800; font-size:22px; display:block; }
+.merch-card.merch-low .merch-left { color:#b4530a; }
+.mc-left small { font-size:11px; color:var(--text-secondary); }
+.mc-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(76px,1fr)); gap:8px; margin-bottom:10px; }
+.mc-field { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.mc-field > span { font-size:10.5px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.03em; }
+.mc-field.mc-static > div { padding:5px 0; font-size:13px; font-weight:600; }
+.mc-meta { font-size:12px; color:var(--text-secondary); margin-bottom:12px; overflow-wrap:anywhere; }
+.mc-meta b { color:#b4530a; }
+.merch-actions { display:flex; gap:8px; }
+.merch-actions button { flex:1; min-width:0; }
+.merch-sell, .merch-sell-n { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.merch-recent { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; margin-top:var(--gap); box-shadow:var(--shadow-sm); }
+.merch-recent.hidden { display:none; }
+.merch-recent h4 { margin:0 0 10px; font-size:14px; }
+.mr-list { display:flex; flex-direction:column; }
+.mr-row { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); }
+.mr-row:first-child { border-top:none; }
+.mr-main { flex:1; min-width:0; }
+.mr-what { font-size:13.5px; font-weight:600; overflow-wrap:anywhere; }
+.mr-sub { font-size:11.5px; color:var(--text-secondary); margin-top:2px; overflow-wrap:anywhere; }
+.mr-amt { font-weight:700; font-size:14px; flex:none; }
+.mr-undo { flex:none; width:30px; height:30px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text-secondary); font-size:17px; line-height:1; cursor:pointer; }
+.mr-undo:hover { background:#fdecec; border-color:#e9a5a5; color:#b23c3c; }
 .merch-sell[disabled], .merch-sell-n[disabled] { opacity:.4; cursor:not-allowed; }
 .merch-empty { padding:32px 20px; text-align:center; }
 .merch-empty-t { font-size:15px; font-weight:700; margin-bottom:6px; }
@@ -922,7 +946,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .merch-add-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:14px; }
 .merch-add-grid label { display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--text-secondary); font-weight:600; }
 .merch-add-grid input { padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; background:var(--bg); color:var(--text-primary); }
-.merch-edit { width:78px; padding:5px 7px; text-align:right; border:1px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; background:var(--input-bg,#fffdf5); color:var(--text-primary); }
+.merch-edit { width:100%; box-sizing:border-box; padding:5px 7px; text-align:right; border:1px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; background:var(--input-bg,#fffdf5); color:var(--text-primary); }
 .merch-edit:focus { outline:2px solid var(--accent,#4b7bec); outline-offset:-1px; }
 .ms-stock { font-size:12.5px; color:var(--text-secondary); margin:-4px 0 14px; }
 .ms-total { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:14px; }
@@ -932,7 +956,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .ms-total-sub.ms-warn { color:#b4530a; font-weight:700; }
 @media (max-width:640px){
   .merch-kpis { grid-template-columns:repeat(2,1fr); }
-  .merch-actions { flex-direction:column; }
+  .merch-list { grid-template-columns:1fr; }
+  .merch-card { padding:14px 15px; }
+  .mc-fields { grid-template-columns:repeat(3,1fr); }
 }
 .pc-name { font-size:15px; font-weight:800; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pc-price { font-size:38px; font-weight:800; line-height:1.1; color:#ffd98a; font-variant-numeric:tabular-nums; margin:2px 0 4px; }
@@ -1817,19 +1843,12 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
     <div class="alert-banner hidden" id="merch-reorder"></div>
 
-    <div class="table-section">
-      <div class="table-toolbar"><h3 style="margin:0">Merch</h3></div>
-      <div class="table-wrap">
-        <table class="data-table merch-table">
-          <thead><tr>
-            <th>Item</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th>
-            <th class="num">Bought</th><th class="num">Sold</th><th class="num">Left</th>
-            <th class="num" title="Warn me to reorder once stock falls to this number.">Reorder at</th><th>Sell</th>
-          </tr></thead>
-          <tbody id="merch-body"></tbody>
-        </table>
-      </div>
-    </div>
+    <!-- Cards, not a table. Merch needs editable figures and two sell buttons per item, which is
+         more than a row can hold on a phone at a table — the last column simply fell off the
+         edge. A card reflows to whatever width there is. -->
+    <div class="merch-list" id="merch-body"></div>
+
+    <div class="merch-recent hidden" id="merch-recent"></div>
 
     <!-- Sell sheet: what this customer is actually paying, which is not always the list price. -->
     <div class="qa-overlay hidden" id="merch-sell-overlay">
@@ -2048,7 +2067,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v113</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v114</strong>
   </footer>
 </div>
 
@@ -2554,6 +2573,8 @@ class Dashboard {
       if(merchSell){ this.sellMerch(merchSell.dataset.merchSell, merchSell.dataset.qty||1); return; }
       const merchAsk = e.target.closest('[data-merch-sell-ask]');
       if(merchAsk){ this.openMerchSell(merchAsk.dataset.merchSellAsk); return; }
+      const merchUnsell = e.target.closest('[data-merch-unsell]');
+      if(merchUnsell){ this.undoMerchSale(merchUnsell.dataset.merchUnsell); return; }
       const pcSell = e.target.closest('[data-pc-sell]');
       if(pcSell){ this.priceCheckSell(pcSell.dataset.pcSell); return; }
       if(e.target.closest('[data-pc-close]')){ this.closeScanner(); return; }
@@ -7494,11 +7515,12 @@ class Dashboard {
     }
 
     if(!k.items.length){
-      body.innerHTML = `<tr><td colspan="99"><div class="merch-empty">`
+      body.innerHTML = `<div class="merch-empty">`
         + `<div class="merch-empty-t">No merch yet</div>`
         + `<div class="merch-empty-s">Add the first thing you sell that isn't a card — `
         + `a poncho, sleeves, a playmat. It stays out of your card inventory and card stats, `
-        + `but its sales still count toward the show.</div></div></td></tr>`;
+        + `but its sales still count toward the show.</div></div>`;
+      this.renderMerchRecent();
       return;
     }
     const n = v => Number(v)||0;
@@ -7508,26 +7530,85 @@ class Dashboard {
       const bought = n(i['Qty Purchased']);
       const sold = bought - left;
       const unitMargin = n(i['Retail Price']) - n(i['Cost']);
-      const lowCls = bought>0 && left <= n(i['Reorder Level']) ? ' merch-low' : '';
-      const edit = (field, step) => `<input type="number" class="merch-edit" step="${step}" min="0"`
-        + ` value="${n(i[field])}" data-merch-edit="${field}" data-merch-id="${i._id}">`;
-      return `<tr data-row-id="${i._id}" class="merch-row${lowCls}">`
-        + `<td class="merch-name">${this._esc(i['Item Name']||id)}`
-          + (i['SKU'] ? `<span class="merch-sku">${this._esc(i['SKU'])}</span>` : '') + `</td>`
-        + `<td class="num">${edit('Cost','0.01')}</td>`
-        + `<td class="num">${edit('Retail Price','0.01')}</td>`
-        + `<td class="num">${money(unitMargin)}</td>`
-        + `<td class="num">${edit('Qty Purchased','1')}</td>`
-        + `<td class="num">${fmtNum(sold)}</td>`
-        + `<td class="num merch-left">${fmtNum(left)}</td>`
-        + `<td class="num">${edit('Reorder Level','1')}</td>`
-        + `<td class="merch-actions">`
+      const low = bought>0 && left <= n(i['Reorder Level']);
+      const edit = (field, label, step) => `<label class="mc-field">`
+        + `<span>${label}</span>`
+        + `<input type="number" class="merch-edit" step="${step}" min="0" value="${n(i[field])}"`
+        + ` data-merch-edit="${field}" data-merch-id="${i._id}"></label>`;
+      return `<div class="merch-card${low?' merch-low':''}" data-row-id="${i._id}">`
+        + `<div class="mc-head">`
+          + `<div class="mc-title"><span class="merch-name">${this._esc(i['Item Name']||id)}</span>`
+            + (i['SKU'] ? `<span class="merch-sku">${this._esc(i['SKU'])}</span>` : '') + `</div>`
+          + `<div class="mc-left"><span class="merch-left">${fmtNum(left)}</span><small>left</small></div>`
+        + `</div>`
+        + `<div class="mc-fields">`
+          + edit('Cost','Cost','0.01')
+          + edit('Retail Price','Sell for','0.01')
+          + `<label class="mc-field mc-static"><span>Margin</span><div>${money(unitMargin)}</div></label>`
+          + edit('Qty Purchased','Bought','1')
+          + edit('Reorder Level','Reorder at','1')
+        + `</div>`
+        + `<div class="mc-meta">${fmtNum(sold)} of ${fmtNum(bought)} sold`
+          + ` &middot; ${money(n(i['Total Cost (auto)']))} still held at cost`
+          + (low ? ` &middot; <b>time to reorder</b>` : '') + `</div>`
+        + `<div class="merch-actions">`
           + `<button type="button" class="btn-sm merch-sell" data-merch-sell="${this._esc(id)}" data-qty="1"`
             + (left<=0?' disabled':'') + `>+1 at ${money(n(i['Retail Price']))}</button>`
           + `<button type="button" class="btn-sm merch-sell-n" data-merch-sell-ask="${this._esc(id)}"`
             + (left<=0?' disabled':'') + `>Sell&hellip;</button>`
-        + `</td></tr>`;
+        + `</div></div>`;
     }).join('');
+    this.renderMerchRecent();
+  }
+
+  // Every merch sale, newest first, each one removable. A mis-tap at a busy table needs undoing
+  // then and there, and hunting for the row on the Sales tab mid-queue is not that.
+  renderMerchRecent(){
+    const el = document.getElementById('merch-recent');
+    if(!el) return;
+    const ids = this._merchIdSet();
+    const nameById = {};
+    this.merchItems().forEach(i=>{ nameById[i['Item ID']] = i['Item Name'] || i['Item ID']; });
+    const rows = this.data.sales.filter(s=>ids.has(s['Item ID']))
+      .slice()
+      .sort((a,b)=> String(b['Date']||'').localeCompare(String(a['Date']||'')) || ((b._id||0)-(a._id||0)))
+      .slice(0, 15);
+    if(!rows.length){ el.innerHTML = ''; el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const n = v => Number(v)||0;
+    el.innerHTML = `<h4>Recent merch sales</h4>`
+      + `<div class="mr-list">` + rows.map(s=>{
+        const qty = n(s['Quantity Sold']);
+        const total = n(s['Total Sale Amount (auto)']);
+        const profit = n(s['Profit (auto)']);
+        return `<div class="mr-row" data-sale-row="${s._id}">`
+          + `<div class="mr-main">`
+            + `<div class="mr-what">${fmtNum(qty)} × ${this._esc(nameById[s['Item ID']]||s['Item ID'])}`
+              + ` at ${fmtMoney(n(s['Sale Price']))}</div>`
+            + `<div class="mr-sub">${this._esc(s['Show Name']||'No show')} &middot; ${this._esc(s['Date']||'')}`
+              + ` &middot; ${fmtMoney(profit)} profit</div>`
+          + `</div>`
+          + `<div class="mr-amt">${fmtMoney(total)}</div>`
+          + `<button type="button" class="mr-undo" data-merch-unsell="${s._id}"`
+            + ` title="Remove this sale and put the stock back">&times;</button>`
+        + `</div>`;
+      }).join('') + `</div>`;
+  }
+
+  // Removing a merch sale puts the stock straight back. Undoable like any other edit.
+  undoMerchSale(saleId){
+    const id = Number(saleId);
+    const idx = this.data.sales.findIndex(s=>Number(s._id) === id);
+    if(idx < 0) return;
+    const sale = this.data.sales[idx];
+    const item = this.data.inventory.find(i=>i['Item ID'] === sale['Item ID']);
+    const qty = Number(sale['Quantity Sold'])||0;
+    const name = (item && item['Item Name']) || sale['Item ID'] || 'item';
+    this._pushUndoSnapshot();
+    this.data.sales.splice(idx, 1);
+    this.recalcAll(); this.renderAll(); this.markDirty();
+    const back = Number(item && item['Remaining Inventory (auto)'])||0;
+    this.showToast(`Removed ${qty} × ${name} — ${back} back in stock`);
   }
 
   // ---------------- Price Check ----------------
