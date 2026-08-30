@@ -922,6 +922,14 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .merch-add-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:14px; }
 .merch-add-grid label { display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--text-secondary); font-weight:600; }
 .merch-add-grid input { padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; background:var(--bg); color:var(--text-primary); }
+.merch-edit { width:78px; padding:5px 7px; text-align:right; border:1px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; background:var(--input-bg,#fffdf5); color:var(--text-primary); }
+.merch-edit:focus { outline:2px solid var(--accent,#4b7bec); outline-offset:-1px; }
+.ms-stock { font-size:12.5px; color:var(--text-secondary); margin:-4px 0 14px; }
+.ms-total { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+.ms-total-line { display:flex; justify-content:space-between; align-items:baseline; font-size:15px; }
+.ms-total-line strong { font-size:20px; font-weight:800; }
+.ms-total-sub { font-size:12.5px; color:var(--text-secondary); margin-top:4px; }
+.ms-total-sub.ms-warn { color:#b4530a; font-weight:700; }
 @media (max-width:640px){
   .merch-kpis { grid-template-columns:repeat(2,1fr); }
   .merch-actions { flex-direction:column; }
@@ -1816,10 +1824,27 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <thead><tr>
             <th>Item</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th>
             <th class="num">Bought</th><th class="num">Sold</th><th class="num">Left</th>
-            <th class="num">At Cost</th><th>Sell</th>
+            <th class="num" title="Warn me to reorder once stock falls to this number.">Reorder at</th><th>Sell</th>
           </tr></thead>
           <tbody id="merch-body"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Sell sheet: what this customer is actually paying, which is not always the list price. -->
+    <div class="qa-overlay hidden" id="merch-sell-overlay">
+      <div class="qa-modal">
+        <div class="qa-modal-head">
+          <h2 id="merch-sell-title">Sell</h2>
+          <button type="button" class="qa-close" id="merch-sell-close" title="Cancel">&times;</button>
+        </div>
+        <div class="ms-stock" id="merch-sell-stock"></div>
+        <div class="merch-add-grid">
+          <label>Quantity<input type="number" id="merch-sell-qty" min="1" step="1" value="1"></label>
+          <label>Price each<input type="number" id="merch-sell-price" min="0" step="0.01"></label>
+        </div>
+        <div class="ms-total" id="merch-sell-total"></div>
+        <button type="button" class="qa-submit" id="merch-sell-go">Record sale</button>
       </div>
     </div>
 
@@ -2023,7 +2048,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v112</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v113</strong>
   </footer>
 </div>
 
@@ -2528,7 +2553,7 @@ class Dashboard {
       const merchSell = e.target.closest('[data-merch-sell]');
       if(merchSell){ this.sellMerch(merchSell.dataset.merchSell, merchSell.dataset.qty||1); return; }
       const merchAsk = e.target.closest('[data-merch-sell-ask]');
-      if(merchAsk){ this.askSellMerch(merchAsk.dataset.merchSellAsk); return; }
+      if(merchAsk){ this.openMerchSell(merchAsk.dataset.merchSellAsk); return; }
       const pcSell = e.target.closest('[data-pc-sell]');
       if(pcSell){ this.priceCheckSell(pcSell.dataset.pcSell); return; }
       if(e.target.closest('[data-pc-close]')){ this.closeScanner(); return; }
@@ -7339,27 +7364,110 @@ class Dashboard {
 
   // Selling merch at the table: one tap per customer, not per unit. Records a normal sale, so
   // the show, the drawer and the break-even meter all pick it up with nothing else to do.
-  sellMerch(itemId, qty){
+  //
+  // price is what this customer actually paid, which is not always the list price — three for
+  // a discount, or knocking it down at the end of the day. Passing nothing sells at list.
+  sellMerch(itemId, qty, price){
     const item = this.data.inventory.find(i=>i['Item ID']===itemId);
     if(!item) return;
     const want = Math.max(1, Math.floor(Number(qty)||1));
     const left = Number(item['Remaining Inventory (auto)'])||0;
     if(left <= 0){ this.showToast(`${item['Item Name']||'That'} is sold out.`); return; }
     const sold = Math.min(want, left);
+    const unit = (price == null || price === '' || !Number.isFinite(Number(price)))
+      ? (Number(item['Retail Price'])||0)
+      : Math.max(0, Number(price));
     this._pushUndoSnapshot();
     const row = this.blankRow('sales');
     row['Date'] = this.todayStr();
     row['Show Name'] = this.activeShow || this._defaultShow();
     row['Item ID'] = itemId;
     row['Quantity Sold'] = sold;
-    row['Sale Price'] = Number(item['Retail Price'])||0;
+    row['Sale Price'] = unit;
     row['Payment Method'] = this.data.settings.lastSalePayment || '';
     row._id = this.nextId++;
     this.data.sales.push(row);
     this.recalcAll(); this.renderAll(); this.markDirty();
     const now = Number(item['Remaining Inventory (auto)'])||0;
-    this.showToast(`${sold} × ${item['Item Name']||'item'} sold — ${now} left`
-      + (sold < want ? ` (only ${sold} were in stock)` : ''));
+    const list = Number(item['Retail Price'])||0;
+    this.showToast(`${sold} × ${item['Item Name']||'item'} at ${fmtMoney(unit)}`
+      + (unit !== list ? ` (list ${fmtMoney(list)})` : '')
+      + ` — ${now} left`
+      + (sold < want ? ` · only ${sold} were in stock` : ''));
+  }
+
+  // The sell sheet: quantity and the price this customer is actually paying, with the profit
+  // on that deal shown while you type — so a haggle that dips under cost is visible before it
+  // is recorded, not after.
+  openMerchSell(itemId){
+    const item = this.data.inventory.find(i=>i['Item ID']===itemId);
+    if(!item) return;
+    const left = Number(item['Remaining Inventory (auto)'])||0;
+    if(left <= 0){ this.showToast(`${item['Item Name']||'That'} is sold out.`); return; }
+    this._merchSellId = itemId;
+    document.getElementById('merch-sell-title').textContent = item['Item Name'] || itemId;
+    document.getElementById('merch-sell-stock').textContent =
+      `${left} in stock · list ${fmtMoney(Number(item['Retail Price'])||0)}`
+      + ` · cost ${fmtMoney(Number(item['Cost'])||0)}`;
+    const q = document.getElementById('merch-sell-qty');
+    const pr = document.getElementById('merch-sell-price');
+    q.value = 1; q.max = left;
+    pr.value = (Number(item['Retail Price'])||0).toFixed(2);
+    this.renderMerchSellTotal();
+    document.getElementById('merch-sell-overlay').classList.remove('hidden');
+    setTimeout(()=>{ pr.focus(); pr.select(); }, 40);
+  }
+
+  closeMerchSell(){
+    document.getElementById('merch-sell-overlay').classList.add('hidden');
+    this._merchSellId = null;
+  }
+
+  renderMerchSellTotal(){
+    const item = this.data.inventory.find(i=>i['Item ID']===this._merchSellId);
+    const el = document.getElementById('merch-sell-total');
+    if(!item || !el) return;
+    const left = Number(item['Remaining Inventory (auto)'])||0;
+    const cost = Number(item['Cost'])||0;
+    const list = Number(item['Retail Price'])||0;
+    let qty = Math.floor(Number(document.getElementById('merch-sell-qty').value)||0);
+    const price = Number(document.getElementById('merch-sell-price').value);
+    const unit = Number.isFinite(price) ? price : 0;
+    const capped = qty > left;
+    if(capped) qty = left;
+    const total = unit * Math.max(0, qty);
+    const profit = (unit - cost) * Math.max(0, qty);
+    const off = list>0 && unit<list ? ` · ${Math.round((1-unit/list)*100)}% off list` : '';
+    el.innerHTML = `<div class="ms-total-line"><span>${Math.max(0,qty)} × ${fmtMoney(unit)}</span>`
+      + `<strong>${fmtMoney(total)}</strong></div>`
+      + `<div class="ms-total-sub${unit<cost?' ms-warn':''}">`
+      + (unit < cost
+          ? `&#9888; below the ${fmtMoney(cost)} you paid — loses ${fmtMoney(Math.abs(profit))}`
+          : `${fmtMoney(profit)} profit${off}`)
+      + (capped ? ` · only ${left} in stock` : '') + `</div>`;
+  }
+
+  confirmMerchSell(){
+    const id = this._merchSellId;
+    if(!id) return;
+    const qty = Math.floor(Number(document.getElementById('merch-sell-qty').value)||0);
+    const price = Number(document.getElementById('merch-sell-price').value);
+    if(!Number.isFinite(qty) || qty < 1){ this.showToast('That is not a quantity.'); return; }
+    if(!Number.isFinite(price) || price < 0){ this.showToast('That is not a price.'); return; }
+    this.closeMerchSell();
+    this.sellMerch(id, qty, price);
+  }
+
+  // Merch no longer appears on the Inventory tab, so its own row is where it gets edited.
+  editMerchField(el){
+    const item = this.data.inventory.find(i=>i._id === Number(el.dataset.merchId));
+    const field = el.dataset.merchEdit;
+    if(!item || !field) return;
+    const val = Math.max(0, Number(el.value)||0);
+    if((Number(item[field])||0) === val) return;
+    this._pushUndoSnapshot();
+    item[field] = val;
+    this.recalcAll(); this.renderAll(); this.markDirty();
   }
 
   renderMerch(){
@@ -7401,34 +7509,25 @@ class Dashboard {
       const sold = bought - left;
       const unitMargin = n(i['Retail Price']) - n(i['Cost']);
       const lowCls = bought>0 && left <= n(i['Reorder Level']) ? ' merch-low' : '';
+      const edit = (field, step) => `<input type="number" class="merch-edit" step="${step}" min="0"`
+        + ` value="${n(i[field])}" data-merch-edit="${field}" data-merch-id="${i._id}">`;
       return `<tr data-row-id="${i._id}" class="merch-row${lowCls}">`
         + `<td class="merch-name">${this._esc(i['Item Name']||id)}`
           + (i['SKU'] ? `<span class="merch-sku">${this._esc(i['SKU'])}</span>` : '') + `</td>`
-        + `<td class="num">${money(n(i['Cost']))}</td>`
-        + `<td class="num">${money(n(i['Retail Price']))}</td>`
+        + `<td class="num">${edit('Cost','0.01')}</td>`
+        + `<td class="num">${edit('Retail Price','0.01')}</td>`
         + `<td class="num">${money(unitMargin)}</td>`
-        + `<td class="num">${fmtNum(bought)}</td>`
+        + `<td class="num">${edit('Qty Purchased','1')}</td>`
         + `<td class="num">${fmtNum(sold)}</td>`
         + `<td class="num merch-left">${fmtNum(left)}</td>`
-        + `<td class="num">${money(n(i['Total Cost (auto)']))}</td>`
+        + `<td class="num">${edit('Reorder Level','1')}</td>`
         + `<td class="merch-actions">`
           + `<button type="button" class="btn-sm merch-sell" data-merch-sell="${this._esc(id)}" data-qty="1"`
-            + (left<=0?' disabled':'') + `>+1 sold</button>`
+            + (left<=0?' disabled':'') + `>+1 at ${money(n(i['Retail Price']))}</button>`
           + `<button type="button" class="btn-sm merch-sell-n" data-merch-sell-ask="${this._esc(id)}"`
-            + (left<=0?' disabled':'') + `>N&hellip;</button>`
+            + (left<=0?' disabled':'') + `>Sell&hellip;</button>`
         + `</td></tr>`;
     }).join('');
-  }
-
-  askSellMerch(itemId){
-    const item = this.data.inventory.find(i=>i['Item ID']===itemId);
-    if(!item) return;
-    const left = Number(item['Remaining Inventory (auto)'])||0;
-    const val = prompt(`How many ${item['Item Name']||'items'} sold? (${left} in stock)`, '2');
-    if(val == null) return;
-    const q = Math.floor(Number(val));
-    if(!Number.isFinite(q) || q < 1){ this.showToast('That is not a quantity.'); return; }
-    this.sellMerch(itemId, q);
   }
 
   // ---------------- Price Check ----------------
@@ -8465,6 +8564,27 @@ class Dashboard {
     const nativeCam = document.getElementById('native-cam');
     if(nativeCam) nativeCam.addEventListener('change', (ev)=>{
       this.handleNativePhoto(ev.target.files && ev.target.files[0]);
+    });
+    // Merch sell sheet.
+    const msClose = document.getElementById('merch-sell-close');
+    if(msClose) msClose.addEventListener('click', ()=>this.closeMerchSell());
+    const msGo = document.getElementById('merch-sell-go');
+    if(msGo) msGo.addEventListener('click', ()=>this.confirmMerchSell());
+    ['merch-sell-qty','merch-sell-price'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.addEventListener('input', ()=>this.renderMerchSellTotal());
+      el.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter'){ ev.preventDefault(); this.confirmMerchSell(); } });
+    });
+    const msOverlay = document.getElementById('merch-sell-overlay');
+    if(msOverlay) msOverlay.addEventListener('click', (ev)=>{
+      if(ev.target.id === 'merch-sell-overlay') this.closeMerchSell();
+    });
+    // Editing a merch row commits on blur/Enter rather than per keystroke, so the re-render
+    // that follows never yanks the field out from under you mid-number.
+    document.addEventListener('change', (ev)=>{
+      const el = ev.target.closest && ev.target.closest('[data-merch-edit]');
+      if(el) this.editMerchField(el);
     });
     const prClose = document.getElementById('photo-review-close');
     if(prClose) prClose.addEventListener('click', ()=>{ this.closePhotoReview(); this.showToast('Photo discarded.'); });
