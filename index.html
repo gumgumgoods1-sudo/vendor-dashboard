@@ -976,6 +976,28 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   .sc-foot .btn-sm, .sc-foot .qa-submit { width:100%; }
   .sc-list { max-height:50vh; }
 }
+/* ---- End-of-show close-out ---- */
+.co-breakdown { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:6px 14px; margin-bottom:14px; }
+.co-line { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:7px 0; font-size:13.5px; border-top:1px solid var(--border); }
+.co-line:first-child { border-top:none; }
+.co-line span { min-width:0; }
+.co-line small { display:block; font-size:11px; color:var(--text-secondary); margin-top:1px; }
+.co-line b { flex:none; font-weight:700; font-variant-numeric:tabular-nums; }
+.co-line.co-muted { color:var(--text-secondary); }
+.co-expected { border-top:2px solid var(--text-primary); font-weight:700; }
+.co-variance b { font-size:19px; }
+.co-variance.co-ok b { color:#2e7d4f; }
+.co-variance.co-short b, .co-variance.co-over b { color:#b4530a; }
+.co-note { font-size:11.5px; color:var(--text-secondary); padding:4px 0 8px; line-height:1.45; }
+.co-help { background:var(--warning-tint); border:1px solid #f0d59f; color:#7a4d05; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:12.5px; }
+.co-help.hidden { display:none; }
+.co-help-t { font-weight:700; margin-bottom:6px; }
+.co-help ul { margin:0; padding-left:18px; }
+.co-help li { margin:3px 0; line-height:1.45; }
+.co-actions { display:flex; gap:8px; }
+.co-actions .qa-submit { flex:1; margin:0; }
+.co-actions .btn-sm { flex:none; white-space:nowrap; }
+@media (max-width:520px){ .co-actions { flex-direction:column; } .co-actions .btn-sm { width:100%; } }
 .merch-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:var(--gap); }
 .merch-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow-sm); min-width:0; }
 .merch-card.merch-low { border-color:#f0c98f; }
@@ -1421,6 +1443,27 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       </div>
       <div id="sc-body"></div>
       <div class="sc-foot" id="sc-foot"></div>
+    </div>
+  </div>
+
+  <!-- End-of-show reconciliation: count the drawer, see it against the records, close the show. -->
+  <div class="qa-overlay hidden" id="close-out-overlay">
+    <div class="qa-modal">
+      <div class="qa-modal-head">
+        <h2>Close out <span id="co-title"></span></h2>
+        <button type="button" class="qa-close" id="co-close" title="Not now">&times;</button>
+      </div>
+      <div class="qa-field">
+        <label for="co-count">Count the drawer <small>every note and coin you're holding</small></label>
+        <input type="number" id="co-count" step="0.01" min="0" inputmode="decimal">
+      </div>
+      <div class="co-breakdown" id="co-breakdown"></div>
+      <div class="co-help hidden" id="co-help"></div>
+      <div class="co-breakdown" id="co-profit"></div>
+      <div class="co-actions">
+        <button type="button" class="qa-submit" id="co-save">Save the count</button>
+        <button type="button" class="btn-sm" id="co-save-end">Save &amp; end show</button>
+      </div>
     </div>
   </div>
 
@@ -1952,6 +1995,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
     <div class="merch-recent hidden" id="merch-recent"></div>
 
+    <!-- Placeholder anchor: the close-out sheet lives outside the tab panels, below. -->
     <!-- Sell sheet: what this customer is actually paying, which is not always the list price. -->
     <div class="qa-overlay hidden" id="merch-sell-overlay">
       <div class="qa-modal">
@@ -2169,7 +2213,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v117</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v118</strong>
   </footer>
 </div>
 
@@ -2802,7 +2846,10 @@ class Dashboard {
     document.getElementById('quick-trade-close').addEventListener('click', ()=>this.closeQuickTrade());
     document.getElementById('quick-trade-overlay').addEventListener('click', (e)=>{ if(e.target.id==='quick-trade-overlay') this.closeQuickTrade(); });
     ['new-show-venue','new-show-date'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input', ()=>this._updateShowPickerPreview('new-show')); } });
-    document.getElementById('show-mode-banner').addEventListener('click', (e)=>{ if(e.target.closest('[data-show-mode-end]')) this.endShowMode(); });
+    document.getElementById('show-mode-banner').addEventListener('click', (e)=>{
+      if(e.target.closest('[data-close-out]')){ this.openCloseOut(); return; }
+      if(e.target.closest('[data-show-mode-end]')) this.endShowMode();
+    });
     // QR scanner cancel button.
     document.getElementById('scan-cancel').addEventListener('click', ()=>this.closeScanner());
     // Mid-scan card picker: pick one, or skip it and carry on scanning.
@@ -3949,8 +3996,175 @@ class Dashboard {
       + beStat
       + `<span class="show-mode-stat">Trade Cash<b>${fmtMoney(tradeCash)}</b></span>`
       + `<span class="show-mode-stat">Cash on Hand<b>${fmtMoney(cash)}</b></span>`
-      + `<button type="button" class="show-mode-end" data-show-mode-end title="Turn off Show Mode (records stay — only the default show and this banner go away)">End</button>`;
+      + `<button type="button" class="show-mode-end" data-close-out title="Count the drawer and check it against the records before you pack up">Close out</button>`;
     el.classList.remove('hidden');
+  }
+
+  // ---------------- End-of-show reconciliation ----------------
+  //
+  // What the drawer should hold, built from the records, against what was actually counted.
+  //
+  // The distinction that makes this work is cash versus everything else. A card or Venmo sale
+  // never reaches the drawer, so counting the cash and comparing it against total sales will
+  // always look short by exactly the non-cash takings. Blank counts as cash on purpose: rows
+  // entered before the payment field was filled in would otherwise be reclassified wholesale.
+  _isCashPayment(method){
+    const m = String(method||'').trim().toLowerCase();
+    return !m || m === 'cash';
+  }
+  _isTradePayment(method){ return String(method||'').trim().toLowerCase() === 'trade'; }
+
+  // Money taken at a show that did NOT go into the cash box.
+  _nonCashReceipts(show){
+    return this.data.sales
+      .filter(s=>s['Show Name']===show
+        && !this._isCashPayment(s['Payment Method'])
+        && !this._isTradePayment(s['Payment Method']))
+      .reduce((a,s)=>a+(Number(s['Total Sale Amount (auto)'])||0),0);
+  }
+
+  computeShowReconciliation(show){
+    const n = v => Number(v)||0;
+    const row = this.data.cashflow.find(c=>c['Show Name']===show);
+    const sales = this.data.sales.filter(s=>s['Show Name']===show);
+    const cashSales = sales.filter(s=>this._isCashPayment(s['Payment Method']))
+      .reduce((a,s)=>a+n(s['Total Sale Amount (auto)']),0);
+    const nonCash = sales.filter(s=>!this._isCashPayment(s['Payment Method']) && !this._isTradePayment(s['Payment Method']))
+      .reduce((a,s)=>a+n(s['Total Sale Amount (auto)']),0);
+    const tradePay = sales.filter(s=>this._isTradePayment(s['Payment Method']))
+      .reduce((a,s)=>a+n(s['Total Sale Amount (auto)']),0);
+    const tradeCash = this.data.trades.filter(t=>t['Show Name']===show)
+      .reduce((a,t)=>a+n(t['Cash Settled']),0);
+    const expenses = this.data.expenses.filter(e=>e['Show Name']===show)
+      .reduce((a,e)=>a+n(e['Amount']),0);
+    const startCash = n(row && row['Starting Cash']);
+    const ownerIn   = n(row && row['Owner Cash In']);
+    const countedCash = n(row && row['Ending Cash']);
+    // Trade cash is signed: positive means cash came in on the trade, negative means you paid out.
+    const expectedCash = startCash + cashSales + tradeCash - expenses + ownerIn;
+    const byMethod = {};
+    sales.forEach(s=>{
+      const k = String(s['Payment Method']||'').trim() || 'Unspecified';
+      byMethod[k] = (byMethod[k]||0) + n(s['Total Sale Amount (auto)']);
+    });
+    return {
+      row, show, startCash, cashSales, nonCash, tradePay, tradeCash, expenses, ownerIn,
+      expectedCash, countedCash,
+      counted: !!(row && n(row['Ending Cash']) !== 0),
+      variance: countedCash - expectedCash,
+      startInv: n(row && row['Starting Inventory Value']),
+      endInv:   n(row && row['Ending Inventory Value']),
+      salesMargin: n(row && row['Sales Margin (auto)']),
+      profit: n(row && row['Actual Profit (auto)']),
+      estimated: !!(row && row['Actual Profit Estimated (auto)']),
+      byMethod,
+      saleCount: sales.length,
+    };
+  }
+
+  openCloseOut(show){
+    const name = show || this.activeShow || this._defaultShow();
+    if(!name){ this.showToast('No show to close out.'); return; }
+    if(!this.data.cashflow.some(c=>c['Show Name']===name)){
+      this.showToast('That show has no ledger row yet.'); return;
+    }
+    this._closeOutShow = name;
+    const r = this.computeShowReconciliation(name);
+    const box = document.getElementById('co-count');
+    // Pre-fill with what the records say, so a show that balances is one tap. It is a starting
+    // point to correct, not an answer — the whole point is to type what is actually there.
+    if(box) box.value = (r.counted ? r.countedCash : r.expectedCash).toFixed(2);
+    this.renderCloseOut();
+    document.getElementById('close-out-overlay').classList.remove('hidden');
+    setTimeout(()=>{ if(box){ box.focus(); box.select(); } }, 40);
+  }
+
+  closeCloseOut(){
+    document.getElementById('close-out-overlay').classList.add('hidden');
+    this._closeOutShow = null;
+  }
+
+  renderCloseOut(){
+    const show = this._closeOutShow;
+    if(!show) return;
+    const r = this.computeShowReconciliation(show);
+    const money = v => fmtMoney(v);
+    const title = document.getElementById('co-title');
+    if(title) title.textContent = show;
+
+    // A number input hands back '' for anything it cannot parse, and Number('') is 0 — so an
+    // empty box must be read as "nothing counted yet", not as a drawer holding nothing.
+    const raw = String(document.getElementById('co-count').value).trim();
+    const typed = raw === '' ? NaN : Number(raw);
+    const counted = Number.isFinite(typed) ? typed : r.expectedCash;
+    const variance = counted - r.expectedCash;
+
+    const line = (label, val, note, cls) =>
+      `<div class="co-line${cls?' '+cls:''}"><span>${label}${note?`<small>${note}</small>`:''}</span>`
+      + `<b>${money(val)}</b></div>`;
+
+    const rows = [
+      line('Started with', r.startCash),
+      line('Cash sales', r.cashSales, `${r.saleCount} sale${r.saleCount!==1?'s':''} at this show`),
+    ];
+    if(r.nonCash) rows.push(line('Card, Venmo &amp; the rest', r.nonCash,
+      'money taken, but not into the drawer', 'co-muted'));
+    if(r.tradeCash) rows.push(line(r.tradeCash>=0?'Cash taken on trades':'Cash paid out on trades', r.tradeCash));
+    if(r.expenses) rows.push(line('Expenses', -r.expenses));
+    if(r.ownerIn) rows.push(line(r.ownerIn>=0?'Money you put in':'Money you took out', r.ownerIn,
+      'your own pocket, not takings'));
+
+    const off = Math.abs(variance) >= 0.01;
+    const short = variance < 0;
+    document.getElementById('co-breakdown').innerHTML = rows.join('')
+      + `<div class="co-line co-expected"><span>Drawer should hold</span><b>${money(r.expectedCash)}</b></div>`
+      + `<div class="co-line"><span>You counted</span><b>${money(counted)}</b></div>`
+      + `<div class="co-line co-variance${off ? (short?' co-short':' co-over') : ' co-ok'}">`
+        + `<span>${!off ? 'Balances' : (short ? 'Short by' : 'Over by')}</span>`
+        + `<b>${off ? money(Math.abs(variance)) : '&#10003;'}</b></div>`;
+
+    const help = document.getElementById('co-help');
+    if(off){
+      help.classList.remove('hidden');
+      help.innerHTML = `<div class="co-help-t">What usually explains a gap this size</div><ul>`
+        + (r.nonCash === 0 && r.cashSales > 0
+            ? `<li>A sale paid by card or Venmo recorded as cash. Nothing here is marked non-cash, `
+              + `so if you took any today, that alone would put you short.</li>` : '')
+        + `<li>An expense paid out of the drawer that was never recorded${r.expenses?'':' — none are recorded for this show'}.</li>`
+        + `<li>Cash you took for yourself. Record it as a negative <em>Money you put in</em> so it stops counting as a loss.</li>`
+        + `<li>A sale not entered${short?'' : ', or one entered twice'}.</li>`
+        + `<li>Change given wrong, or the starting float was not ${money(r.startCash)}.</li>`
+        + `</ul>`;
+    } else help.classList.add('hidden');
+
+    const prof = document.getElementById('co-profit');
+    const wouldBe = (counted + r.endInv) - (r.startCash + r.startInv) - r.ownerIn + r.nonCash;
+    prof.innerHTML = `<div class="co-line"><span>Stock change over the show</span>`
+      + `<b>${money(r.endInv - r.startInv)}</b></div>`
+      + `<div class="co-line co-expected"><span>Profit once you save this</span><b>${money(wouldBe)}</b></div>`
+      + `<div class="co-note">Counted cash and counted stock, less what you started with — `
+      + `plus ${money(r.nonCash)} that came in by card or app.</div>`;
+  }
+
+  saveCloseOut(alsoEnd){
+    const show = this._closeOutShow;
+    if(!show) return;
+    const row = this.data.cashflow.find(c=>c['Show Name']===show);
+    if(!row){ this.closeCloseOut(); return; }
+    const raw = String(document.getElementById('co-count').value).trim();
+    if(raw === ''){ this.showToast('Enter what you counted first.'); return; }
+    const typed = Number(raw);
+    if(!Number.isFinite(typed) || typed < 0){ this.showToast('That is not a cash count.'); return; }
+    const r = this.computeShowReconciliation(show);
+    this._pushUndoSnapshot();
+    row['Ending Cash'] = Math.round(typed*100)/100;
+    this.recalcAll(); this.renderAll(); this.markDirty();
+    const variance = typed - r.expectedCash;
+    this.closeCloseOut();
+    if(alsoEnd) this.endShowMode();
+    const off = Math.abs(variance) >= 0.01;
+    this.showToast(`${show} closed out — ${fmtMoney(typed)} counted`
+      + (off ? ` · ${fmtMoney(Math.abs(variance))} ${variance<0?'short':'over'}` : ' · balanced'));
   }
 
   // ---------------- column resize drag handling ----------------
@@ -5039,7 +5253,13 @@ class Dashboard {
       // what keeps "profit" meaning money the business made. Positive = you put money in,
       // negative = you took money out, so the sign works for draws without a second field.
       const ownerIn = Number(c['Owner Cash In'])||0;
-      const trueActual = (endCash+endInv)-(startCash+startInv) - ownerIn;
+      // Money taken by card, Venmo or app never reaches the counted drawer, so a count-based
+      // figure misses it entirely: a $100 Venmo sale on a $60 card reads as −$60 (stock gone,
+      // drawer flat) when the show actually made +$40. Adding those receipts back is what makes
+      // the count agree with the records. Sales with no payment method set count as cash, so
+      // books that never used the field are completely unaffected.
+      const nonCashReceipts = this._nonCashReceipts(show);
+      const trueActual = (endCash+endInv)-(startCash+startInv) - ownerIn + nonCashReceipts;
       const estActual = salesProfit + totalTradeProfit - totalExpenses;
       c['Actual Profit (auto)'] = (hasCount || isBucket) ? trueActual : estActual;
       c['Actual Profit Estimated (auto)'] = !hasCount && !isBucket;
@@ -9461,6 +9681,22 @@ class Dashboard {
     const nativeCam = document.getElementById('native-cam');
     if(nativeCam) nativeCam.addEventListener('change', (ev)=>{
       this.handleNativePhoto(ev.target.files && ev.target.files[0]);
+    });
+    // Close-out sheet.
+    const coClose = document.getElementById('co-close');
+    if(coClose) coClose.addEventListener('click', ()=>this.closeCloseOut());
+    const coCount = document.getElementById('co-count');
+    if(coCount){
+      coCount.addEventListener('input', ()=>this.renderCloseOut());
+      coCount.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter'){ ev.preventDefault(); this.saveCloseOut(false); } });
+    }
+    const coSave = document.getElementById('co-save');
+    if(coSave) coSave.addEventListener('click', ()=>this.saveCloseOut(false));
+    const coSaveEnd = document.getElementById('co-save-end');
+    if(coSaveEnd) coSaveEnd.addEventListener('click', ()=>this.saveCloseOut(true));
+    const coOverlay = document.getElementById('close-out-overlay');
+    if(coOverlay) coOverlay.addEventListener('click', (ev)=>{
+      if(ev.target.id === 'close-out-overlay') this.closeCloseOut();
     });
     // Merch sell sheet.
     const msClose = document.getElementById('merch-sell-close');
