@@ -905,6 +905,20 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
 /* ---- Merch tab ---- */
 .merch-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:var(--gap); margin-bottom:var(--gap); }
+/* ---- Missing / unaccounted ---- */
+.nav-badge { display:inline-block; min-width:17px; padding:0 5px; margin-left:6px; border-radius:9px; background:#b23c3c; color:#fff; font-size:10.5px; font-weight:800; line-height:17px; text-align:center; vertical-align:middle; }
+.nav-badge.hidden { display:none; }
+.ua-note { font-size:12.5px; color:var(--text-secondary); line-height:1.55; margin-bottom:var(--gap); max-width:640px; }
+.ua-row { display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:13px 16px; margin-bottom:10px; box-shadow:var(--shadow-sm); }
+.ua-main { flex:1; min-width:0; }
+.ua-name { font-size:14.5px; font-weight:700; overflow-wrap:anywhere; }
+.ua-sub { font-size:11.5px; color:var(--text-secondary); margin-top:3px; overflow-wrap:anywhere; }
+.ua-acts { display:flex; gap:6px; flex:none; flex-wrap:wrap; justify-content:flex-end; }
+@media (max-width:620px){
+  .ua-row { flex-wrap:wrap; }
+  .ua-acts { width:100%; }
+  .ua-acts .btn-sm { flex:1; min-width:70px; }
+}
 /* ---- Stock Check ---- */
 .qa-modal-wide { max-width:720px; }
 .qa-modal-sub { font-size:12px; color:var(--text-secondary); margin-top:3px; }
@@ -1216,6 +1230,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')">Card Show</button>
     <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')">Inventory</button>
     <button class="tab-btn" data-tab="merch" onclick="dash.showTab('merch')">Merch</button>
+    <button class="tab-btn" data-tab="missing" onclick="dash.showTab('missing')">Missing<span class="nav-badge hidden" data-missing-badge></span></button>
     <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')">Sales</button>
     <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')">Trades</button>
     <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')">Expenses</button>
@@ -1235,6 +1250,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')"><span class="nav-ico" aria-hidden="true">&#127914;</span>Card Show</button>
     <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')"><span class="nav-ico" aria-hidden="true">&#128230;</span>Inventory</button>
     <button class="tab-btn" data-tab="merch" onclick="dash.showTab('merch')"><span class="nav-ico" aria-hidden="true">&#129509;</span>Merch</button>
+    <button class="tab-btn" data-tab="missing" onclick="dash.showTab('missing')"><span class="nav-ico" aria-hidden="true">&#128269;</span>Missing<span class="nav-badge hidden" data-missing-badge></span></button>
     <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')"><span class="nav-ico" aria-hidden="true">&#128181;</span>Sales</button>
     <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')"><span class="nav-ico" aria-hidden="true">&#128257;</span>Trades</button>
     <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')"><span class="nav-ico" aria-hidden="true">&#128179;</span>Expenses</button>
@@ -1898,6 +1914,21 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   </section>
 
   <!-- ===================== SALES TAB ===================== -->
+  <!-- ===================== MISSING TAB =====================
+       Cards the books say you hold but a Stock Check could not find. Parked here rather than
+       forced into a guess at the table: each one is a question - sold, traded, or lost - and
+       each drops off by itself the moment the stock list agrees with what was counted. -->
+  <section class="tab-panel" id="tab-missing">
+    <div class="merch-kpis">
+      <div class="kpi-card"><div class="kpi-label">Cards Unaccounted</div><div class="kpi-value" id="missing-kpi-count">0</div></div>
+      <div class="kpi-card"><div class="kpi-label">At Cost</div><div class="kpi-value" id="missing-kpi-cost">$0</div></div>
+      <div class="kpi-card"><div class="kpi-label">At Retail</div><div class="kpi-value" id="missing-kpi-retail">$0</div></div>
+    </div>
+    <div class="ua-note">Your books are carrying these as stock. Until each one is explained,
+      inventory value is overstated and any profit that came in from them is missing.</div>
+    <div id="missing-body"></div>
+  </section>
+
   <!-- ===================== MERCH TAB =====================
        Everything sold at the table that isn't a card. Kept out of the Inventory tab and the
        card stats, but sales recorded here are ordinary sales, so the show's profit, the drawer
@@ -2138,7 +2169,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v116</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v117</strong>
   </footer>
 </div>
 
@@ -2341,6 +2372,7 @@ class Dashboard {
       settings: this.normalizeSettings(raw.settings),
       snapshots: this.normalizeSnapshots(raw.snapshots),
       stockCheck: this.normalizeStockCheck(raw.stockCheck),
+      unaccounted: this.normalizeUnaccounted(raw.unaccounted),
     };
     this.defineColumns();
     this.init();
@@ -2640,6 +2672,23 @@ class Dashboard {
       const scWrite = e.target.closest('[data-sc-writeoff]');
       if(scWrite){ this.resolveMissing(scWrite.dataset.scWriteoff, 'writeoff'); return; }
       if(e.target.closest('[data-sc-sold-all]')){ this.resolveAllMissingAsSold(); return; }
+      const scPark = e.target.closest('[data-sc-park]');
+      if(scPark){ this.parkMissingRow(scPark.dataset.scPark); return; }
+      if(e.target.closest('[data-sc-park-all]')){
+        const n = this.parkAllMissing();
+        this.renderAll(); this.renderStockCheck();
+        if(n) this.showToast(`${n} item${n!==1?'s':''} moved to Missing — decide later.`);
+        return;
+      }
+      const uaSold = e.target.closest('[data-ua-sold]');
+      if(uaSold){ this.resolveUnaccounted(uaSold.dataset.uaSold, 'sold'); return; }
+      const uaTraded = e.target.closest('[data-ua-traded]');
+      if(uaTraded){ this.resolveUnaccounted(uaTraded.dataset.uaTraded, 'traded'); return; }
+      const uaLost = e.target.closest('[data-ua-lost]');
+      if(uaLost){ this.resolveUnaccounted(uaLost.dataset.uaLost, 'lost'); return; }
+      const uaFound = e.target.closest('[data-ua-found]');
+      if(uaFound){ this.resolveUnaccounted(uaFound.dataset.uaFound, 'found'); return; }
+      if(e.target.closest('[data-ua-sold-all]')){ this.resolveAllUnaccountedAsSold(); return; }
       if(e.target.closest('[data-sc-rest]')){ this.markRestNotHere(); return; }
       if(e.target.closest('[data-sc-abandon]')){ this.abandonStockCheck(); return; }
       if(e.target.closest('[data-sc-finish]')){ this.finishStockCheck(); return; }
@@ -4207,6 +4256,7 @@ class Dashboard {
       calendar: this.data.calendar,
       snapshots: this.data.snapshots,
       stockCheck: this.data.stockCheck,
+      unaccounted: this.data.unaccounted,
       lists: this.data.lists,
       settings: this.data.settings,
     }));
@@ -4230,6 +4280,7 @@ class Dashboard {
       calendar: this.normalizeCalendar(snap.calendar),
       snapshots: this.normalizeSnapshots(snap.snapshots),
       stockCheck: this.normalizeStockCheck(snap.stockCheck),
+      unaccounted: this.normalizeUnaccounted(snap.unaccounted),
       lists: snap.lists,
       settings: snap.settings,
     };
@@ -4278,6 +4329,7 @@ class Dashboard {
       calendar: strip(this.data.calendar),
       snapshots: this.data.snapshots,
       stockCheck: this.data.stockCheck,
+      unaccounted: this.data.unaccounted,
       lists: this.data.lists,
       settings: this.data.settings,
       // Deletions made on this device, so merge-on-save doesn't resurrect them from the cloud.
@@ -4568,6 +4620,7 @@ class Dashboard {
       settings: this.normalizeSettings(parsed.settings),
       snapshots: this.normalizeSnapshots(parsed.snapshots),
       stockCheck: this.normalizeStockCheck(parsed.stockCheck),
+      unaccounted: this.normalizeUnaccounted(parsed.unaccounted),
     };
     this.tableFilters = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
     // A freshly loaded file may contain entirely different rows — old persisted filters could
@@ -4993,6 +5046,8 @@ class Dashboard {
     });
 
     this.itemCat = catById;
+    // Questions answer themselves once the figures agree — however the sale or trade got in.
+    this._pruneUnaccounted();
   }
 
   computeKPIs(){
@@ -5065,6 +5120,7 @@ class Dashboard {
     this.renderShowPrompt();
     this.renderKPIs();
     this.renderMerch();
+    this.renderMissing();
     this.renderCharts();
     this.renderTopShows();
     this.renderCardShowKpis();
@@ -7759,6 +7815,211 @@ class Dashboard {
     };
   }
 
+  // ---------------- Unaccounted (the Missing tab) ----------------
+  //
+  // A card the box does not have but the books do is a question, not an answer. It might have
+  // sold, it might have gone out in a trade, it might be in the other box. Forcing that decision
+  // while standing over a half-counted long box is how you get a guess written down as fact.
+  //
+  // So "not here" parks it here instead, and the count can finish. Each one keeps what the stock
+  // should be once it is explained; the moment the books agree — because the sale got entered
+  // here, or on the Sales tab, or a trade was recorded — it drops off by itself.
+  normalizeUnaccounted(arr){
+    return (Array.isArray(arr) ? arr : []).map(e=>{
+      if(!e || typeof e !== 'object') return null;
+      const itemId = String(e.itemId||'').trim();
+      const qty = Math.floor(Number(e.qty)||0);
+      // Nothing missing is not a question. Clamping a zero up to one would invent one.
+      if(!itemId || !Number.isFinite(qty) || qty < 1) return null;
+      return {
+        uid: String(e.uid||'') || this._uid(),
+        itemId,
+        qty,
+        // What stock SHOULD read once this is explained: the number actually counted.
+        settledAt: Math.max(0, Math.floor(Number(e.settledAt)||0)),
+        foundOn: /^\d{4}-\d{2}-\d{2}$/.test(String(e.foundOn||'').slice(0,10))
+          ? String(e.foundOn).slice(0,10) : '',
+        scope: typeof e.scope === 'string' ? e.scope : '',
+      };
+    }).filter(Boolean);
+  }
+
+  _unaccounted(){
+    if(!Array.isArray(this.data.unaccounted)) this.data.unaccounted = [];
+    return this.data.unaccounted;
+  }
+
+  // An entry is answered once the stock list agrees with what was counted — however that came
+  // about. Pruning on the figures rather than on a button means recording the sale the ordinary
+  // way also clears the question, instead of leaving a stale one to tidy up by hand.
+  _pruneUnaccounted(){
+    const before = this._unaccounted().length;
+    this.data.unaccounted = this._unaccounted().filter(e=>{
+      const item = this.data.inventory.find(i=>i['Item ID']===e.itemId);
+      if(!item) return false;                       // the row itself is gone
+      return (Number(item['Remaining Inventory (auto)'])||0) > e.settledAt;
+    });
+    return before - this.data.unaccounted.length;
+  }
+
+  computeUnaccounted(){
+    const n = v => Number(v)||0;
+    const rows = this._unaccounted().map(e=>{
+      const item = this.data.inventory.find(i=>i['Item ID']===e.itemId);
+      if(!item) return null;
+      const short = Math.max(0, (n(item['Remaining Inventory (auto)']) - e.settledAt));
+      return { entry:e, item, qty:Math.min(e.qty, short) || short,
+        cost:n(item['Cost']), retail:n(item['Retail Price']) };
+    }).filter(Boolean).filter(r=>r.qty > 0);
+    return {
+      rows,
+      totalQty: rows.reduce((a,r)=>a+r.qty, 0),
+      cost:   rows.reduce((a,r)=>a+r.qty*r.cost, 0),
+      retail: rows.reduce((a,r)=>a+r.qty*r.retail, 0),
+    };
+  }
+
+  // Park one missing row for later. Idempotent per item: counting the same card short twice
+  // updates the question rather than asking it twice.
+  parkUnaccounted(itemId, qty, settledAt){
+    const list = this._unaccounted();
+    const existing = list.find(e=>e.itemId === itemId);
+    const entry = {
+      uid: existing ? existing.uid : this._uid(),
+      itemId,
+      qty: Math.max(1, Math.floor(Number(qty)||1)),
+      settledAt: Math.max(0, Math.floor(Number(settledAt)||0)),
+      foundOn: this.todayStr(),
+      scope: this._stockCheck().scope || '',
+    };
+    if(existing) Object.assign(existing, entry);
+    else list.push(entry);
+    return entry;
+  }
+
+  parkMissingRow(itemId){
+    const r = this.computeStockCheck();
+    const miss = r.missing.find(m=>m.item['Item ID']===itemId);
+    if(!miss) return;
+    this._pushUndoSnapshot();
+    this.parkUnaccounted(itemId, miss.gap, miss.found);
+    // The count itself is now settled for this row — the question moved, it did not vanish.
+    this._stockCheck().seen[itemId] = miss.found;
+    this.markDirty();
+    this.renderAll();
+    this.renderStockCheck();
+    this.showToast(`${miss.item['Item Name']||itemId} moved to Missing — decide later.`);
+  }
+
+  parkAllMissing(){
+    const r = this.computeStockCheck();
+    if(!r.missing.length) return 0;
+    this._pushUndoSnapshot();
+    const sc = this._stockCheck();
+    r.missing.forEach(m=>{
+      this.parkUnaccounted(m.item['Item ID'], m.gap, m.found);
+      sc.seen[m.item['Item ID']] = m.found;
+    });
+    this.markDirty();
+    return r.missing.length;
+  }
+
+  // ---- resolving from the Missing tab ----
+  resolveUnaccounted(uid, how){
+    const u = this.computeUnaccounted();
+    const row = u.rows.find(r=>r.entry.uid === uid);
+    if(!row) return;
+    if(how === 'found'){
+      // Nothing was wrong with the stock after all — drop the question, touch nothing else.
+      this._pushUndoSnapshot();
+      this.data.unaccounted = this._unaccounted().filter(e=>e.uid !== uid);
+      this.markDirty(); this.renderAll();
+      this.showToast(`${row.item['Item Name']||row.entry.itemId} put back — stock unchanged.`);
+      return;
+    }
+    if(how === 'traded'){
+      // A trade has two sides and a rate; inventing one would be a guess. Open the trade
+      // calculator with this card already on the side you gave, and let it be recorded properly.
+      // The entry clears itself once the trade lands and stock comes down.
+      this.openQuickTrade();
+      this._quickTradeAddOut(row.item);
+      this.showToast('Add what you got back, then record the trade.');
+      return;
+    }
+    this._pushUndoSnapshot();
+    const writeOff = how === 'lost';
+    this.data.sales.push(this._stockSaleRow(row.item, row.qty, row.retail, writeOff));
+    this.recalcAll(); this.renderAll(); this.markDirty();
+    const nm = row.item['Item Name'] || row.entry.itemId;
+    this.showToast(writeOff
+      ? `${row.qty} × ${nm} written off`
+      : `${row.qty} × ${nm} recorded as sold at ${fmtMoney(row.retail)}`);
+  }
+
+  resolveAllUnaccountedAsSold(){
+    const u = this.computeUnaccounted();
+    if(!u.rows.length) return;
+    this._confirmDelete(
+      `Record all <strong>${u.rows.length} missing item${u.rows.length!==1?'s':''}</strong> as sold at retail `
+      + `— <strong>${fmtMoney(u.retail)}</strong> in sales`
+      + `${this.activeShow ? ` against ${this._esc(this.activeShow)}` : ''}? `
+      + `Anything that went out in a trade should be recorded as a trade instead.`,
+      ()=>{
+        this._pushUndoSnapshot();
+        u.rows.forEach(r=>{
+          this.data.sales.push(this._stockSaleRow(r.item, r.qty, r.retail, false));
+        });
+        this.recalcAll(); this.renderAll(); this.markDirty();
+        this.showToast(`${u.rows.length} missed sale${u.rows.length!==1?'s':''} recorded — ${fmtMoney(u.retail)}`);
+      });
+  }
+
+  renderMissing(){
+    const body = document.getElementById('missing-body');
+    if(!body) return;
+    const u = this.computeUnaccounted();
+    const set = (id, txt)=>{ const el=document.getElementById(id); if(el) el.textContent = txt; };
+    set('missing-kpi-count',  fmtNum(u.totalQty));
+    set('missing-kpi-cost',   fmtMoney(u.cost));
+    set('missing-kpi-retail', fmtMoney(u.retail));
+
+    const badge = document.querySelectorAll('[data-missing-badge]');
+    badge.forEach(b=>{
+      b.textContent = u.rows.length ? String(u.rows.length) : '';
+      b.classList.toggle('hidden', !u.rows.length);
+    });
+
+    if(!u.rows.length){
+      body.innerHTML = `<div class="merch-empty">`
+        + `<div class="merch-empty-t">Nothing unaccounted for</div>`
+        + `<div class="merch-empty-s">When a Stock Check finds a card your books say you have but `
+        + `the box doesn't, it lands here — so you can finish counting and work out later whether `
+        + `it sold, went out in a trade, or was lost. Anything you settle elsewhere drops off by `
+        + `itself.</div></div>`;
+      return;
+    }
+    body.innerHTML = u.rows.map(r=>{
+      const e = r.entry;
+      return `<div class="ua-row" data-ua="${this._esc(e.uid)}">`
+        + `<div class="ua-main">`
+          + `<div class="ua-name">${r.qty} × ${this._esc(r.item['Item Name']||e.itemId)}</div>`
+          + `<div class="ua-sub">${this._esc(r.item['SKU']||e.itemId)}`
+          + ` &middot; ${fmtMoney(r.retail)} each &middot; cost ${fmtMoney(r.cost)}`
+          + (e.foundOn ? ` &middot; missing since ${this._esc(e.foundOn)}` : '')
+          + (e.scope ? ` &middot; ${this._esc(e.scope)} count` : '')
+          + `</div>`
+        + `</div>`
+        + `<div class="ua-acts">`
+          + `<button type="button" class="btn-sm sc-yes" data-ua-sold="${this._esc(e.uid)}">Sold</button>`
+          + `<button type="button" class="btn-sm" data-ua-traded="${this._esc(e.uid)}">Traded</button>`
+          + `<button type="button" class="btn-sm" data-ua-lost="${this._esc(e.uid)}">Lost</button>`
+          + `<button type="button" class="btn-sm" data-ua-found="${this._esc(e.uid)}" title="It was here after all">Found it</button>`
+        + `</div></div>`;
+    }).join('')
+      + `<button type="button" class="qa-submit sc-bulk" data-ua-sold-all>`
+      + `Record all ${u.rows.length} as sold — ${fmtMoney(u.retail)}</button>`;
+  }
+
   _stockCheck(){
     if(!this.data.stockCheck) this.data.stockCheck = this.normalizeStockCheck(null);
     return this.data.stockCheck;
@@ -7779,7 +8040,10 @@ class Dashboard {
     const sc = this._stockCheck();
     const n = v => Number(v)||0;
     const items = this._stockCheckItems();
-    const missing = [], extra = [], unchecked = [];
+    // A row already moved to the Missing tab is answered as far as this count goes — the
+    // question moved, it did not stay open here too.
+    const parkedIds = new Set(this._unaccounted().map(e=>e.itemId));
+    const missing = [], extra = [], unchecked = [], parked = [];
     let expected = 0, found = 0, checkedRows = 0;
     items.forEach(i=>{
       const id = i['Item ID'];
@@ -7789,11 +8053,13 @@ class Dashboard {
       checkedRows += 1;
       const got = n(sc.seen[id]);
       found += got;
-      if(got < exp) missing.push({ item:i, expected:exp, found:got, gap:exp-got });
+      if(got < exp){
+        (parkedIds.has(id) ? parked : missing).push({ item:i, expected:exp, found:got, gap:exp-got });
+      }
       else if(got > exp) extra.push({ item:i, expected:exp, found:got, gap:got-exp });
     });
     return {
-      items, missing, extra, unchecked, expected, found, checkedRows,
+      items, missing, extra, unchecked, parked, expected, found, checkedRows,
       rows: items.length,
       // What the gap is worth: at cost it is the hole in your inventory value; at retail it is
       // roughly the money that should have come in if these walked out as sales.
@@ -7951,17 +8217,20 @@ class Dashboard {
 
   // Found more than the books say. Usually a sale entered that never happened, or stock that
   // was never entered — both need a human, so this only points at it.
+  // Finishing never blocks on the unexplained. Anything still short is parked on the Missing tab
+  // so the count can close while you are still at the table, and the question survives to be
+  // answered when there is time to answer it properly.
   finishStockCheck(){
     const r = this.computeStockCheck();
-    if(r.missing.length || r.extra.length){
-      this.showToast('Deal with the differences first, or leave them for later.');
-      return;
-    }
+    const parked = r.missing.length ? this.parkAllMissing() : 0;
     this._pushUndoSnapshot();
     this.data.stockCheck = this.normalizeStockCheck(null);
     this.markDirty();
+    this.renderAll();
     this.renderStockCheckStart();
-    this.showToast('Stock check finished — the books match the box.');
+    this.showToast(parked
+      ? `Stock check done — ${parked} item${parked!==1?'s':''} moved to Missing to sort out.`
+      : 'Stock check finished — the books match the box.');
   }
 
   // ---- rendering ----
@@ -8023,6 +8292,7 @@ class Dashboard {
       + `<div class="sc-stats">`
         + stat('Checked', `${r.rows - r.unchecked.length} / ${r.rows}`)
         + stat('Missing', r.missing.length, r.missing.length?'sc-bad':'')
+        + (r.parked.length ? stat('Moved to Missing', r.parked.length) : '')
         + stat('More than expected', r.extra.length, r.extra.length?'sc-warn':'')
       + `</div></div>`
       + (r.missing.length ? this._scMissingPanel(r) : '')
@@ -8064,8 +8334,10 @@ class Dashboard {
           ? `<button type="button" class="btn-sm" data-sc-rest>Mark remaining ${r.unchecked.length} not here</button>`
           : '')
         + `<button type="button" class="btn-sm" data-sc-abandon>Discard count</button>`
-        + `<button type="button" class="qa-submit" data-sc-finish${(r.missing.length||r.extra.length)?' disabled':''}>`
-        + `${(r.missing.length||r.extra.length) ? 'Differences to settle' : 'Finish — books match'}</button>`;
+        + `<button type="button" class="qa-submit" data-sc-finish>`
+        + `${r.missing.length
+             ? `Finish — move ${r.missing.length} to Missing`
+             : 'Finish — books match'}</button>`;
     }
     const box = document.getElementById('sc-search');
     if(box && this._scFocusSearch){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
@@ -8087,10 +8359,13 @@ class Dashboard {
             + `<div class="sc-acts">`
             + `<button type="button" class="btn-sm sc-yes" data-sc-sold="${this._esc(id)}">Sold</button>`
             + `<button type="button" class="btn-sm" data-sc-writeoff="${this._esc(id)}">Lost</button>`
+            + `<button type="button" class="btn-sm" data-sc-park="${this._esc(id)}" title="Move to the Missing tab and decide later">Later</button>`
             + `</div></div>`;
         }).join('')
       + `<button type="button" class="qa-submit sc-bulk" data-sc-sold-all>`
       + `Record all ${r.missing.length} as sold — ${fmtMoney(r.missingRetail)}</button>`
+      + `<button type="button" class="btn-sm sc-bulk" data-sc-park-all>`
+      + `Move all ${r.missing.length} to Missing and decide later</button>`
       + `</div>`;
   }
 
