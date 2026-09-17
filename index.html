@@ -905,6 +905,63 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
 /* ---- Merch tab ---- */
 .merch-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:var(--gap); margin-bottom:var(--gap); }
+/* ---- Stock Check ---- */
+.qa-modal-wide { max-width:720px; }
+.qa-modal-sub { font-size:12px; color:var(--text-secondary); margin-top:3px; }
+.sc-intro { font-size:13px; color:var(--text-secondary); line-height:1.55; margin:0 0 16px; }
+.sc-start-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin-bottom:8px; }
+.sc-scopes { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; }
+.sc-scope { text-align:left; padding:13px 15px; border:1px solid var(--border); border-radius:10px; background:var(--surface); cursor:pointer; font-size:14px; font-weight:600; font-family:inherit; color:var(--text-primary); }
+.sc-scope:hover { border-color:var(--text-primary); }
+.sc-scope small { display:block; font-weight:400; font-size:11.5px; color:var(--text-secondary); margin-top:3px; }
+.sc-progress { margin-bottom:14px; }
+.sc-bar { height:7px; border-radius:4px; background:var(--border); overflow:hidden; margin-bottom:10px; }
+.sc-bar i { display:block; height:100%; background:#2e7d4f; transition:width .2s; }
+.sc-stats { display:flex; gap:18px; flex-wrap:wrap; }
+.sc-stat span { display:block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); }
+.sc-stat b { font-size:17px; }
+.sc-stat.sc-bad b { color:#b23c3c; }
+.sc-stat.sc-warn b { color:#b4530a; }
+.sc-panel { border-radius:10px; padding:13px 15px; margin-bottom:14px; }
+.sc-panel-bad { background:#fdeceb; border:1px solid #efb4b0; }
+.sc-panel-warn { background:var(--warning-tint); border:1px solid #f0d59f; }
+.sc-panel-h { display:flex; justify-content:space-between; gap:12px; font-weight:700; font-size:13.5px; margin-bottom:5px; }
+.sc-panel-note { font-size:12px; color:var(--text-secondary); line-height:1.5; margin-bottom:10px; }
+.sc-miss { display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid rgba(0,0,0,.08); }
+.sc-bulk { margin-top:10px; width:100%; }
+.sc-tools { display:flex; gap:8px; margin-bottom:10px; }
+.sc-tools .qa-pick { flex:1; }
+.sc-list { max-height:44vh; overflow-y:auto; border:1px solid var(--border); border-radius:10px; }
+.sc-row { display:flex; align-items:center; gap:10px; padding:9px 12px; border-top:1px solid var(--border); }
+.sc-row:first-child { border-top:none; }
+.sc-row.sc-ok { background:#f2faf5; }
+.sc-row.sc-short { background:#fdeceb; }
+.sc-row.sc-over { background:var(--warning-tint); }
+.sc-main { flex:1; min-width:0; }
+.sc-name { font-size:13.5px; font-weight:600; overflow-wrap:anywhere; }
+.sc-sub { font-size:11.5px; color:var(--text-secondary); margin-top:2px; overflow-wrap:anywhere; }
+.sc-acts { display:flex; gap:6px; align-items:center; flex:none; }
+.sc-yes { background:#2e7d4f; color:#fff; border-color:#2e7d4f; }
+.sc-no { background:var(--surface); }
+.sc-counter { gap:4px; }
+.sc-step { width:28px; height:28px; border-radius:7px; border:1px solid var(--border); background:var(--surface); font-size:16px; line-height:1; cursor:pointer; color:var(--text-primary); }
+.sc-count { min-width:24px; text-align:center; font-weight:800; font-size:15px; }
+.sc-undo { width:24px; height:24px; border-radius:6px; border:1px solid transparent; background:none; color:var(--text-secondary); cursor:pointer; font-size:14px; line-height:1; }
+.sc-undo:hover { border-color:var(--border); }
+.sc-empty { padding:22px; text-align:center; font-size:13px; color:var(--text-secondary); }
+.sc-foot { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+.sc-foot .qa-submit { flex:1; margin:0; min-width:150px; }
+.sc-foot .qa-submit[disabled] { opacity:.5; cursor:not-allowed; }
+@media (max-width:560px){
+  .sc-scopes { grid-template-columns:1fr; }
+  /* Both row kinds must wrap before their buttons take the full width, or the flexed name
+     column collapses to nothing and the card is unreadable. */
+  .sc-row, .sc-miss { flex-wrap:wrap; }
+  .sc-row .sc-acts, .sc-miss .sc-acts { width:100%; justify-content:flex-end; }
+  .sc-foot { flex-direction:column; }
+  .sc-foot .btn-sm, .sc-foot .qa-submit { width:100%; }
+  .sc-list { max-height:50vh; }
+}
 .merch-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:var(--gap); }
 .merch-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow-sm); min-width:0; }
 .merch-card.merch-low { border-color:#f0c98f; }
@@ -1335,6 +1392,19 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       </div>
       <div class="pr-name" id="photo-review-name"></div>
       <button type="button" class="qa-submit" id="photo-review-save">Save to Photos</button>
+    </div>
+  </div>
+
+  <!-- Stock Check: count the box against the books, then turn the gap into the sales that were
+       missed on the day. Progress is saved, so a locked phone mid-count loses nothing. -->
+  <div class="qa-overlay hidden" id="stock-check-overlay">
+    <div class="qa-modal qa-modal-wide">
+      <div class="qa-modal-head">
+        <div><h2>Stock Check</h2><div class="qa-modal-sub" id="sc-head-sub"></div></div>
+        <button type="button" class="qa-close" id="sc-close" title="Close (your count is kept)">&times;</button>
+      </div>
+      <div id="sc-body"></div>
+      <div class="sc-foot" id="sc-foot"></div>
     </div>
   </div>
 
@@ -1806,6 +1876,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
             <button class="btn-sm" data-columns-toggle data-table="inventory">&#9776; Columns</button>
             <div class="col-toggle-panel hidden" id="colpanel-inventory"></div>
           </div>
+          <button class="btn-sm" id="stock-check-btn" title="Count what's physically in the box against what your books say, and turn anything missing into the sales that were never entered.">&#9989; Stock Check</button>
           <button class="btn-sm" id="inv-date-btn" title="Stamp a purchase date onto many cards at once — needed before the app can value your stock at any past date.">&#128197; Set Purchase Date</button>
           <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
           <button class="btn-sm" id="inv-labels-btn" title="Export the cards currently listed as a NIIMBOT label sheet (.xlsx) — Item Name, Cost, Price, SKU and finished QR text.">&#127991;&#65039; NIIMBOT Labels</button>
@@ -2067,7 +2138,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v114</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v116</strong>
   </footer>
 </div>
 
@@ -2269,6 +2340,7 @@ class Dashboard {
       lists: this.normalizeLists(raw.lists),
       settings: this.normalizeSettings(raw.settings),
       snapshots: this.normalizeSnapshots(raw.snapshots),
+      stockCheck: this.normalizeStockCheck(raw.stockCheck),
     };
     this.defineColumns();
     this.init();
@@ -2551,6 +2623,27 @@ class Dashboard {
       if(e.target.closest('[data-draft-discard]')){ this.dismissLocalDraft(true); return; }
       const dls = e.target.closest('[data-dismiss-low-stock]');
       if(dls){ this.handleDismissLowStock(); return; }
+      const scStart = e.target.closest('[data-sc-start]');
+      if(scStart){ this.startStockCheck(scStart.dataset.scStart); return; }
+      const scAll = e.target.closest('[data-sc-all]');
+      if(scAll){ this.markStockAllHere(scAll.dataset.scAll); return; }
+      const scNone = e.target.closest('[data-sc-none]');
+      if(scNone){ this.markStockSeen(scNone.dataset.scNone, null, 0); return; }
+      const scInc = e.target.closest('[data-sc-inc]');
+      if(scInc){ this.markStockSeen(scInc.dataset.scInc, 1); return; }
+      const scDec = e.target.closest('[data-sc-dec]');
+      if(scDec){ this.markStockSeen(scDec.dataset.scDec, -1); return; }
+      const scClear = e.target.closest('[data-sc-clear]');
+      if(scClear){ this.unmarkStock(scClear.dataset.scClear); return; }
+      const scSold = e.target.closest('[data-sc-sold]');
+      if(scSold){ this.resolveMissing(scSold.dataset.scSold, 'sold'); return; }
+      const scWrite = e.target.closest('[data-sc-writeoff]');
+      if(scWrite){ this.resolveMissing(scWrite.dataset.scWriteoff, 'writeoff'); return; }
+      if(e.target.closest('[data-sc-sold-all]')){ this.resolveAllMissingAsSold(); return; }
+      if(e.target.closest('[data-sc-rest]')){ this.markRestNotHere(); return; }
+      if(e.target.closest('[data-sc-abandon]')){ this.abandonStockCheck(); return; }
+      if(e.target.closest('[data-sc-finish]')){ this.finishStockCheck(); return; }
+      if(e.target.closest('[data-sc-scan]')){ this.openScanner(e.target.closest('[data-sc-scan]')); return; }
       const ct = e.target.closest('[data-columns-toggle]');
       if(ct){ this.toggleColumnPanel(ct.dataset.table); return; }
       const mft = e.target.closest('[data-mobile-filter-toggle]');
@@ -2626,6 +2719,22 @@ class Dashboard {
     document.getElementById('show-detail-overlay').addEventListener('click', (e)=>{ if(e.target.id==='show-detail-overlay') this.closeShowDetail(); });
     // Data Health / Audit overlay.
     document.getElementById('data-health-btn').addEventListener('click', ()=>this.openDataAudit());
+    const scBtn = document.getElementById('stock-check-btn');
+    if(scBtn) scBtn.addEventListener('click', ()=>this.openStockCheck());
+    const scCloseBtn = document.getElementById('sc-close');
+    if(scCloseBtn) scCloseBtn.addEventListener('click', ()=>this.closeStockCheck());
+    const scOverlay = document.getElementById('stock-check-overlay');
+    if(scOverlay) scOverlay.addEventListener('click', (ev)=>{
+      if(ev.target.id === 'stock-check-overlay') this.closeStockCheck();
+    });
+    // Typing in the count's search box re-renders the list; the flag puts the caret back.
+    document.addEventListener('input', (ev)=>{
+      if(ev.target && ev.target.id === 'sc-search'){
+        this._scQuery = ev.target.value;
+        this._scFocusSearch = true;
+        this.renderStockCheck();
+      }
+    });
     document.getElementById('audit-close').addEventListener('click', ()=>this.closeDataAudit());
     document.getElementById('audit-overlay').addEventListener('click', (e)=>{ if(e.target.id==='audit-overlay') this.closeDataAudit(); });
     // Restock picker (scan an existing SKU into Quick Add Inventory).
@@ -4097,6 +4206,7 @@ class Dashboard {
       cashflow: this.data.cashflow,
       calendar: this.data.calendar,
       snapshots: this.data.snapshots,
+      stockCheck: this.data.stockCheck,
       lists: this.data.lists,
       settings: this.data.settings,
     }));
@@ -4119,6 +4229,7 @@ class Dashboard {
       cashflow: snap.cashflow.map(r=>({...r, _id:this.nextId++})),
       calendar: this.normalizeCalendar(snap.calendar),
       snapshots: this.normalizeSnapshots(snap.snapshots),
+      stockCheck: this.normalizeStockCheck(snap.stockCheck),
       lists: snap.lists,
       settings: snap.settings,
     };
@@ -4166,6 +4277,7 @@ class Dashboard {
       cashflow: strip(this.data.cashflow),
       calendar: strip(this.data.calendar),
       snapshots: this.data.snapshots,
+      stockCheck: this.data.stockCheck,
       lists: this.data.lists,
       settings: this.data.settings,
       // Deletions made on this device, so merge-on-save doesn't resurrect them from the cloud.
@@ -4455,6 +4567,7 @@ class Dashboard {
       lists: this.normalizeLists(Array.isArray(parsed.lists) ? {} : (parsed.lists || this.raw.lists)),
       settings: this.normalizeSettings(parsed.settings),
       snapshots: this.normalizeSnapshots(parsed.snapshots),
+      stockCheck: this.normalizeStockCheck(parsed.stockCheck),
     };
     this.tableFilters = { inventory:{}, sales:{}, trades:{}, expenses:{}, cashflow:{} };
     // A freshly loaded file may contain entirely different rows — old persisted filters could
@@ -6942,6 +7055,9 @@ class Dashboard {
     // Price Check is a read-only mode: it looks a card up and shows what it sells for, and is
     // wired first so none of the modes below (which all write something) can claim the scan.
     this._scanPriceCheck = !!(btnEl && btnEl.matches('[data-price-check]'));
+    // Stock check: every scan ticks that card off the count and the camera stays open, so a box
+    // can be run through in one pass without touching the screen between cards.
+    this._scanStockCheck = !!(btnEl && btnEl.matches('[data-sc-scan]'));
     // Two launch modes: from a SKU lookup box (decoded code runs the lookup pipeline), or from
     // the Quick Add Inventory SKU field via data-scan-fill (decoded code just fills the input —
     // the label was printed BEFORE the item exists, so there is nothing to look up yet).
@@ -6957,9 +7073,10 @@ class Dashboard {
     // added straight to the basket and the camera stays open for the next one — no re-tapping.
     this._scanRapid = !!(this._scanInput && this._scanInput.getAttribute('data-sku-lookup')==='qa-checkout');
     const cancelBtn = document.getElementById('scan-cancel');
-    if(cancelBtn) cancelBtn.textContent = (this._scanRapid || this._scanPriceCheck) ? '✓ Done' : 'Cancel';
+    if(cancelBtn) cancelBtn.textContent = (this._scanRapid || this._scanPriceCheck || this._scanStockCheck) ? '✓ Done' : 'Cancel';
     const title = document.querySelector('.scan-title');
-    if(title) title.textContent = this._scanPriceCheck ? 'Price check' : 'Scan QR label';
+    if(title) title.textContent = this._scanPriceCheck ? 'Price check'
+      : this._scanStockCheck ? 'Stock check' : 'Scan QR label';
     const card = document.getElementById('price-card');
     if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
     const status = document.getElementById('scan-status');
@@ -6983,6 +7100,8 @@ class Dashboard {
       await video.play();
       status.textContent = this._scanPriceCheck
         ? 'Point the camera at a card\u2019s label to see what it sells for. Nothing is recorded.'
+        : this._scanStockCheck
+          ? 'Scan each card you\u2019re holding to tick it off the count. Tap \u2713 Done when the box is empty.'
         : this._scanRapid
           ? 'Rapid checkout — scan each card to add it to the basket. Tap ✓ Done when finished.'
           : "Point the camera at the item's QR label.";
@@ -7611,6 +7730,382 @@ class Dashboard {
     this.showToast(`Removed ${qty} × ${name} — ${back} back in stock`);
   }
 
+  // ---------------- Stock Check ----------------
+  //
+  // Count what is physically in the box against what the books say is in it.
+  //
+  // The gap is the point. Cards go out at a show without the sale being entered — the queue is
+  // four deep, the QR does not scan, you take the cash and mean to catch up later. The books
+  // then carry stock that is not there, which overstates inventory value, understates profit,
+  // and quietly poisons every show's reconciliation from that day on.
+  //
+  // Progress is stored rather than held in memory: a stock check happens standing over a box
+  // with a phone that will lock, ring, or run out of battery, and losing an hour of counting to
+  // a reload is the kind of thing that stops a habit forming.
+  normalizeStockCheck(sc){
+    const seen = {};
+    const raw = (sc && typeof sc.seen === 'object' && sc.seen) ? sc.seen : {};
+    Object.keys(raw).forEach(k=>{
+      const v = Math.floor(Number(raw[k]));
+      // 0 is meaningful — "checked, found none" — and must survive; absent means "not yet
+      // checked", which is a different thing entirely and is never a finding.
+      if(Number.isFinite(v) && v >= 0) seen[String(k)] = v;
+    });
+    return {
+      active: !!(sc && sc.active),
+      startedAt: (sc && typeof sc.startedAt === 'string') ? sc.startedAt.slice(0,10) : '',
+      scope: (sc && typeof sc.scope === 'string') ? sc.scope : '',
+      seen,
+    };
+  }
+
+  _stockCheck(){
+    if(!this.data.stockCheck) this.data.stockCheck = this.normalizeStockCheck(null);
+    return this.data.stockCheck;
+  }
+
+  // What this check covers: stock on hand, optionally narrowed to one category so a single box
+  // can be counted without wading through everything else.
+  _stockCheckItems(){
+    const scope = this._stockCheck().scope;
+    return this.data.inventory.filter(i=>{
+      if((Number(i['Remaining Inventory (auto)'])||0) <= 0) return false;
+      if(scope && String(i['Category']||'') !== scope) return false;
+      return true;
+    });
+  }
+
+  computeStockCheck(){
+    const sc = this._stockCheck();
+    const n = v => Number(v)||0;
+    const items = this._stockCheckItems();
+    const missing = [], extra = [], unchecked = [];
+    let expected = 0, found = 0, checkedRows = 0;
+    items.forEach(i=>{
+      const id = i['Item ID'];
+      const exp = n(i['Remaining Inventory (auto)']);
+      expected += exp;
+      if(sc.seen[id] === undefined){ unchecked.push(i); return; }
+      checkedRows += 1;
+      const got = n(sc.seen[id]);
+      found += got;
+      if(got < exp) missing.push({ item:i, expected:exp, found:got, gap:exp-got });
+      else if(got > exp) extra.push({ item:i, expected:exp, found:got, gap:got-exp });
+    });
+    return {
+      items, missing, extra, unchecked, expected, found, checkedRows,
+      rows: items.length,
+      // What the gap is worth: at cost it is the hole in your inventory value; at retail it is
+      // roughly the money that should have come in if these walked out as sales.
+      missingCost:   missing.reduce((a,m)=>a + m.gap * n(m.item['Cost']), 0),
+      missingRetail: missing.reduce((a,m)=>a + m.gap * n(m.item['Retail Price']), 0),
+    };
+  }
+
+  startStockCheck(scope){
+    this._pushUndoSnapshot();
+    this.data.stockCheck = this.normalizeStockCheck({
+      active: true, startedAt: this.todayStr(), scope: scope || '', seen: {},
+    });
+    this.markDirty();
+    this.renderStockCheck();
+    document.getElementById('stock-check-overlay').classList.remove('hidden');
+  }
+
+  openStockCheck(){
+    const sc = this._stockCheck();
+    if(!sc.active){ this.renderStockCheckStart(); }
+    else this.renderStockCheck();
+    document.getElementById('stock-check-overlay').classList.remove('hidden');
+  }
+
+  closeStockCheck(){
+    document.getElementById('stock-check-overlay').classList.add('hidden');
+    this._scCount = null;
+  }
+
+  // Abandoning a count throws the counting away, not the stock. Confirmed, because an hour of
+  // work is a lot to lose to a mis-tap.
+  abandonStockCheck(){
+    const sc = this._stockCheck();
+    const done = Object.keys(sc.seen).length;
+    this._confirmDelete(
+      `Throw away this stock check? <strong>${done} item${done!==1?'s':''}</strong> counted so far. `
+      + `Your stock itself is not touched.`,
+      ()=>{
+        this._pushUndoSnapshot();
+        this.data.stockCheck = this.normalizeStockCheck(null);
+        this.markDirty();
+        this.renderStockCheckStart();
+        this.showToast('Stock check discarded.');
+      });
+  }
+
+  // Marking. delta of null means "set to this exact number".
+  markStockSeen(itemId, delta, exact){
+    const sc = this._stockCheck();
+    if(!sc.active) return;
+    const item = this.data.inventory.find(i=>i['Item ID']===itemId);
+    if(!item) return;
+    const cur = sc.seen[itemId] === undefined ? 0 : Number(sc.seen[itemId])||0;
+    const next = exact != null ? Math.max(0, Math.floor(Number(exact)||0))
+                               : Math.max(0, cur + Number(delta||0));
+    sc.seen[itemId] = next;
+    this.markDirty();
+    this.renderStockCheck();
+    return next;
+  }
+
+  // "It's all here" — fills in the expected count in one tap, which is the common case.
+  markStockAllHere(itemId){
+    const item = this.data.inventory.find(i=>i['Item ID']===itemId);
+    if(!item) return;
+    this.markStockSeen(itemId, null, Number(item['Remaining Inventory (auto)'])||0);
+  }
+
+  unmarkStock(itemId){
+    const sc = this._stockCheck();
+    delete sc.seen[itemId];
+    this.markDirty();
+    this.renderStockCheck();
+  }
+
+  // Everything not yet looked at is declared absent in one go, for the end of a count when the
+  // box is empty and the remainder simply is not there.
+  markRestNotHere(){
+    const r = this.computeStockCheck();
+    if(!r.unchecked.length){ this.showToast('Everything has been checked.'); return; }
+    this._confirmDelete(
+      `Mark the remaining <strong>${r.unchecked.length} item${r.unchecked.length!==1?'s':''}</strong> as not here? `
+      + `They will show up as missing, for you to record as sold or write off.`,
+      ()=>{
+        this._pushUndoSnapshot();
+        const sc = this._stockCheck();
+        r.unchecked.forEach(i=>{ sc.seen[i['Item ID']] = 0; });
+        this.markDirty();
+        this.renderStockCheck();
+      });
+  }
+
+  // ---- resolving the gap ----
+  //
+  // A card the books hold but the box does not is almost always a sale that never got entered,
+  // so that is the default. Writing one off is the honest alternative when it was genuinely
+  // lost or damaged, and is recorded as a zero-price sale flagged as a write-off: that draws
+  // the stock down and books the cost as the loss it was, without inventing revenue.
+  _stockSaleRow(item, qty, price, writeOff){
+    const row = this.blankRow('sales');
+    row['Date'] = this.todayStr();
+    row['Show Name'] = this.activeShow || this.data.settings.lastSaleShow || this._defaultShow();
+    row['Item ID'] = item['Item ID'];
+    row['Quantity Sold'] = qty;
+    row['Sale Price'] = writeOff ? 0 : price;
+    row['Payment Method'] = writeOff ? '' : (this.data.settings.lastSalePayment || '');
+    if(writeOff) row['Write-Off'] = true;
+    row['Notes'] = writeOff
+      ? 'Written off at stock check — not in stock and not sold'
+      : 'Recorded at stock check — sale was missed on the day';
+    row._id = this.nextId++;
+    return row;
+  }
+
+  resolveMissing(itemId, how, priceOverride){
+    const r = this.computeStockCheck();
+    const miss = r.missing.find(m=>m.item['Item ID']===itemId);
+    if(!miss) return;
+    this._pushUndoSnapshot();
+    const price = priceOverride != null && Number.isFinite(Number(priceOverride))
+      ? Number(priceOverride) : (Number(miss.item['Retail Price'])||0);
+    this.data.sales.push(this._stockSaleRow(miss.item, miss.gap, price, how === 'writeoff'));
+    // Counted stock is now the truth for this row, so the gap closes.
+    this._stockCheck().seen[itemId] = miss.found;
+    this.recalcAll(); this.renderAll(); this.markDirty();
+    this.renderStockCheck();
+    const nm = miss.item['Item Name'] || itemId;
+    this.showToast(how === 'writeoff'
+      ? `${miss.gap} × ${nm} written off`
+      : `${miss.gap} × ${nm} recorded as sold at ${fmtMoney(price)}`);
+  }
+
+  resolveAllMissingAsSold(){
+    const r = this.computeStockCheck();
+    if(!r.missing.length) return;
+    const total = r.missingRetail;
+    this._confirmDelete(
+      `Record all <strong>${r.missing.length} missing item${r.missing.length!==1?'s':''}</strong> as sold `
+      + `at their retail price — <strong>${fmtMoney(total)}</strong> in sales`
+      + `${this.activeShow ? ` against ${this._esc(this.activeShow)}` : ''}? `
+      + `Anything actually lost rather than sold should be written off individually instead.`,
+      ()=>{
+        this._pushUndoSnapshot();
+        const sc = this._stockCheck();
+        r.missing.forEach(m=>{
+          this.data.sales.push(this._stockSaleRow(m.item, m.gap, Number(m.item['Retail Price'])||0, false));
+          sc.seen[m.item['Item ID']] = m.found;
+        });
+        this.recalcAll(); this.renderAll(); this.markDirty();
+        this.renderStockCheck();
+        this.showToast(`${r.missing.length} missed sale${r.missing.length!==1?'s':''} recorded — ${fmtMoney(total)}`);
+      });
+  }
+
+  // Found more than the books say. Usually a sale entered that never happened, or stock that
+  // was never entered — both need a human, so this only points at it.
+  finishStockCheck(){
+    const r = this.computeStockCheck();
+    if(r.missing.length || r.extra.length){
+      this.showToast('Deal with the differences first, or leave them for later.');
+      return;
+    }
+    this._pushUndoSnapshot();
+    this.data.stockCheck = this.normalizeStockCheck(null);
+    this.markDirty();
+    this.renderStockCheckStart();
+    this.showToast('Stock check finished — the books match the box.');
+  }
+
+  // ---- rendering ----
+  renderStockCheckStart(){
+    const body = document.getElementById('sc-body');
+    if(!body) return;
+    document.getElementById('sc-head-sub').textContent = 'Count the box against the books';
+    const cats = [...new Set(this.data.inventory
+      .filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0)
+      .map(i=>String(i['Category']||'').trim()).filter(Boolean))].sort();
+    const total = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0).length;
+    body.innerHTML = `<div class="sc-start">`
+      + `<p class="sc-intro">Go through what you're actually holding and mark it off. Anything the `
+      + `books say you have but you can't find is almost always a sale that never got entered — `
+      + `at the end you can record those in one go, so your stock and your profit come back in line.</p>`
+      + `<div class="sc-start-label">What are you counting?</div>`
+      + `<div class="sc-scopes">`
+      + `<button type="button" class="sc-scope" data-sc-start="">Everything in stock`
+        + `<small>${total} item${total!==1?'s':''}</small></button>`
+      + cats.map(c=>{
+          const n = this.data.inventory.filter(i=>(Number(i['Remaining Inventory (auto)'])||0) > 0
+            && String(i['Category']||'') === c).length;
+          return `<button type="button" class="sc-scope" data-sc-start="${this._esc(c)}">${this._esc(c)}`
+            + `<small>${n} item${n!==1?'s':''}</small></button>`;
+        }).join('')
+      + `</div></div>`;
+    const foot = document.getElementById('sc-foot');
+    if(foot) foot.innerHTML = '';
+  }
+
+  renderStockCheck(){
+    const sc = this._stockCheck();
+    if(!sc.active){ this.renderStockCheckStart(); return; }
+    const body = document.getElementById('sc-body');
+    if(!body) return;
+    const r = this.computeStockCheck();
+    const n = v => Number(v)||0;
+    const q = String(this._scQuery||'').trim();
+
+    document.getElementById('sc-head-sub').textContent =
+      (sc.scope ? sc.scope : 'Everything in stock') + ' · started ' + (sc.startedAt||'today');
+
+    const pct = r.rows ? Math.round(((r.rows - r.unchecked.length) / r.rows) * 100) : 0;
+    const stat = (label, val, cls) =>
+      `<div class="sc-stat${cls?' '+cls:''}"><span>${label}</span><b>${val}</b></div>`;
+
+    let list = r.items;
+    if(q) list = this._matchInventory(list, q);
+    // Unchecked first — the list is a worklist, and what you have already done is not the job.
+    list = list.slice().sort((a,b)=>{
+      const sa = sc.seen[a['Item ID']] === undefined ? 0 : 1;
+      const sb = sc.seen[b['Item ID']] === undefined ? 0 : 1;
+      if(sa !== sb) return sa - sb;
+      return String(a['Item Name']||'').localeCompare(String(b['Item Name']||''));
+    });
+
+    body.innerHTML =
+      `<div class="sc-progress"><div class="sc-bar"><i style="width:${pct}%"></i></div>`
+      + `<div class="sc-stats">`
+        + stat('Checked', `${r.rows - r.unchecked.length} / ${r.rows}`)
+        + stat('Missing', r.missing.length, r.missing.length?'sc-bad':'')
+        + stat('More than expected', r.extra.length, r.extra.length?'sc-warn':'')
+      + `</div></div>`
+      + (r.missing.length ? this._scMissingPanel(r) : '')
+      + (r.extra.length ? this._scExtraPanel(r) : '')
+      + `<div class="sc-tools">`
+        + `<div class="qa-pick"><span class="qa-pick-icon" aria-hidden="true">&#128269;</span>`
+        + `<input type="search" id="sc-search" class="qa-pick-input" autocomplete="off"`
+        + ` placeholder="Find a card in this count&hellip;" value="${this._esc(q)}"></div>`
+        + `<button type="button" class="btn-sm" data-sc-scan title="Scan QR labels to tick cards off fast">&#128247; Scan</button>`
+      + `</div>`
+      + `<div class="sc-list">` + (list.length ? list.map(i=>{
+          const id = i['Item ID'];
+          const exp = n(i['Remaining Inventory (auto)']);
+          const got = sc.seen[id];
+          const state = got === undefined ? 'todo' : (got < exp ? 'short' : (got > exp ? 'over' : 'ok'));
+          return `<div class="sc-row sc-${state}" data-sc-item="${this._esc(id)}">`
+            + `<div class="sc-main"><div class="sc-name">${this._esc(i['Item Name']||id)}</div>`
+              + `<div class="sc-sub">${this._esc(i['SKU']||id)} &middot; ${fmtMoney(n(i['Retail Price']))}`
+              + ` &middot; books say ${exp}</div></div>`
+            + (got === undefined
+                ? `<div class="sc-acts">`
+                  + `<button type="button" class="btn-sm sc-yes" data-sc-all="${this._esc(id)}">Here</button>`
+                  + `<button type="button" class="btn-sm sc-no" data-sc-none="${this._esc(id)}">Not here</button>`
+                  + `</div>`
+                : `<div class="sc-acts sc-counter">`
+                  + `<button type="button" class="sc-step" data-sc-dec="${this._esc(id)}">&minus;</button>`
+                  + `<span class="sc-count">${got}</span>`
+                  + `<button type="button" class="sc-step" data-sc-inc="${this._esc(id)}">+</button>`
+                  + `<button type="button" class="sc-undo" data-sc-clear="${this._esc(id)}" title="Not counted yet">&times;</button>`
+                  + `</div>`)
+            + `</div>`;
+        }).join('') : `<div class="sc-empty">Nothing matches “${this._esc(q)}”.</div>`)
+      + `</div>`;
+
+    const foot = document.getElementById('sc-foot');
+    if(foot){
+      foot.innerHTML =
+        (r.unchecked.length
+          ? `<button type="button" class="btn-sm" data-sc-rest>Mark remaining ${r.unchecked.length} not here</button>`
+          : '')
+        + `<button type="button" class="btn-sm" data-sc-abandon>Discard count</button>`
+        + `<button type="button" class="qa-submit" data-sc-finish${(r.missing.length||r.extra.length)?' disabled':''}>`
+        + `${(r.missing.length||r.extra.length) ? 'Differences to settle' : 'Finish — books match'}</button>`;
+    }
+    const box = document.getElementById('sc-search');
+    if(box && this._scFocusSearch){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+    this._scFocusSearch = false;
+  }
+
+  _scMissingPanel(r){
+    return `<div class="sc-panel sc-panel-bad">`
+      + `<div class="sc-panel-h"><span>&#9888; ${r.missing.length} not in the box</span>`
+      + `<b>${fmtMoney(r.missingRetail)} at retail</b></div>`
+      + `<div class="sc-panel-note">${fmtMoney(r.missingCost)} of stock value your books are carrying `
+      + `that isn't there. If these sold and never got entered, recording them fixes both.</div>`
+      + r.missing.map(m=>{
+          const id = m.item['Item ID'];
+          return `<div class="sc-miss">`
+            + `<div class="sc-main"><div class="sc-name">${m.gap} × ${this._esc(m.item['Item Name']||id)}</div>`
+            + `<div class="sc-sub">${fmtMoney(Number(m.item['Retail Price'])||0)} each`
+            + ` &middot; found ${m.found} of ${m.expected}</div></div>`
+            + `<div class="sc-acts">`
+            + `<button type="button" class="btn-sm sc-yes" data-sc-sold="${this._esc(id)}">Sold</button>`
+            + `<button type="button" class="btn-sm" data-sc-writeoff="${this._esc(id)}">Lost</button>`
+            + `</div></div>`;
+        }).join('')
+      + `<button type="button" class="qa-submit sc-bulk" data-sc-sold-all>`
+      + `Record all ${r.missing.length} as sold — ${fmtMoney(r.missingRetail)}</button>`
+      + `</div>`;
+  }
+
+  _scExtraPanel(r){
+    return `<div class="sc-panel sc-panel-warn">`
+      + `<div class="sc-panel-h"><span>${r.extra.length} more than the books say</span></div>`
+      + `<div class="sc-panel-note">You're holding more of these than your records show. Usually a `
+      + `sale entered that didn't happen, or stock that was never entered. Worth a look on the `
+      + `Sales tab before you finish.</div>`
+      + r.extra.map(e=>`<div class="sc-miss"><div class="sc-main">`
+          + `<div class="sc-name">${this._esc(e.item['Item Name']||e.item['Item ID'])}</div>`
+          + `<div class="sc-sub">counted ${e.found}, books say ${e.expected}</div></div></div>`).join('')
+      + `</div>`;
+  }
+
   // ---------------- Price Check ----------------
   //
   // Scan a printed label and read back what the card sells for. Deliberately changes nothing —
@@ -7668,6 +8163,44 @@ class Dashboard {
   }
 
   _handleScanResult(text){
+    // Stock check: tick the card off and stay open for the next one.
+    if(this._scanStockCheck){
+      const parsed = this._parseScannedLabel(text);
+      const matches = this._resolveScanToItem(parsed);
+      if(matches.length === 1){
+        const item = matches[0];
+        const inScope = this._stockCheckItems().some(i=>i['Item ID']===item['Item ID']);
+        if(!inScope){
+          // Scanning something the count does not cover is worth saying out loud — otherwise a
+          // card silently fails to tick and you find out at the end.
+          this._flashScanFrame('warn');
+          if(navigator.vibrate) navigator.vibrate([70,60,70]);
+          this._setScanStatus(`${item['Item Name']||item['SKU']} isn't in this count`
+            + `${this._stockCheck().scope ? ` (${this._stockCheck().scope} only)` : ' — it has no stock on the books'}.`);
+        } else {
+          const now = this.markStockSeen(item['Item ID'], 1);
+          const exp = Number(item['Remaining Inventory (auto)'])||0;
+          if(now > exp){
+            this._flashScanFrame('miss');
+            if(navigator.vibrate) navigator.vibrate([90,60,90]);
+            this._setScanStatus(`${item['Item Name']||item['SKU']} — counted ${now}, books say ${exp}. Double scan?`);
+          } else {
+            this._flashScanFrame('hit');
+            if(navigator.vibrate) navigator.vibrate(60);
+            this._setScanStatus(`${item['Item Name']||item['SKU']} — ${now} of ${exp}`);
+          }
+        }
+      } else if(matches.length === 0){
+        this._flashScanFrame('miss');
+        this._setScanStatus(`No item found for “${parsed.sku}”`);
+      } else {
+        this._flashScanFrame('warn');
+        this._setScanStatus(`${matches.length} cards share SKU ${parsed.sku} — tick that one off by hand.`);
+      }
+      clearTimeout(this._scanRearm);
+      this._scanRearm = setTimeout(()=>{ if(this._scanRunning) this._scanTick(); }, 900);
+      return;
+    }
     // Price check: show the card's live figures and keep the camera running for the next one.
     if(this._scanPriceCheck){
       const parsed = this._parseScannedLabel(text);
@@ -7798,6 +8331,14 @@ class Dashboard {
       if(title) title.textContent = 'Scan QR label';
       const card = document.getElementById('price-card');
       if(card){ card.classList.add('hidden'); card.innerHTML = ''; }
+    }
+    if(this._scanStockCheck){
+      this._scanStockCheck = false;
+      const cancelBtn = document.getElementById('scan-cancel');
+      if(cancelBtn) cancelBtn.textContent = 'Cancel';
+      const title = document.querySelector('.scan-title');
+      if(title) title.textContent = 'Scan QR label';
+      this.renderStockCheck();
     }
     if(this._scanStream){ this._scanStream.getTracks().forEach(t=>t.stop()); this._scanStream = null; }
     const video = document.getElementById('scan-video');
