@@ -919,6 +919,27 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   .ua-acts { width:100%; }
   .ua-acts .btn-sm { flex:1; min-width:70px; }
 }
+/* ---- NIIMBOT label picker ---- */
+.lp-list { border:1px solid var(--border); border-radius:10px; max-height:32vh; overflow-y:auto; margin-bottom:14px; }
+.lp-chosen { max-height:28vh; }
+.lp-row { display:flex; align-items:center; gap:8px; border-top:1px solid var(--border); padding-right:10px; }
+.lp-row:first-child { border-top:none; }
+.lp-row.lp-on { background:#f2faf5; }
+.lp-hit { flex:1; min-width:0; display:flex; align-items:center; gap:10px; padding:9px 12px; background:none; border:0; text-align:left; cursor:pointer; font-family:inherit; color:var(--text-primary); }
+.lp-check { flex:none; width:20px; height:20px; border:1.5px solid var(--border); border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; color:#2e7d4f; background:var(--surface); }
+.lp-row.lp-on .lp-check { border-color:#2e7d4f; }
+.lp-main { min-width:0; }
+.lp-sku { display:inline-block; font-size:11px; font-weight:800; letter-spacing:.02em; background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:1px 6px; margin-bottom:3px; }
+.lp-name { display:block; font-size:13.5px; font-weight:600; overflow-wrap:anywhere; }
+.lp-meta { display:block; font-size:11px; color:var(--text-secondary); margin-top:2px; overflow-wrap:anywhere; }
+.lp-qty { flex:none; display:flex; align-items:center; gap:5px; }
+.lp-qty b { min-width:20px; text-align:center; font-size:14px; }
+.lp-chosen-h { display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); margin-bottom:8px; }
+.lp-chosen-h b { font-size:13px; text-transform:none; letter-spacing:0; color:var(--text-primary); }
+@media (max-width:560px){
+  .lp-list { max-height:30vh; }
+  .lp-hit { padding:9px 10px; }
+}
 /* ---- Stock Check ---- */
 .qa-modal-wide { max-width:720px; }
 .qa-modal-sub { font-size:12px; color:var(--text-secondary); margin-top:3px; }
@@ -1434,6 +1455,19 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
     </div>
   </div>
 
+  <!-- Label picker: find cards by the number printed on them and build a NIIMBOT sheet from
+       exactly those. The basket is in memory only - a staging area for one export. -->
+  <div class="qa-overlay hidden" id="label-pick-overlay">
+    <div class="qa-modal qa-modal-wide">
+      <div class="qa-modal-head">
+        <div><h2>NIIMBOT Labels</h2><div class="qa-modal-sub">Pick cards by number, then export the sheet</div></div>
+        <button type="button" class="qa-close" id="lp-close" title="Close">&times;</button>
+      </div>
+      <div id="lp-body"></div>
+      <div class="sc-foot" id="lp-foot"></div>
+    </div>
+  </div>
+
   <!-- Stock Check: count the box against the books, then turn the gap into the sales that were
        missed on the day. Progress is saved, so a locked phone mid-count loses nothing. -->
   <div class="qa-overlay hidden" id="stock-check-overlay">
@@ -1939,7 +1973,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button class="btn-sm" id="stock-check-btn" title="Count what's physically in the box against what your books say, and turn anything missing into the sales that were never entered.">&#9989; Stock Check</button>
           <button class="btn-sm" id="inv-date-btn" title="Stamp a purchase date onto many cards at once — needed before the app can value your stock at any past date.">&#128197; Set Purchase Date</button>
           <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
-          <button class="btn-sm" id="inv-labels-btn" title="Export the cards currently listed as a NIIMBOT label sheet (.xlsx) — Item Name, Cost, Price, SKU and finished QR text.">&#127991;&#65039; NIIMBOT Labels</button>
+          <button class="btn-sm" id="inv-labels-btn" title="Pick cards by their card number (SKU) and export just those as a NIIMBOT label sheet (.xlsx) — Item Name, Cost, Price, SKU and finished QR text.">&#127991;&#65039; NIIMBOT Labels</button>
           <button class="btn-sm btn-add" data-addrow data-table="inventory">+ Add Item</button>
           <div data-sku-lookup-slot="inventory"></div>
         </div>
@@ -2214,7 +2248,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v119</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v120</strong>
   </footer>
 </div>
 
@@ -2665,7 +2699,17 @@ class Dashboard {
       if(sp){ this.pickSaleItem(sp.dataset.salePick); return; }
       if(e.target.closest('#qa-sale-search-clear')){ this.clearSalePicker(); return; }
       if(e.target.closest('#inv-show-all')){ this.showAllInventory = true; this.renderInventory(); return; }
-      if(e.target.closest('#inv-labels-btn')){ this.exportNiimbotLabels(); return; }
+      if(e.target.closest('#inv-labels-btn')){ this.openLabelPicker(); return; }
+      const lpT = e.target.closest('[data-lp-toggle]');
+      if(lpT){ this.toggleLabelPick(lpT.dataset.lpToggle); return; }
+      const lpI = e.target.closest('[data-lp-inc]');
+      if(lpI){ this.setLabelQty(lpI.dataset.lpInc, 1); return; }
+      const lpD = e.target.closest('[data-lp-dec]');
+      if(lpD){ this.setLabelQty(lpD.dataset.lpDec, -1); return; }
+      if(e.target.closest('[data-lp-add-matching]')){ this.labelPickAddMatching(); return; }
+      if(e.target.closest('[data-lp-view]')){ this.labelPickAddCurrentView(); return; }
+      if(e.target.closest('[data-lp-clear]')){ this.labelPickClear(); return; }
+      if(e.target.closest('[data-lp-export]')){ this.exportPickedLabels(); return; }
       if(e.target.closest('#inv-date-btn')){ this.openDateSet(); return; }
       if(e.target.closest('#dateset-close')){ this.closeDateSet(); return; }
       if(e.target.id === 'dateset-overlay'){ this.closeDateSet(); return; }
@@ -2821,6 +2865,12 @@ class Dashboard {
     document.getElementById('data-health-btn').addEventListener('click', ()=>this.openDataAudit());
     const scBtn = document.getElementById('stock-check-btn');
     if(scBtn) scBtn.addEventListener('click', ()=>this.openStockCheck());
+    const lpCloseBtn = document.getElementById('lp-close');
+    if(lpCloseBtn) lpCloseBtn.addEventListener('click', ()=>this.closeLabelPicker());
+    const lpOverlay = document.getElementById('label-pick-overlay');
+    if(lpOverlay) lpOverlay.addEventListener('click', (ev)=>{
+      if(ev.target.id === 'label-pick-overlay') this.closeLabelPicker();
+    });
     const scCloseBtn = document.getElementById('sc-close');
     if(scCloseBtn) scCloseBtn.addEventListener('click', ()=>this.closeStockCheck());
     const scOverlay = document.getElementById('stock-check-overlay');
@@ -2829,6 +2879,11 @@ class Dashboard {
     });
     // Typing in the count's search box re-renders the list; the flag puts the caret back.
     document.addEventListener('input', (ev)=>{
+      if(ev.target && ev.target.id === 'lp-search'){
+        this._lpFocus = true;
+        this.renderLabelPicker(ev.target.value);
+        return;
+      }
       if(ev.target && ev.target.id === 'sc-search'){
         this._scQuery = ev.target.value;
         this._scFocusSearch = true;
@@ -9948,14 +10003,25 @@ class Dashboard {
 
   // One label per card still in stock, taken from whatever the Inventory tab is currently
   // showing — you label a binder at a time, so the search box and filters are the selection.
-  _niimbotRows(){
+  // Cards eligible for a label: anything actually in the case. Sold-out rows are dropped
+  // whatever the "Show sold-out" toggle says — there is nothing to stick a label on.
+  _labelCandidates(){
+    return this.data.inventory.filter(i => (Number(i['Remaining Inventory (auto)'])||0) > 0);
+  }
+
+  // Pass an explicit list to label exactly those; pass nothing and it falls back to whatever
+  // the Inventory tab is currently filtered to, which is how the old one-tap export behaved.
+  _niimbotRows(items){
     const n = v => Number(v)||0;
-    // Rebuilt through the same search → column-filter pipeline the tab renders with, because
-    // renderInventory keeps that list to itself. Sold-out cards are dropped whatever the
-    // "Show sold-out" toggle says — there is nothing in the case to put a label on.
-    const inStock = this.data.inventory.filter(i => n(i['Remaining Inventory (auto)']) > 0);
-    const searched = this._applyInventorySearch(inStock);
-    const visible = this._applyTableFilter('inventory', this._visibleColumns('inventory'), searched);
+    let visible;
+    if(Array.isArray(items)){
+      visible = items;
+    } else {
+      // Rebuilt through the same search → column-filter pipeline the tab renders with, because
+      // renderInventory keeps that list to itself.
+      const searched = this._applyInventorySearch(this._labelCandidates());
+      visible = this._applyTableFilter('inventory', this._visibleColumns('inventory'), searched);
+    }
     return visible
       .map(i => {
         const name = String(i['Item Name']||'').trim() || 'Unnamed card';
@@ -10071,12 +10137,168 @@ class Dashboard {
     return new Blob([...parts, ...central, new Uint8Array(end.buffer)], {type:mime});
   }
 
+  // ---------------- Label picker ----------------
+  //
+  // Printing a label sheet is rarely "everything in stock". It is the handful of cards just
+  // bought, or a set being re-sleeved — found by the number printed on the card, which is the
+  // SKU. The old export took whatever the Inventory tab happened to be filtered to, so picking
+  // a specific few meant building a search that matched exactly those and nothing else.
+  //
+  // The basket lives in memory only: it is a staging area for one export, not a record, and
+  // nothing about it belongs in the saved books.
+  openLabelPicker(){
+    if(!this.labelPick) this.labelPick = {};
+    this._labelQuery = '';
+    this.renderLabelPicker();
+    document.getElementById('label-pick-overlay').classList.remove('hidden');
+    setTimeout(()=>{ const b=document.getElementById('lp-search'); if(b) b.focus(); }, 40);
+  }
+
+  closeLabelPicker(){
+    document.getElementById('label-pick-overlay').classList.add('hidden');
+  }
+
+  _labelPick(){ if(!this.labelPick) this.labelPick = {}; return this.labelPick; }
+
+  toggleLabelPick(itemId){
+    const pick = this._labelPick();
+    if(pick[itemId]){ delete pick[itemId]; this.renderLabelPicker(); return; }
+    // Only pick something that is actually in the case — a card deleted or sold out while the
+    // picker sat open must not slip onto the sheet.
+    if(!this._labelCandidates().some(i=>i['Item ID']===itemId)) return;
+    pick[itemId] = 1;
+    this.renderLabelPicker();
+  }
+
+  // How many labels to print for one card. One is the common case even when you hold three,
+  // because the label goes on the sleeve you are putting out.
+  setLabelQty(itemId, delta){
+    const pick = this._labelPick();
+    if(!pick[itemId]) return;
+    pick[itemId] = Math.max(1, Math.min(99, (Number(pick[itemId])||1) + Number(delta||0)));
+    this.renderLabelPicker();
+  }
+
+  labelPickAddMatching(){
+    const q = String(this._labelQuery||'').trim();
+    const rows = this._matchInventory(this._labelCandidates(), q);
+    if(!rows.length){ this.showToast('Nothing matches that.'); return; }
+    const pick = this._labelPick();
+    let added = 0;
+    rows.forEach(i=>{ if(!pick[i['Item ID']]){ pick[i['Item ID']] = 1; added++; } });
+    this.renderLabelPicker();
+    this.showToast(added ? `${added} card${added!==1?'s':''} added.` : 'Those are already in the sheet.');
+  }
+
+  labelPickClear(){
+    this.labelPick = {};
+    this.renderLabelPicker();
+  }
+
+  renderLabelPicker(query){
+    const body = document.getElementById('lp-body');
+    if(!body) return;
+    if(query != null) this._labelQuery = query;
+    const q = String(this._labelQuery||'').trim();
+    const pick = this._labelPick();
+    const all = this._labelCandidates();
+    const matches = q ? this._matchInventory(all, q) : [];
+    const chosen = all.filter(i=>pick[i['Item ID']]);
+    const sheetCount = chosen.reduce((a,i)=>a + (Number(pick[i['Item ID']])||1), 0);
+    const n = v => Number(v)||0;
+
+    const row = (i, picked) => {
+      const id = i['Item ID'];
+      const sku = String(i['SKU']||'').trim() || id;
+      const qty = Number(pick[id])||1;
+      return `<div class="lp-row${picked?' lp-on':''}">`
+        + `<button type="button" class="lp-hit" data-lp-toggle="${this._esc(id)}">`
+          + `<span class="lp-check" aria-hidden="true">${picked?'&#10003;':''}</span>`
+          + `<span class="lp-main"><span class="lp-sku">${this._esc(sku)}</span>`
+          + `<span class="lp-name">${this._esc(i['Item Name']||id)}</span>`
+          + `<span class="lp-meta">cost ${fmtMoney(n(i['Cost']))} &middot; sells ${fmtMoney(Math.ceil(n(i['Retail Price'])))}`
+          + ` &middot; ${n(i['Remaining Inventory (auto)'])} in stock</span></span></button>`
+        + (picked
+            ? `<span class="lp-qty">`
+              + `<button type="button" class="sc-step" data-lp-dec="${this._esc(id)}">&minus;</button>`
+              + `<b>${qty}</b>`
+              + `<button type="button" class="sc-step" data-lp-inc="${this._esc(id)}">+</button>`
+              + `</span>`
+            : '')
+        + `</div>`;
+    };
+
+    body.innerHTML =
+      `<p class="sc-intro">Search by the card number printed on the card — or its name — and tick `
+      + `what you want on the sheet. Only what you pick is exported.</p>`
+      + `<div class="sc-tools">`
+        + `<div class="qa-pick"><span class="qa-pick-icon" aria-hidden="true">&#128269;</span>`
+        + `<input type="search" id="lp-search" class="qa-pick-input" autocomplete="off"`
+        + ` placeholder="SKU or name&hellip; e.g. OP06-021" value="${this._esc(q)}"></div>`
+        + (q ? `<button type="button" class="btn-sm" data-lp-add-matching>Add all ${matches.length}</button>` : '')
+      + `</div>`
+      + (q
+          ? `<div class="lp-list">` + (matches.length
+              ? matches.slice(0,60).map(i=>row(i, !!pick[i['Item ID']])).join('')
+                + (matches.length>60 ? `<div class="sc-empty">…and ${matches.length-60} more — narrow the search.</div>` : '')
+              : `<div class="sc-empty">No card in stock matches “${this._esc(q)}”.</div>`)
+            + `</div>`
+          : `<div class="sc-empty">Start typing a card number to find cards.</div>`)
+      + `<div class="lp-chosen-h">On the sheet`
+        + `<b>${sheetCount} label${sheetCount!==1?'s':''} &middot; ${chosen.length} card${chosen.length!==1?'s':''}</b></div>`
+      + (chosen.length
+          ? `<div class="lp-list lp-chosen">` + chosen.map(i=>row(i, true)).join('') + `</div>`
+          : `<div class="sc-empty">Nothing picked yet.</div>`);
+
+    const foot = document.getElementById('lp-foot');
+    if(foot){
+      foot.innerHTML =
+        `<button type="button" class="btn-sm" data-lp-view>Add everything in the Inventory view</button>`
+        + (chosen.length ? `<button type="button" class="btn-sm" data-lp-clear>Clear</button>` : '')
+        + `<button type="button" class="qa-submit" data-lp-export${chosen.length?'':' disabled'}>`
+        + `${chosen.length ? `Export ${sheetCount} label${sheetCount!==1?'s':''}` : 'Pick some cards first'}</button>`;
+    }
+    const box = document.getElementById('lp-search');
+    if(box && this._lpFocus){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+    this._lpFocus = false;
+  }
+
+  // The old behaviour, kept reachable: everything the Inventory tab is currently showing.
+  labelPickAddCurrentView(){
+    const searched = this._applyInventorySearch(this._labelCandidates());
+    const visible = this._applyTableFilter('inventory', this._visibleColumns('inventory'), searched);
+    if(!visible.length){ this.showToast('Nothing in stock in the current Inventory view.'); return; }
+    const pick = this._labelPick();
+    let added = 0;
+    visible.forEach(i=>{ if(!pick[i['Item ID']]){ pick[i['Item ID']] = 1; added++; } });
+    this.renderLabelPicker();
+    this.showToast(`${added} card${added!==1?'s':''} added from the Inventory view.`);
+  }
+
+  exportPickedLabels(){
+    const pick = this._labelPick();
+    const chosen = this._labelCandidates().filter(i=>pick[i['Item ID']]);
+    if(!chosen.length){ this.showToast('Pick some cards first.'); return; }
+    // One spreadsheet row per label, so a card set to 3 prints three times.
+    const expanded = [];
+    chosen.forEach(i=>{
+      const q = Math.max(1, Number(pick[i['Item ID']])||1);
+      for(let k=0;k<q;k++) expanded.push(i);
+    });
+    this.closeLabelPicker();
+    this._writeLabelSheet(this._niimbotRows(expanded));
+  }
+
   exportNiimbotLabels(){
     const rows = this._niimbotRows();
     if(!rows.length){
       this.showToast('Nothing to label — no cards in stock in the current view.');
       return;
     }
+    this._writeLabelSheet(rows);
+  }
+
+  _writeLabelSheet(rows){
     const blob = this._xlsxBlob('Labels',
       ['Item Name','Cost','Price','SKU','QR Code Data'],
       rows.map(r=>[r.name, r.cost, r.price, r.sku, r.qr]));
