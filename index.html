@@ -954,6 +954,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 .sc-main { flex:1; min-width:0; }
 .sc-name { font-size:13.5px; font-weight:600; overflow-wrap:anywhere; }
 .sc-sub { font-size:11.5px; color:var(--text-secondary); margin-top:2px; overflow-wrap:anywhere; }
+.sc-sub b { color:var(--text-primary); font-weight:700; }
 .sc-acts { display:flex; gap:6px; align-items:center; flex:none; }
 .sc-yes { background:#2e7d4f; color:#fff; border-color:#2e7d4f; }
 .sc-no { background:var(--surface); }
@@ -2213,7 +2214,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v118</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v119</strong>
   </footer>
 </div>
 
@@ -2285,7 +2286,13 @@ function round2(v){ return Math.round(((Number(v)||0) + Number.EPSILON) * 100) /
 function fmtMoney(v){
   const n = Number(v)||0;
   const sign = n<0 ? '-' : '';
-  return sign + '$' + Math.abs(n).toLocaleString(undefined,{maximumFractionDigits:2});
+  const abs = Math.abs(n);
+  // Whole dollars stay clean ($100, not $100.00) — most figures here are round, and cents on
+  // every KPI is noise. But anything with a fraction gets both digits: a cost of 1250.5 is
+  // $1,250.50, never $1,250.5.
+  const cents = Math.round(abs * 100) % 100 !== 0;
+  return sign + '$' + abs.toLocaleString(undefined,
+    { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: 2 });
 }
 function fmtNum(v){ return Number(v||0).toLocaleString(); }
 function fmtAxis(v){ const n=Math.round(Number(v)||0); const sign=n<0?'-':''; return sign+'$'+Math.abs(n).toLocaleString(); }
@@ -8530,7 +8537,9 @@ class Dashboard {
           const state = got === undefined ? 'todo' : (got < exp ? 'short' : (got > exp ? 'over' : 'ok'));
           return `<div class="sc-row sc-${state}" data-sc-item="${this._esc(id)}">`
             + `<div class="sc-main"><div class="sc-name">${this._esc(i['Item Name']||id)}</div>`
-              + `<div class="sc-sub">${this._esc(i['SKU']||id)} &middot; ${fmtMoney(n(i['Retail Price']))}`
+              + `<div class="sc-sub">${this._esc(i['SKU']||id)}`
+              + ` &middot; cost <b>${fmtMoney(n(i['Cost']))}</b>`
+              + ` &middot; sells ${fmtMoney(n(i['Retail Price']))}`
               + ` &middot; books say ${exp}</div></div>`
             + (got === undefined
                 ? `<div class="sc-acts">`
@@ -8574,7 +8583,8 @@ class Dashboard {
           const id = m.item['Item ID'];
           return `<div class="sc-miss">`
             + `<div class="sc-main"><div class="sc-name">${m.gap} × ${this._esc(m.item['Item Name']||id)}</div>`
-            + `<div class="sc-sub">${fmtMoney(Number(m.item['Retail Price'])||0)} each`
+            + `<div class="sc-sub">cost <b>${fmtMoney(Number(m.item['Cost'])||0)}</b> each`
+            + ` &middot; sells ${fmtMoney(Number(m.item['Retail Price'])||0)} each`
             + ` &middot; found ${m.found} of ${m.expected}</div></div>`
             + `<div class="sc-acts">`
             + `<button type="button" class="btn-sm sc-yes" data-sc-sold="${this._esc(id)}">Sold</button>`
