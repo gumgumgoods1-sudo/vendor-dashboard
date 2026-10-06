@@ -2248,7 +2248,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v120</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v121</strong>
   </footer>
 </div>
 
@@ -8062,6 +8062,11 @@ class Dashboard {
     const qty = Number(sale['Quantity Sold'])||0;
     const name = (item && item['Item Name']) || sale['Item ID'] || 'item';
     this._pushUndoSnapshot();
+    // Record the deletion before dropping the row. Saving union-merges local rows over the
+    // cloud copy, so a row deleted here with no tombstone is simply re-added from the cloud on
+    // the next sync — it disappears, then comes straight back. Every other delete in the app
+    // tombstones; this one did not, which is exactly how that looked.
+    this._tombstone('sales', sale);
     this.data.sales.splice(idx, 1);
     this.recalcAll(); this.renderAll(); this.markDirty();
     const back = Number(item && item['Remaining Inventory (auto)'])||0;
