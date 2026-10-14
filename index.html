@@ -726,8 +726,8 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
   /* Equal widths again now there are five: each label fits its share, and equal targets are
      more predictable to aim at than ones that vary with how long a word happens to be.
      min-height 52 keeps every target comfortably past the 44pt guideline. */
-  .bottom-nav .tab-btn { min-width:0; min-height:46px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:5px 1px; font-size:9.5px; font-weight:700; letter-spacing:-0.2px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .bottom-nav .tab-btn .nav-ico { width:21px; height:21px; display:block; }
+  .bottom-nav .tab-btn { min-width:0; min-height:54px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:6px 1px; font-size:10px; font-weight:700; letter-spacing:-0.2px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bottom-nav .tab-btn .nav-ico { width:27px; height:27px; display:block; }
   .bottom-nav .tab-btn.active { background:var(--bg-header); color:#fff; box-shadow:none; }
   /* Slide it away while you scroll down into content, bring it straight back on any scroll up. */
   .bottom-nav.nav-hidden { transform:translateY(calc(100% + 8px)); }
@@ -755,11 +755,11 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
   /* Two rows cost real height, and on a short screen that is a bigger share of it. Trim the
      rows rather than let the bar take a third of the display. */
   @media (max-height:640px){ .bottom-nav .tab-btn { min-height:40px; font-size:9px; gap:1px; padding:4px 0; }
-    .bottom-nav .tab-btn .nav-ico { width:18px; height:18px; } }
+    .bottom-nav .tab-btn .nav-ico { width:23px; height:23px; } }
   /* Narrow phones. The padding here dates from the single-row, text-only bar; with icons
      stacked it has to stay tight or it fights the short-screen rule above. */
   @media (max-width:339px){ .bottom-nav .tab-btn { font-size:8.5px; letter-spacing:-0.4px; padding:4px 0; }
-    .bottom-nav .tab-btn .nav-ico { width:17px; height:17px; } }
+    .bottom-nav .tab-btn .nav-ico { width:22px; height:22px; } }
 
   /* ---------- Card-list view for the 5 editable data tables ---------- */
   /* Scoped to .table-cards (not every .data-table) so the small read-only summary tables
@@ -1428,7 +1428,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <div class="qa-field"><label>SKU <span class="req-mark">*</span></label>
             <div class="qa-sku-scan-row">
               <input type="text" name="SKU" required>
-              <button type="button" class="sku-scan-btn" data-scan-fill title="Scan the item's printed QR label to fill in the SKU">&#128247;</button>
+              <button type="button" class="sku-scan-btn" data-scan-fill title="Scan the item's printed QR label to fill in the SKU"><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-camera"></use></svg></button>
             </div>
             <div class="qa-sku-msg" data-qa-sku-msg></div>
           </div>
@@ -1509,7 +1509,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
        or autosave/cloud sync; the running list lives only in memory for the current page load. -->
   <button class="fab fab-calc" id="calc-fab" title="Buy &amp; Trade Calculator">&#128290;</button>
   <button class="fab fab-price" id="price-fab" data-price-check title="Price check — scan a label to see what a card sells for. Nothing is recorded.">&#128176;</button>
-  <button class="fab fab-photo" id="photo-fab" title="Take a photo with your phone's camera">&#128247;</button>
+  <button class="fab fab-photo" id="photo-fab" title="Take a photo with your phone's camera"><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-camera"></use></svg></button>
   <!-- capture= hands straight to the phone's own camera UI rather than a viewfinder drawn in
        the page. iOS gives you the real Camera controls; the picture comes back here. -->
   <input type="file" id="native-cam" accept="image/*" capture="environment" style="display:none">
@@ -1975,7 +1975,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button class="btn-sm btn-add" data-addrow data-table="cashflow">+ Add Show</button>
         </div>
         <div class="mobile-table-controls">
-          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <button type="button" class="btn-sm" data-mobile-filter-toggle><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Filters</button>
           <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-cashflow" data-mobile-sort-open data-table="cashflow">&#8645; Sort</button>
         </div>
       </div>
@@ -2068,7 +2068,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <div data-sku-lookup-slot="inventory"></div>
         </div>
         <div class="mobile-table-controls">
-          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <button type="button" class="btn-sm" data-mobile-filter-toggle><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Filters</button>
           <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-inventory" data-mobile-sort-open data-table="inventory">&#8645; Sort</button>
         </div>
       </div>
@@ -2176,7 +2176,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button class="btn-sm btn-add" data-addrow data-table="sales">+ Add Sale</button>
         </div>
         <div class="mobile-table-controls">
-          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <button type="button" class="btn-sm" data-mobile-filter-toggle><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Filters</button>
           <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-sales" data-mobile-sort-open data-table="sales">&#8645; Sort</button>
         </div>
         <div class="pager">
@@ -2230,7 +2230,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button class="btn-sm btn-add" data-addrow data-table="trades">+ Add Trade</button>
         </div>
         <div class="mobile-table-controls">
-          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <button type="button" class="btn-sm" data-mobile-filter-toggle><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Filters</button>
           <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-trades" data-mobile-sort-open data-table="trades">&#8645; Sort</button>
         </div>
       </div>
@@ -2284,7 +2284,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
           <button class="btn-sm btn-add" data-addrow data-table="expenses">+ Add Expense</button>
         </div>
         <div class="mobile-table-controls">
-          <button type="button" class="btn-sm" data-mobile-filter-toggle>&#128269; Filters</button>
+          <button type="button" class="btn-sm" data-mobile-filter-toggle><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Filters</button>
           <button type="button" class="btn-sm mobile-sort-btn" id="mobile-sort-expenses" data-mobile-sort-open data-table="expenses">&#8645; Sort</button>
         </div>
       </div>
@@ -2338,7 +2338,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v123</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v124</strong>
   </footer>
 </div>
 
@@ -2721,7 +2721,7 @@ class Dashboard {
     window.addEventListener('resize', measure);
     window.addEventListener('orientationchange', ()=>setTimeout(measure, 250));
 
-    let last = window.scrollY, ticking = false;
+    let last = window.scrollY, ticking = false, idle = null;
     const apply = () => {
       ticking = false;
       const y = Math.max(0, window.scrollY);
@@ -2730,18 +2730,27 @@ class Dashboard {
       // A dead zone stops the bar flickering on the small jitters that come from scroll momentum
       // and from tapping into an input, which nudges the page.
       if(Math.abs(delta) < 8) return;
-      // Never hide near the top or at the very bottom: those are the two places you are most
-      // likely to want to switch tabs.
-      const hide = delta > 0 && y > 120 && !atBottom;
+      // Out of the way whichever direction you are going. Hiding only on the way down left the
+      // bar sitting over the list for the whole scroll back up, which is exactly when you are
+      // reading it. Near the top and at the very bottom it stays put: those are the two places
+      // you are most likely to be reaching for a tab.
+      const hide = y > 120 && !atBottom;
       nav.classList.toggle('nav-hidden', hide);
       document.body.classList.toggle('nav-tucked', hide);
       last = y;
+      // Scrolling is a moment, not a mode — once you stop, the bar comes straight back.
+      clearTimeout(idle);
+      if(hide) idle = setTimeout(()=>{
+        nav.classList.remove('nav-hidden');
+        document.body.classList.remove('nav-tucked');
+      }, 420);
     };
     window.addEventListener('scroll', ()=>{
       if(!ticking){ ticking = true; requestAnimationFrame(apply); }
     }, {passive:true});
     // Switching tabs scrolls you back up; the bar must be there when you arrive.
     this._revealBottomNav = () => {
+      clearTimeout(idle);
       nav.classList.remove('nav-hidden');
       document.body.classList.remove('nav-tucked');
       last = window.scrollY;
@@ -7106,9 +7115,9 @@ class Dashboard {
   // markup, keyed only by a `location` string (e.g. 'qa-sales', 'modal-trades', 'inventory') so
   // handleSkuLookupEnter() below knows which match/no-match behavior to run.
   _skuLookupBoxHtml(location){
-    return `<span class="sku-lookup-icon" aria-hidden="true">&#128269;</span>`
+    return `<span class="sku-lookup-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>`
       + `<input type="text" class="sku-lookup-input" data-sku-lookup="${this._esc(location)}" placeholder="Scan or type SKU" autocomplete="off">`
-      + `<button type="button" class="sku-scan-btn" data-scan-btn title="Scan a QR label with the camera">&#128247;</button>`
+      + `<button type="button" class="sku-scan-btn" data-scan-btn title="Scan a QR label with the camera"><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-camera"></use></svg></button>`
       + `<span class="sku-lookup-msg" data-sku-lookup-msg></span>`
       + `<div class="sku-suggestions hidden" data-sku-suggestions></div>`;
   }
@@ -8678,7 +8687,7 @@ class Dashboard {
         + `<div class="qa-pick"><span class="qa-pick-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>`
         + `<input type="search" id="sc-search" class="qa-pick-input" autocomplete="off"`
         + ` placeholder="Find a card in this count&hellip;" value="${this._esc(q)}"></div>`
-        + `<button type="button" class="btn-sm" data-sc-scan title="Scan QR labels to tick cards off fast">&#128247; Scan</button>`
+        + `<button type="button" class="btn-sm" data-sc-scan title="Scan QR labels to tick cards off fast"><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-camera"></use></svg> Scan</button>`
       + `</div>`
       + `<div class="sc-list">` + (list.length ? list.map(i=>{
           const id = i['Item ID'];
