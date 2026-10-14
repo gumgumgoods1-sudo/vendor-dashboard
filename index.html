@@ -121,6 +121,20 @@ body {
 .tools-toggle { display:none; align-items:center; gap:6px; border:1px solid var(--border-subtle); background:var(--bg-inset); color:var(--text-primary); font-family:inherit; font-size:13px; font-weight:700; border-radius:10px; padding:9px 13px; cursor:pointer; }
 .tools-toggle .tools-caret { transition:transform .15s; font-size:11px; color:var(--text-muted); }
 .session-bar.tools-open .tools-toggle .tools-caret { transform:rotate(180deg); }
+.more-menu { position:relative; display:inline-block; }
+.more-menu > summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
+.more-menu > summary::-webkit-details-marker { display:none; }
+.more-menu[open] > summary { background:var(--bg-header); color:#fff; border-color:var(--bg-header); }
+/* A closed <details> normally hides its own content, but position:fixed (used for the phone
+   layout below) escapes that containment and the panel renders anyway - invisible, yet sitting
+   on top of the toolbar and swallowing taps. Hide it explicitly instead of relying on the UA. */
+.more-menu:not([open]) .more-panel { display:none; }
+.more-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:60; display:flex; flex-direction:column; gap:7px; align-items:stretch; min-width:210px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:12px; padding:10px; box-shadow:var(--shadow-md); }
+.more-panel .btn-sm { width:100%; justify-content:flex-start; text-align:left; }
+.more-panel .col-toggle-wrap { width:100%; }
+@media (max-width:768px){
+  .more-panel { position:fixed; left:12px; right:12px; top:auto; bottom:calc(var(--nav-h, 106px) + 14px); min-width:0; }
+}
 .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(0); background:var(--bg-header); color:#fff; padding:12px 22px; border-radius:99px; font-size:13px; box-shadow:var(--shadow-md); z-index:1000; transition:opacity .25s, transform .25s; opacity:1; border:1px solid rgba(255,255,255,0.12); }
 .toast.hidden { opacity:0; transform:translateX(-50%) translateY(10px); pointer-events:none; }
 
@@ -649,11 +663,13 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
 .dashboard-footer { text-align:center; font-size:12px; color:var(--text-muted); padding:18px 0 6px; }
 
 @media (max-width:768px) {
-  .dashboard-header { flex-direction:row; align-items:center; padding:12px 15px; margin-bottom:10px; }
-  .header-logo { height:44px; width:auto; }
-  .header-brand { gap:11px; }
-  .dashboard-header h1 { font-size:16px; line-height:1.2; }
-  .dashboard-header p { font-size:11.5px; margin-top:2px; }
+  /* The brand bar is the one thing on screen that never tells you anything you need. It keeps
+     its identity and loses its bulk: the subtitle goes, the logo halves, the title fits one line. */
+  .dashboard-header { flex-direction:row; align-items:center; padding:8px 13px; margin-bottom:8px; border-radius:14px; }
+  .header-logo { height:30px; width:auto; border-radius:9px; box-shadow:none; }
+  .header-brand { gap:9px; align-items:center; }
+  .dashboard-header h1 { font-size:14px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dashboard-header p { display:none; }
 
   /* Reclaim the top of every tab: the row of tools collapses behind a compact toggle so the
      actual data sits near the top instead of below a screenful of buttons. */
@@ -678,12 +694,12 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
      whole time you scrolled; text alone is roughly half that, and reads faster than guessing at
      an emoji. --nav-h is measured from the real bar at runtime so the space reserved below the
      page always matches it exactly, whatever the labels or the phone's safe-area inset. */
-  .bottom-nav { display:grid; grid-template-columns:repeat(4,1fr); position:fixed; left:0; right:0; bottom:0; z-index:850; background:rgba(255,255,255,0.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-top:1px solid var(--border-subtle); box-shadow:0 -6px 20px rgba(24,27,40,0.08); padding:5px 3px calc(5px + env(safe-area-inset-bottom, 0px)); gap:3px; transition:transform .22s ease; }
+  .bottom-nav { display:grid; grid-template-columns:repeat(5,1fr); position:fixed; left:0; right:0; bottom:0; z-index:850; background:rgba(255,255,255,0.94); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-top:1px solid var(--border-subtle); box-shadow:0 -6px 20px rgba(24,27,40,0.08); padding:5px 3px calc(5px + env(safe-area-inset-bottom, 0px)); gap:3px; transition:transform .22s ease; }
   /* Equal widths again now there are five: each label fits its share, and equal targets are
      more predictable to aim at than ones that vary with how long a word happens to be.
      min-height 52 keeps every target comfortably past the 44pt guideline. */
-  .bottom-nav .tab-btn { min-width:0; min-height:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:8px 1px; font-size:11.5px; font-weight:700; letter-spacing:-0.2px; border-radius:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .bottom-nav .tab-btn .nav-ico { font-size:21px; line-height:1; }
+  .bottom-nav .tab-btn { min-width:0; min-height:46px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:5px 1px; font-size:9.5px; font-weight:700; letter-spacing:-0.2px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bottom-nav .tab-btn .nav-ico { font-size:17px; line-height:1; }
   .bottom-nav .tab-btn.active { background:var(--bg-header); color:#fff; box-shadow:none; }
   /* Slide it away while you scroll down into content, bring it straight back on any scroll up. */
   .bottom-nav.nav-hidden { transform:translateY(calc(100% + 8px)); }
@@ -707,15 +723,15 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
   /* Narrow phones give each of seven tabs ~44px, which 13px bold overflows — step it down
      rather than let a label clip. */
   /* "Card Show" is the longest label and sets the ceiling; step the size down before it clips. */
-  @media (max-width:389px){ .bottom-nav .tab-btn { font-size:11px; } }
+  @media (max-width:389px){ .bottom-nav .tab-btn { font-size:9px; letter-spacing:-0.3px; } }
   /* Two rows cost real height, and on a short screen that is a bigger share of it. Trim the
      rows rather than let the bar take a third of the display. */
-  @media (max-height:640px){ .bottom-nav .tab-btn { min-height:46px; font-size:10px; gap:2px; padding:6px 0; }
-    .bottom-nav .tab-btn .nav-ico { font-size:17px; } }
+  @media (max-height:640px){ .bottom-nav .tab-btn { min-height:40px; font-size:9px; gap:1px; padding:4px 0; }
+    .bottom-nav .tab-btn .nav-ico { font-size:15px; } }
   /* Narrow phones. The padding here dates from the single-row, text-only bar; with icons
      stacked it has to stay tight or it fights the short-screen rule above. */
-  @media (max-width:339px){ .bottom-nav .tab-btn { font-size:10px; letter-spacing:-0.3px; padding:6px 0; }
-    .bottom-nav .tab-btn .nav-ico { font-size:17px; } }
+  @media (max-width:339px){ .bottom-nav .tab-btn { font-size:8.5px; letter-spacing:-0.4px; padding:4px 0; }
+    .bottom-nav .tab-btn .nav-ico { font-size:14px; } }
 
   /* ---------- Card-list view for the 5 editable data tables ---------- */
   /* Scoped to .table-cards (not every .data-table) so the small read-only summary tables
@@ -852,6 +868,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 @media (max-width:768px){ .qa-tab-btn { font-size:12px; padding:9px 4px; } }
 
 /* Inventory search inside Quick Add Sale. */
+[hidden] { display:none !important; }
 .today-strip { display:flex; align-items:stretch; gap:8px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:14px; padding:12px 14px; margin-bottom:var(--gap); overflow-x:auto; }
 .today-lead { flex:0 0 auto; padding-right:14px; border-right:1px solid var(--border-subtle); }
 .today-label { font-size:10.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:var(--text-muted); }
@@ -1966,15 +1983,23 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <div class="toolbar-actions">
           <span id="inv-count" style="font-size:12px;color:var(--text-secondary)"></span>
           <label class="show-sold-toggle" title="Sold-out items leave the Inventory tab; tick this to show them again."><input type="checkbox" id="show-sold-toggle"> Show sold-out</label>
-          <div class="col-toggle-wrap">
-            <button class="btn-sm" data-columns-toggle data-table="inventory">&#9776; Columns</button>
-            <div class="col-toggle-panel hidden" id="colpanel-inventory"></div>
-          </div>
           <button class="btn-sm" id="stock-check-btn" title="Count what's physically in the box against what your books say, and turn anything missing into the sales that were never entered.">&#9989; Stock Check</button>
-          <button class="btn-sm" id="inv-date-btn" title="Stamp a purchase date onto many cards at once — needed before the app can value your stock at any past date.">&#128197; Set Purchase Date</button>
-          <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
-          <button class="btn-sm" id="inv-labels-btn" title="Pick cards by their card number (SKU) and export just those as a NIIMBOT label sheet (.xlsx) — Item Name, Cost, Price, SKU and finished QR text.">&#127991;&#65039; NIIMBOT Labels</button>
           <button class="btn-sm btn-add" data-addrow data-table="inventory">+ Add Item</button>
+          <!-- Everything you reach for occasionally lives behind one control instead of four
+               rows of buttons. Native <details>, so the buttons stay in the DOM and keep their
+               ids; nothing that targets them has to know the menu exists. -->
+          <details class="more-menu">
+            <summary class="btn-sm" title="Columns, dates, exports and labels">&#8943; More</summary>
+            <div class="more-panel">
+              <div class="col-toggle-wrap">
+                <button class="btn-sm" data-columns-toggle data-table="inventory">&#9776; Columns</button>
+                <div class="col-toggle-panel hidden" id="colpanel-inventory"></div>
+              </div>
+              <button class="btn-sm" id="inv-date-btn" title="Stamp a purchase date onto many cards at once — needed before the app can value your stock at any past date.">&#128197; Set Purchase Date</button>
+              <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
+              <button class="btn-sm" id="inv-labels-btn" title="Pick cards by their card number (SKU) and export just those as a NIIMBOT label sheet (.xlsx) — Item Name, Cost, Price, SKU and finished QR text.">&#127991;&#65039; NIIMBOT Labels</button>
+            </div>
+          </details>
           <div data-sku-lookup-slot="inventory"></div>
         </div>
         <div class="mobile-table-controls">
@@ -2248,7 +2273,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v121</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v122</strong>
   </footer>
 </div>
 
@@ -9538,15 +9563,19 @@ class Dashboard {
   _initFabToggle(){
     const btn = document.getElementById('fab-toggle');
     if(!btn) return;
-    let collapsed = false;
-    try{ collapsed = localStorage.getItem(FAB_COLLAPSED_KEY) === '1'; }catch(e){}
-    this.setFabCollapsed(collapsed);
+    // On a phone the floating stack sits on top of whatever is underneath it — the scan button
+    // and the inventory toolbar both end up unclickable. Start it tucked away on small screens
+    // so nothing is covered until it is asked for; a stored choice always wins.
+    let stored = null;
+    try{ stored = localStorage.getItem(FAB_COLLAPSED_KEY); }catch(e){}
+    const collapsed = stored === null ? window.innerWidth <= 768 : stored === '1';
+    this.setFabCollapsed(collapsed, false);   // a default is not a choice — do not store it
     btn.addEventListener('click', ()=>{
       this.setFabCollapsed(!document.body.classList.contains('fab-collapsed'));
     });
   }
 
-  setFabCollapsed(collapsed){
+  setFabCollapsed(collapsed, persist){
     const btn = document.getElementById('fab-toggle');
     document.body.classList.toggle('fab-collapsed', !!collapsed);
     if(btn){
@@ -9555,7 +9584,9 @@ class Dashboard {
       btn.title = collapsed ? 'Show the Quick Add and Calculator buttons' : 'Hide the floating buttons';
       btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }
-    try{ localStorage.setItem(FAB_COLLAPSED_KEY, collapsed ? '1' : '0'); }catch(e){}
+    if(persist !== false){
+      try{ localStorage.setItem(FAB_COLLAPSED_KEY, collapsed ? '1' : '0'); }catch(e){}
+    }
   }
 
   _initQuickAdd(){
