@@ -74,6 +74,34 @@
   --shadow-md:0 12px 32px rgba(24,27,40,0.14);
   --ring:0 0 0 3px rgba(42,120,214,0.18);
 }
+
+/* ---------- Stage 2: type scale and surface polish ---------- */
+:root{
+  --fs-display:30px; --fs-h1:20px; --fs-h2:16px; --fs-h3:14px;
+  --fs-body:13.5px; --fs-sm:12px; --fs-xs:11px;
+  --lh-tight:1.18; --lh-body:1.5;
+  --tracking-caps:0.045em;
+}
+.nav-ico { flex:none; stroke-width:1.8; }
+.btn-ico { width:15px; height:15px; flex:none; vertical-align:-2px; display:inline-block; }
+.sfx-ico { width:16px; height:16px; display:block; color:var(--text-muted); }
+.btn-sm { display:inline-flex; align-items:center; gap:6px; }
+
+/* Section headings sat at a dozen ad-hoc sizes; one scale, consistently applied. */
+h3 { font-size:var(--fs-h2); font-weight:700; letter-spacing:-0.01em; line-height:var(--lh-tight); }
+h4 { font-size:var(--fs-h3); font-weight:700; letter-spacing:-0.005em; line-height:var(--lh-tight); }
+.kpi-label, .sc-start-label, .mc-field > span, .lp-chosen-h {
+  font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
+  letter-spacing:var(--tracking-caps); color:var(--text-secondary);
+}
+.kpi-value { font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
+/* Numbers line up column to column instead of jittering as digits change. */
+.data-table td.num, .num, .mr-amt, .sc-count, .lp-qty b { font-variant-numeric:tabular-nums; }
+.btn-sm { transition:background .15s ease, border-color .15s ease, color .15s ease, transform .08s ease; }
+.btn-sm:active { transform:translateY(1px); }
+.btn-sm:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+summary:focus-visible { outline:none; box-shadow:var(--ring); border-radius:var(--radius-sm); }
+.tab-btn { transition:background .15s ease, color .15s ease; }
 * { margin:0; padding:0; box-sizing:border-box; }
 html { scroll-behavior:smooth; }
 body {
@@ -699,7 +727,7 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
      more predictable to aim at than ones that vary with how long a word happens to be.
      min-height 52 keeps every target comfortably past the 44pt guideline. */
   .bottom-nav .tab-btn { min-width:0; min-height:46px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:5px 1px; font-size:9.5px; font-weight:700; letter-spacing:-0.2px; border-radius:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .bottom-nav .tab-btn .nav-ico { font-size:17px; line-height:1; }
+  .bottom-nav .tab-btn .nav-ico { width:21px; height:21px; display:block; }
   .bottom-nav .tab-btn.active { background:var(--bg-header); color:#fff; box-shadow:none; }
   /* Slide it away while you scroll down into content, bring it straight back on any scroll up. */
   .bottom-nav.nav-hidden { transform:translateY(calc(100% + 8px)); }
@@ -727,11 +755,11 @@ body.fab-collapsed .fab-toggle { right:0; bottom:110px; width:24px; height:48px;
   /* Two rows cost real height, and on a short screen that is a bigger share of it. Trim the
      rows rather than let the bar take a third of the display. */
   @media (max-height:640px){ .bottom-nav .tab-btn { min-height:40px; font-size:9px; gap:1px; padding:4px 0; }
-    .bottom-nav .tab-btn .nav-ico { font-size:15px; } }
+    .bottom-nav .tab-btn .nav-ico { width:18px; height:18px; } }
   /* Narrow phones. The padding here dates from the single-row, text-only bar; with icons
      stacked it has to stay tight or it fights the short-screen rule above. */
   @media (max-width:339px){ .bottom-nav .tab-btn { font-size:8.5px; letter-spacing:-0.4px; padding:4px 0; }
-    .bottom-nav .tab-btn .nav-ico { font-size:14px; } }
+    .bottom-nav .tab-btn .nav-ico { width:17px; height:17px; } }
 
   /* ---------- Card-list view for the 5 editable data tables ---------- */
   /* Scoped to .table-cards (not every .data-table) so the small read-only summary tables
@@ -1247,6 +1275,43 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 </style>
 </head>
 <body>
+<!-- Icon set. Stroke-drawn on currentColor at 24x24, so every icon inherits the colour and
+     weight of whatever it sits in and stays crisp at any size. Emoji were doing this job before:
+     they render differently on every device, cannot take the active colour, and are the main
+     reason the bar looked improvised. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 20v-7M9.3 20V8M14.7 20v-5M20 20V4"/></symbol>
+  <symbol id="i-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 10.5 12 4l9 6.5"/><path d="M4.5 10.5V20h15v-9.5"/><path d="M9.5 20v-5.5h5V20"/></symbol>
+  <symbol id="i-inventory" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5 12 11.5l8.5-4M12 11.5v9"/></symbol>
+  <symbol id="i-merch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 4 5 5.8 3.5 10l2.5.9V20h12v-9.1l2.5-.9L19 5.8 15 4"/><path d="M9 4a3 3 0 0 0 6 0"/></symbol>
+  <symbol id="i-missing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="6.5"/><path d="M20.5 20.5 16 16"/><path d="M11 8.2v3.4M11 14.2h.01"/></symbol>
+  <symbol id="i-sales" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 12h.01M18 12h.01"/></symbol>
+  <symbol id="i-trades" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 8.5h12.5M13 5l3.5 3.5L13 12"/><path d="M20 15.5H7.5M11 12 7.5 15.5 11 19"/></symbol>
+  <symbol id="i-expenses" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/><path d="M6.5 14.5h4"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3.5v3M15.5 3.5v3"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3.2"/>
+    <path d="M19.1 14.2a1.6 1.6 0 0 0 .32 1.77l.06.06a1.9 1.9 0 1 1-2.69 2.69l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47v.17a1.9 1.9 0 1 1-3.8 0v-.09a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a1.9 1.9 0 1 1-2.69-2.69l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3.2a1.9 1.9 0 1 1 0-3.8h.09a1.6 1.6 0 0 0 1.47-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06a1.9 1.9 0 1 1 2.69-2.69l.06.06a1.6 1.6 0 0 0 1.77.32h.08A1.6 1.6 0 0 0 10 4.3v-.17a1.9 1.9 0 1 1 3.8 0v.09a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a1.9 1.9 0 1 1 2.69 2.69l-.06.06a1.6 1.6 0 0 0-.32 1.77v.08a1.6 1.6 0 0 0 1.47.97h.17a1.9 1.9 0 1 1 0 3.8h-.09a1.6 1.6 0 0 0-1.46.97z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 6.5 9.5 17 4 11.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="6.5"/><path d="M20.5 20.5 16 16"/></symbol>
+  <symbol id="i-tools" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 6.5a3.8 3.8 0 0 0 5 5l-8 8a2.6 2.6 0 1 1-3.7-3.7l8-8a3.8 3.8 0 0 0-1.3-1.3z"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.5 8.5h3l1.5-2.5h8l1.5 2.5h3v10h-17z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 11.5V4h7.5L20 12.5 12.5 20z"/><circle cx="8" cy="8" r="1.4"/></symbol>
+</defs></svg>
 <div class="dashboard-container" id="dashboard-root">
 
   <header class="dashboard-header">
@@ -1261,7 +1326,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
 
   <div class="session-bar" id="session-bar">
     <div class="session-status" id="session-status">Working from the original snapshot &mdash; sign in and your changes save automatically to the cloud.</div>
-    <button type="button" class="tools-toggle" id="tools-toggle" aria-expanded="false" title="Show/hide tools">&#128295; Tools <span class="tools-caret">&#9662;</span></button>
+    <button type="button" class="tools-toggle" id="tools-toggle" aria-expanded="false" title="Show/hide tools"><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-tools"></use></svg> Tools <span class="tools-caret">&#9662;</span></button>
     <div class="session-actions">
       <input type="file" id="load-file-input" accept="application/json" style="display:none">
       <button class="btn-sm" id="undo-btn" title="Undo (Ctrl+Z)" disabled>&#8617; Undo</button>
@@ -1307,16 +1372,16 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
          why three of these used to live behind a More sheet; stacking buys a second row instead
          and every tab is one tap again at full size. The bar is taller for it, but it slides away
          as soon as you scroll, so the height is only spent while you are looking at it. -->
-    <button class="tab-btn" data-tab="dashboard" onclick="dash.showTab('dashboard')"><span class="nav-ico" aria-hidden="true">&#128202;</span>Dashboard</button>
-    <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')"><span class="nav-ico" aria-hidden="true">&#127914;</span>Card Show</button>
-    <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')"><span class="nav-ico" aria-hidden="true">&#128230;</span>Inventory</button>
-    <button class="tab-btn" data-tab="merch" onclick="dash.showTab('merch')"><span class="nav-ico" aria-hidden="true">&#129509;</span>Merch</button>
-    <button class="tab-btn" data-tab="missing" onclick="dash.showTab('missing')"><span class="nav-ico" aria-hidden="true">&#128269;</span>Missing<span class="nav-badge hidden" data-missing-badge></span></button>
-    <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')"><span class="nav-ico" aria-hidden="true">&#128181;</span>Sales</button>
-    <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')"><span class="nav-ico" aria-hidden="true">&#128257;</span>Trades</button>
-    <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')"><span class="nav-ico" aria-hidden="true">&#128179;</span>Expenses</button>
-    <button class="tab-btn" data-tab="calendar" onclick="dash.showTab('calendar')"><span class="nav-ico" aria-hidden="true">&#128197;</span>Calendar</button>
-    <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')"><span class="nav-ico" aria-hidden="true">&#9881;</span>Settings</button>
+    <button class="tab-btn" data-tab="dashboard" onclick="dash.showTab('dashboard')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-dashboard"></use></svg>Dashboard</button>
+    <button class="tab-btn" data-tab="cashflow" onclick="dash.showTab('cashflow')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-show"></use></svg>Card Show</button>
+    <button class="tab-btn" data-tab="inventory" onclick="dash.showTab('inventory')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-inventory"></use></svg>Inventory</button>
+    <button class="tab-btn" data-tab="merch" onclick="dash.showTab('merch')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-merch"></use></svg>Merch</button>
+    <button class="tab-btn" data-tab="missing" onclick="dash.showTab('missing')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-missing"></use></svg>Missing<span class="nav-badge hidden" data-missing-badge></span></button>
+    <button class="tab-btn" data-tab="sales" onclick="dash.showTab('sales')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-sales"></use></svg>Sales</button>
+    <button class="tab-btn" data-tab="trades" onclick="dash.showTab('trades')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-trades"></use></svg>Trades</button>
+    <button class="tab-btn" data-tab="expenses" onclick="dash.showTab('expenses')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-expenses"></use></svg>Expenses</button>
+    <button class="tab-btn" data-tab="calendar" onclick="dash.showTab('calendar')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-calendar"></use></svg>Calendar</button>
+    <button class="tab-btn" data-tab="settings" onclick="dash.showTab('settings')"><svg class="nav-ico" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>Settings</button>
   </nav>
 
   <!-- Bulk Date Acquired. Cards bought as a lot all share one date, so stamping them one at a
@@ -1389,7 +1454,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
              form submits; this just sets it, so nothing downstream changes. -->
         <div class="qa-field"><label>Item</label>
           <div class="qa-pick">
-            <span class="qa-pick-icon" aria-hidden="true">&#128269;</span>
+            <span class="qa-pick-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>
             <input type="search" id="qa-sale-search" class="qa-pick-input" autocomplete="off"
                    placeholder="Search inventory &mdash; name, SKU, set&hellip;">
             <button type="button" class="qa-pick-clear hidden" id="qa-sale-search-clear" title="Clear">&times;</button>
@@ -1461,7 +1526,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <div class="qa-field">
         <label>Name it after a card <small>(optional)</small></label>
         <div class="qa-pick">
-          <span class="qa-pick-icon" aria-hidden="true">&#128269;</span>
+          <span class="qa-pick-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>
           <input type="search" id="photo-review-search" class="qa-pick-input" autocomplete="off"
                  placeholder="Search your stock&hellip;">
         </div>
@@ -1564,7 +1629,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <div class="calc-pane" id="calc-pane-history">
         <div class="qa-field">
           <div class="qa-pick">
-            <span class="qa-pick-icon" aria-hidden="true">&#128269;</span>
+            <span class="qa-pick-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>
             <input type="search" id="calc-history-search" class="qa-pick-input" autocomplete="off"
                    placeholder="Search what you've comped&hellip;">
           </div>
@@ -1973,7 +2038,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <!-- Universal search: filters the inventory list as you type, across name, SKU, set,
            category, condition and Item ID at once. Multiple words all have to match. -->
       <div class="inv-search-wrap">
-        <span class="inv-search-icon" aria-hidden="true">&#128269;</span>
+        <span class="inv-search-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>
         <input type="search" id="inv-search" class="inv-search-input" autocomplete="off"
                placeholder="Search inventory — name, SKU, set, category…">
         <button type="button" class="inv-search-clear hidden" id="inv-search-clear" title="Clear search">&times;</button>
@@ -1983,7 +2048,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
         <div class="toolbar-actions">
           <span id="inv-count" style="font-size:12px;color:var(--text-secondary)"></span>
           <label class="show-sold-toggle" title="Sold-out items leave the Inventory tab; tick this to show them again."><input type="checkbox" id="show-sold-toggle"> Show sold-out</label>
-          <button class="btn-sm" id="stock-check-btn" title="Count what's physically in the box against what your books say, and turn anything missing into the sales that were never entered.">&#9989; Stock Check</button>
+          <button class="btn-sm" id="stock-check-btn" title="Count what's physically in the box against what your books say, and turn anything missing into the sales that were never entered."><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg> Stock Check</button>
           <button class="btn-sm btn-add" data-addrow data-table="inventory">+ Add Item</button>
           <!-- Everything you reach for occasionally lives behind one control instead of four
                rows of buttons. Native <details>, so the buttons stay in the DOM and keep their
@@ -1995,9 +2060,9 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
                 <button class="btn-sm" data-columns-toggle data-table="inventory">&#9776; Columns</button>
                 <div class="col-toggle-panel hidden" id="colpanel-inventory"></div>
               </div>
-              <button class="btn-sm" id="inv-date-btn" title="Stamp a purchase date onto many cards at once — needed before the app can value your stock at any past date.">&#128197; Set Purchase Date</button>
+              <button class="btn-sm" id="inv-date-btn" title="Stamp a purchase date onto many cards at once — needed before the app can value your stock at any past date."><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-calendar"></use></svg> Set Purchase Date</button>
               <button class="btn-sm" data-export data-table="inventory">Export CSV</button>
-              <button class="btn-sm" id="inv-labels-btn" title="Pick cards by their card number (SKU) and export just those as a NIIMBOT label sheet (.xlsx) — Item Name, Cost, Price, SKU and finished QR text.">&#127991;&#65039; NIIMBOT Labels</button>
+              <button class="btn-sm" id="inv-labels-btn" title="Pick cards by their card number (SKU) and export just those as a NIIMBOT label sheet (.xlsx) — Item Name, Cost, Price, SKU and finished QR text."><svg class="btn-ico" aria-hidden="true" focusable="false"><use href="#i-tag"></use></svg> NIIMBOT Labels</button>
             </div>
           </details>
           <div data-sku-lookup-slot="inventory"></div>
@@ -2095,7 +2160,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
       <!-- Universal search: filters the sales log as you type, across item name, SKU, show,
            payment method, date and IDs at once. Multiple words all have to match. -->
       <div class="inv-search-wrap">
-        <span class="inv-search-icon" aria-hidden="true">&#128269;</span>
+        <span class="inv-search-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>
         <input type="search" id="sales-search" class="inv-search-input" autocomplete="off"
                placeholder="Search sales — item, SKU, show, payment, date…">
         <button type="button" class="inv-search-clear hidden" id="sales-search-clear" title="Clear search">&times;</button>
@@ -2273,7 +2338,7 @@ tr.sku-row-highlight { animation: skuLookupHighlight 2.2s ease-out; }
   <footer class="dashboard-footer">
     <!-- Keep this version in lockstep with sw.js CACHE_NAME — it exists so anyone can tell at a
          glance which build their device is actually running (stale-cache debugging). -->
-    GumGumGoods Vendor Dashboard &middot; app version <strong>v122</strong>
+    GumGumGoods Vendor Dashboard &middot; app version <strong>v123</strong>
   </footer>
 </div>
 
@@ -8610,7 +8675,7 @@ class Dashboard {
       + (r.missing.length ? this._scMissingPanel(r) : '')
       + (r.extra.length ? this._scExtraPanel(r) : '')
       + `<div class="sc-tools">`
-        + `<div class="qa-pick"><span class="qa-pick-icon" aria-hidden="true">&#128269;</span>`
+        + `<div class="qa-pick"><span class="qa-pick-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>`
         + `<input type="search" id="sc-search" class="qa-pick-input" autocomplete="off"`
         + ` placeholder="Find a card in this count&hellip;" value="${this._esc(q)}"></div>`
         + `<button type="button" class="btn-sm" data-sc-scan title="Scan QR labels to tick cards off fast">&#128247; Scan</button>`
@@ -10268,7 +10333,7 @@ class Dashboard {
       `<p class="sc-intro">Search by the card number printed on the card — or its name — and tick `
       + `what you want on the sheet. Only what you pick is exported.</p>`
       + `<div class="sc-tools">`
-        + `<div class="qa-pick"><span class="qa-pick-icon" aria-hidden="true">&#128269;</span>`
+        + `<div class="qa-pick"><span class="qa-pick-icon" aria-hidden="true"><svg class="sfx-ico" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>`
         + `<input type="search" id="lp-search" class="qa-pick-input" autocomplete="off"`
         + ` placeholder="SKU or name&hellip; e.g. OP06-021" value="${this._esc(q)}"></div>`
         + (q ? `<button type="button" class="btn-sm" data-lp-add-matching>Add all ${matches.length}</button>` : '')
